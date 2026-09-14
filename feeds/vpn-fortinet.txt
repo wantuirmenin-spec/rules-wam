@@ -1,0 +1,18 @@
+# Fortinet / FortiGate SSL-VPN & FortiClient
+fortinet.com
+fortinet.net
+forticlient.com
+fortigate.com
+fortisandbox.com
+forticlouddns.com
+fortidns.com
+fortiview.com
+fct.fortinet.net
+global-forticlient.fortinet.net
+fortiguard.com
+fortiguard.net
+fortiportal.com
+fortisase.com
+fortissl.com
+fortiap.com
+fortiauthenticator.com

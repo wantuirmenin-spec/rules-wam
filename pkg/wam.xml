@@ -1,0 +1,438 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE packagegui SYSTEM "../schema/packages.dtd">
+<?xml-stylesheet type="text/xsl" href="../xsl/package.xsl"?>
+<packagegui>
+	<copyright>
+	<![CDATA[
+/*
+ * rules_wam.xml
+ * Rules WAM - Web Access Manager para pfSense
+ * Bloqueio de Categorias de Sites e Proteção DNS Avançada
+ */
+	]]>
+	</copyright>
+	<name>rules_wam</name>
+	<version>1.3.0</version>
+	<title>Services: Rules WAM</title>
+	<include_file>/usr/local/pkg/rules_wam.inc</include_file>
+	<menu>
+		<name>Rules WAM</name>
+		<section>Services</section>
+		<configfile>rules_wam.xml</configfile>
+		<url>/rules_wam.php</url>
+		<tooltiptext>Rules WAM - Gerenciamento e Bloqueio de Categorias de Sites</tooltiptext>
+	</menu>
+	<tabs>
+		<tab>
+			<text>Configurações de Bloqueio</text>
+			<url>/rules_wam.php</url>
+			<active/>
+		</tab>
+		<tab>
+			<text>Status &amp; Teste de Bloqueio</text>
+			<url>/rules_wam_status.php</url>
+		</tab>
+	</tabs>
+	<fields>
+		<field>
+			<name>Controle Geral</name>
+			<type>listtopic</type>
+		</field>
+		<field>
+			<fielddescr>Habilitar Serviço Rules WAM</fielddescr>
+			<fieldname>enable</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Marque para ativar a filtragem de categorias via DNS (Unbound).</description>
+		</field>
+
+		<field>
+			<name>Categorias de Bloqueio Disponíveis</name>
+			<type>listtopic</type>
+		</field>
+		<field>
+			<fielddescr>Mídias Sociais</fielddescr>
+			<fieldname>block_social</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia Facebook, Instagram, Threads, TikTok, Twitter/X, Kwai, LinkedIn, Pinterest, Reddit, Discord, etc.</description>
+		</field>
+		<field>
+			<fielddescr>Conteúdo Adulto &amp; Pornografia</fielddescr>
+			<fieldname>block_adult</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia sites adultos, canais eróticos, chats e plataformas explícitas (Pornhub, XVideos, OnlyFans, etc.).</description>
+		</field>
+		<field>
+			<fielddescr>Notícias &amp; Portais de Jornalismo</fielddescr>
+			<fieldname>block_news</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia portais de notícias e jornais (G1, Globo, UOL, Folha, Estadão, CNN, R7, Metrópoles, Terra, BBC, etc.).</description>
+		</field>
+		<field>
+			<fielddescr>Esportes &amp; Placares ao Vivo</fielddescr>
+			<fieldname>block_sports</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia portais esportivos, placares e transmissões de jogos (GE/Globo Esporte, ESPN, Lance, Flashscore, SofaScore, Futemax, etc.).</description>
+		</field>
+		<field>
+			<fielddescr>Jogos Online &amp; Games</fielddescr>
+			<fieldname>block_gaming</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia Steam, Epic Games, Roblox, Riot Games (LoL, Valorant), Blizzard/Battle.net, Xbox Live, PlayStation, etc.</description>
+		</field>
+		<field>
+			<fielddescr>Streaming &amp; Vídeos</fielddescr>
+			<fieldname>block_streaming</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia plataformas de vídeo e áudio sob demanda (YouTube, Netflix, Prime Video, Disney+, Twitch, Spotify, etc.).</description>
+		</field>
+		<field>
+			<fielddescr>Apostas, Bets &amp; Cassinos</fielddescr>
+			<fieldname>block_gambling</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia casas de apostas esportivas, bets e cassinos online (Bet365, Betano, Sportingbet, Blaze, Stake, Pixbet, etc.).</description>
+		</field>
+		<field>
+			<fielddescr>Compras &amp; E-commerce</fielddescr>
+			<fieldname>block_shopping</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia sites de compras (Mercado Livre, Shopee, AliExpress, Shein, Amazon, Magalu, Casas Bahia, etc.).</description>
+		</field>
+		<field>
+			<fielddescr>Torrents &amp; P2P</fielddescr>
+			<fieldname>block_p2p</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia sites e rastreadores de torrent (The Pirate Bay, 1337x, YTS, RARBG, BitTorrent, uTorrent, etc.).</description>
+		</field>
+		<field>
+			<fielddescr>Anti-Bypass (Bloquear DoH)</fielddescr>
+			<fieldname>block_doh</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia servidores DNS-over-HTTPS públicos (Cloudflare, Google, Quad9) para impedir que navegadores e celulares burlem o filtro.</description>
+		</field>
+		<field>
+			<fielddescr>Forçar DNS Local (Porta 53 Anti-Bypass)</fielddescr>
+			<fieldname>block_dns_bypass</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<default_value>no</default_value>
+			<description>Recurso corporativo Anti-Bypass: Redireciona consultas DNS externas (porta 53 UDP/TCP enviadas a 8.8.8.8, 1.1.1.1, etc.) para o Unbound local via NAT Port Forward. Garante que dispositivos com DNS manual sejam filtrados pelo WAM.</description>
+		</field>
+		<field>
+			<fielddescr>Forwarding Upstream (Google &amp; Cloudflare)</fielddescr>
+			<fieldname>enable_upstream_forwarding</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<default_value>no</default_value>
+			<description>Encaminha consultas legítimas permitidas diretamente aos servidores Anycast de alta performance do Google (8.8.8.8, 8.8.4.4) e Cloudflare (1.1.1.1, 1.0.0.1). O WAM bloqueia as categorias restritas localmente antes de enviar à internet.</description>
+		</field>
+		<field>
+			<fielddescr>VPN, ZTNA &amp; Proxies Anônimos (Geral)</fielddescr>
+			<fieldname>block_vpn</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Ativa o controle e bloqueio de redes virtuais VPN, provedores ZTNA e proxies. Use os campos abaixo para habilitar/desabilitar fornecedores específicos.</description>
+		</field>
+		<field>
+			<fielddescr>Bloquear Fortinet / FortiGate SSL-VPN</fielddescr>
+			<fieldname>block_vpn_fortinet</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia conexões e portais Fortinet / FortiClient SSL-VPN. Desmarque se sua organização utiliza este serviço.</description>
+		</field>
+		<field>
+			<fielddescr>Bloquear Cisco AnyConnect / Secure Client</fielddescr>
+			<fieldname>block_vpn_cisco</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia Cisco AnyConnect, Secure Client e gateways corporativos Cisco. Desmarque se sua organização utiliza este serviço.</description>
+		</field>
+		<field>
+			<fielddescr>Bloquear Palo Alto GlobalProtect / Prisma</fielddescr>
+			<fieldname>block_vpn_paloalto</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia portais Palo Alto Networks GlobalProtect e Prisma Access. Desmarque se sua organização utiliza este serviço.</description>
+		</field>
+		<field>
+			<fielddescr>Bloquear Zscaler (ZPA &amp; ZIA Cloud)</fielddescr>
+			<fieldname>block_ztna_zscaler</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia infraestrutura Zscaler ZPA (Private Access) e ZIA (Internet Access). Desmarque se sua organização utiliza este serviço.</description>
+		</field>
+		<field>
+			<fielddescr>Bloquear Netskope Security Cloud &amp; NPA</fielddescr>
+			<fieldname>block_ztna_netskope</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia Netskope Private Access e Security Cloud. Desmarque se sua organização utiliza este serviço.</description>
+		</field>
+		<field>
+			<fielddescr>Bloquear Cloudflare WARP &amp; Zero Trust</fielddescr>
+			<fieldname>block_ztna_cloudflare</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia Cloudflare WARP client e túneis Zero Trust.</description>
+		</field>
+		<field>
+			<fielddescr>Bloquear Tailscale, ZeroTier &amp; Mesh Tunnels</fielddescr>
+			<fieldname>block_ztna_tailscale</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia redes mesh P2P (Tailscale, ZeroTier) e túneis de portas (Ngrok, Twingate, Hamachi, Localtunnel).</description>
+		</field>
+		<field>
+			<fielddescr>Bloquear VPNs Comerciais &amp; Proxies Web</fielddescr>
+			<fieldname>block_vpn_commercial</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia provedores de VPN comercial (NordVPN, ExpressVPN, Surfshark, Proton, etc.), Tor e proxies anônimos web.</description>
+		</field>
+		<field>
+			<fielddescr>Mensageiros &amp; Ferramentas de Comunicação (Geral)</fielddescr>
+			<fieldname>block_messaging</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Ativa o bloqueio de aplicativos e sites de comunicação instantânea, chats e mensageiros corporativos/pessoais.</description>
+		</field>
+		<field>
+			<fielddescr>Bloquear WhatsApp (Web, Desktop &amp; Mobile)</fielddescr>
+			<fieldname>block_msg_whatsapp</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia WhatsApp Web, aplicativo para desktop e conexões mobile (whatsapp.com, whatsapp.net, wa.me).</description>
+		</field>
+		<field>
+			<fielddescr>Bloquear Telegram (Web, App &amp; t.me)</fielddescr>
+			<fieldname>block_msg_telegram</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia Telegram Web, API e links (telegram.org, t.me, telegra.ph).</description>
+		</field>
+		<field>
+			<fielddescr>Bloquear Facebook Messenger</fielddescr>
+			<fieldname>block_msg_messenger</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia Facebook Messenger (messenger.com, m.me, chat.facebook.com).</description>
+		</field>
+		<field>
+			<fielddescr>Bloquear Microsoft Teams &amp; Skype / MSN</fielddescr>
+			<fieldname>block_msg_teams_skype</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia Microsoft Teams, Skype e redes legadas MSN Messenger (teams.microsoft.com, skype.com, messenger.msn.com).</description>
+		</field>
+		<field>
+			<fielddescr>Bloquear Discord (Chat &amp; Voz)</fielddescr>
+			<fieldname>block_msg_discord</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia Discord e convites (discord.com, discord.gg, discordapp.com).</description>
+		</field>
+		<field>
+			<fielddescr>Bloquear Slack</fielddescr>
+			<fieldname>block_msg_slack</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia plataforma de comunicação Slack (slack.com, slack-msgs.com).</description>
+		</field>
+		<field>
+			<fielddescr>Bloquear Zoom &amp; Google Meet / Chat</fielddescr>
+			<fieldname>block_msg_zoom_meet</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia plataformas de reuniões e chat Zoom (zoom.us) e Google Meet/Chat (meet.google.com, chat.google.com).</description>
+		</field>
+		<field>
+			<fielddescr>Bloquear Outros Mensageiros (Signal, WeChat, Viber, LINE, Omegle, etc.)</fielddescr>
+			<fieldname>block_msg_others</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Bloqueia mensageiros adicionais: Signal, WeChat, Viber, LINE, KakaoTalk, ICQ, Kik, Element/Matrix, Omegle, etc.</description>
+		</field>
+
+		<field>
+			<name>Integração Corporativa: Active Directory, NPS (RADIUS) &amp; Netskope</name>
+			<type>listtopic</type>
+		</field>
+		<field>
+			<fielddescr>Habilitar Split-DNS Corporativo</fielddescr>
+			<fieldname>corp_enable</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Encaminha consultas de Active Directory e NPS RADIUS diretamente para a Matriz através da VPN IPsec.</description>
+		</field>
+		<field>
+			<fielddescr>Domínio(s) do Active Directory</fielddescr>
+			<fieldname>corp_ad_domain</fieldname>
+			<type>input</type>
+			<size>40</size>
+			<description>Domínio interno (ex: madeiramadeira.local, corp.empresa.com.br). Se múltiplos, separe por vírgula.</description>
+		</field>
+		<field>
+			<fielddescr>IPs dos Servidores DNS da Matriz (AD/NPS)</fielddescr>
+			<fieldname>corp_ad_dns_ips</fieldname>
+			<type>input</type>
+			<size>40</size>
+			<description>IPs dos controladores de domínio e servidores NPS RADIUS na Matriz acessíveis via IPsec.</description>
+		</field>
+		<field>
+			<fielddescr>Encaminhar Zonas Reversas (in-addr.arpa)</fielddescr>
+			<fieldname>corp_reverse_lookup</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<default_value>yes</default_value>
+			<description>Encaminha resolução reversa de IP das sub-redes corporativas para os servidores da Matriz.</description>
+		</field>
+		<field>
+			<fielddescr>Redes Corporativas Autorizadas no DNS (CIDR)</fielddescr>
+			<fieldname>corp_allowed_subnets</fieldname>
+			<type>textarea</type>
+			<rows>4</rows>
+			<cols>40</cols>
+			<default_value>172.24.0.0/16
+192.168.0.0/16
+192.192.0.0/16
+10.0.0.0/8</default_value>
+			<description>Super-redes corporativas com autorização automática para consultar o Unbound DNS em todas as 18 unidades, incluindo sub-redes roteadas via Switch L3.</description>
+		</field>
+		<field>
+			<fielddescr>Proteção Netskope Security Cloud</fielddescr>
+			<fieldname>corp_protect_netskope</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<default_value>yes</default_value>
+			<description>Garante que os domínios da Netskope (goskope.com, netskope.com) fiquem em Whitelist permanente.</description>
+		</field>
+		<field>
+			<fielddescr>Proteger Provedores de Identidade Cloud (IdP)</fielddescr>
+			<fieldname>corp_protect_idp</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<default_value>yes</default_value>
+			<description>Mantém liberados Microsoft 365/Entra ID, Okta e Google para autenticação SSO/MFA.</description>
+		</field>
+		<field>
+			<fielddescr>Liberar Ferramentas de TI &amp; Downloads (PuTTY, etc.)</fielddescr>
+			<fieldname>corp_protect_tools</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<default_value>yes</default_value>
+			<description>Garante que downloads de ferramentas essenciais de TI e administração (PuTTY, WinSCP, 7-Zip, Notepad++, Git/GitHub, Sysinternals, etc.) fiquem em Whitelist permanente.</description>
+		</field>
+		<field>
+			<fielddescr>Liberar Infraestrutura Pública Cloudflare</fielddescr>
+			<fieldname>corp_protect_cloudflare</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<default_value>yes</default_value>
+			<description>Mantém liberada a infraestrutura CDN, bibliotecas (cdnjs), captchas Turnstile e APIs da Cloudflare para que sites legítimos e links de download carreguem normalmente.</description>
+		</field>
+
+		<field>
+			<name>Agendamento por Horário (Horário Comercial)</name>
+			<type>listtopic</type>
+		</field>
+		<field>
+			<fielddescr>Ativar Agendamento por Horário</fielddescr>
+			<fieldname>schedule_enable</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Se ativado, o bloqueio funcionará apenas nos horários configurados abaixo (fora do horário, os sites são liberados).</description>
+		</field>
+		<field>
+			<fielddescr>Horário de Início do Bloqueio</fielddescr>
+			<fieldname>schedule_start</fieldname>
+			<type>input</type>
+			<size>10</size>
+			<default_value>08:00</default_value>
+			<description>Formato HH:MM (Exemplo: 08:00).</description>
+		</field>
+		<field>
+			<fielddescr>Início do Intervalo de Almoço (Liberado)</fielddescr>
+			<fieldname>schedule_lunch_start</fieldname>
+			<type>input</type>
+			<size>10</size>
+			<default_value>12:00</default_value>
+			<description>Horário em que o bloqueio pausa para o almoço (Exemplo: 12:00. Deixe em branco se não houver pausa).</description>
+		</field>
+		<field>
+			<fielddescr>Fim do Intervalo de Almoço (Retoma Bloqueio)</fielddescr>
+			<fieldname>schedule_lunch_end</fieldname>
+			<type>input</type>
+			<size>10</size>
+			<default_value>13:30</default_value>
+			<description>Horário em que o bloqueio é retomado (Exemplo: 13:30. Deixe em branco se não houver pausa).</description>
+		</field>
+		<field>
+			<fielddescr>Horário de Término do Bloqueio</fielddescr>
+			<fieldname>schedule_end</fieldname>
+			<type>input</type>
+			<size>10</size>
+			<default_value>18:00</default_value>
+			<description>Formato HH:MM (Exemplo: 18:00. Após este horário, o acesso é liberado).</description>
+		</field>
+		<field>
+			<fielddescr>Bloquear nos Fins de Semana</fielddescr>
+			<fieldname>schedule_weekend</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<description>Marque se desejar manter o bloqueio ativo aos sábados e domingos.</description>
+		</field>
+
+		<field>
+			<name>Exceções &amp; Personalização</name>
+			<type>listtopic</type>
+		</field>
+		<field>
+			<fielddescr>IPs Isentos do Bloqueio (Bypass IPs)</fielddescr>
+			<fieldname>bypass_ips</fieldname>
+			<type>textarea</type>
+			<rows>4</rows>
+			<cols>60</cols>
+			<description>Insira os IPs locais de dispositivos que NUNCA devem sofrer bloqueio (Diretoria, TI, Marketing, etc.). Um IP por linha ou separados por vírgula. Exemplo: &lt;strong&gt;172.24.60.20&lt;/strong&gt;.</description>
+		</field>
+		<field>
+			<fielddescr>Lista Branca de Domínios (Whitelist)</fielddescr>
+			<fieldname>custom_whitelist</fieldname>
+			<type>textarea</type>
+			<rows>4</rows>
+			<cols>60</cols>
+			<description>Insira domínios que NUNCA devem ser bloqueados, mesmo que estejam nas categorias acima (um por linha). Exemplo: &lt;strong&gt;linkedin.com&lt;/strong&gt;</description>
+		</field>
+		<field>
+			<fielddescr>Lista Negra Adicional (Blacklist)</fielddescr>
+			<fieldname>custom_blacklist</fieldname>
+			<type>textarea</type>
+			<rows>4</rows>
+			<cols>60</cols>
+			<description>Insira domínios adicionais manuais para bloquear (um por linha). Exemplo: &lt;strong&gt;exemplo.com&lt;/strong&gt;</description>
+		</field>
+		<field>
+			<fielddescr>Ação do Bloqueio</fielddescr>
+			<fieldname>block_action</fieldname>
+			<type>select</type>
+			<default_value>block_page</default_value>
+			<options>
+				<option><name>Exibir Banner de Bloqueio da Empresa (Página de Bloqueio / Recomendado)</name><value>block_page</value></option>
+				<option><name>Retornar 0.0.0.0 (Silencioso - Sem Certificado SSL)</name><value>always_null</value></option>
+			</options>
+			<description>Selecione o comportamento ao bloquear um domínio. Ao selecionar a Página de Bloqueio, conexões HTTP/HTTPS em domínios restritos são direcionadas ao banner institucional corporativo.</description>
+		</field>
+	</fields>
+	<custom_php_resync_config_command>
+		rules_wam_resync();
+	</custom_php_resync_config_command>
+</packagegui>

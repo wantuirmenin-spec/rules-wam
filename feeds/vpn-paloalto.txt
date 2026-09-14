@@ -1,0 +1,13 @@
+# Palo Alto Networks GlobalProtect & Prisma Access
+globalprotect.paloaltonetworks.com
+prismaaccess.com
+gp.paloaltonetworks.com
+vpn.paloaltonetworks.com
+globalprotect.com
+pan-os.paloaltonetworks.com
+prisma.paloaltonetworks.com
+prismacloud.io
+strata.paloaltonetworks.com
+portal.paloaltonetworks.com
+gateway.paloaltonetworks.com
+gp-cloud.paloaltonetworks.com

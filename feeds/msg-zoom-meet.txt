@@ -1,0 +1,12 @@
+# Zoom Meetings
+zoom.us
+www.zoom.us
+zoomgov.com
+zoom.com
+us02web.zoom.us
+us04web.zoom.us
+us05web.zoom.us
+us06web.zoom.us
+zoom.cn
+zoom.co
+zoomcloud.cn
