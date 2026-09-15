@@ -21,7 +21,8 @@ Este guia detalha o passo a passo para implantar o pacote **Rules WAM** em qualq
 Antes de iniciar, tenha em mãos o instalador standalone **`wam-install.sh`** no seu notebook.
 
 - Se estiver na rede interna onde o servidor de arquivos está rodando:
-  👉 Baixe diretamente em: `http://172.24.60.32:8000/wam-install.sh`
+  👉 Baixe diretamente o script: `http://172.24.60.32:9090/wam-install.sh`
+  👉 Baixe o pacote completo (.zip): `http://172.24.60.32:9090/rules-wam-pacote.zip`
 - Ou extraia o arquivo `wam-install.sh` de dentro do `rules-wam-pacote.zip`.
 
 > [!NOTE]
