@@ -71,13 +71,22 @@ function rules_wam_get_configured_interfaces($include_wan = false) {
                 $descr = strtoupper($if_key);
             }
 
-            // Interface física/virtual no FreeBSD (Ex: igb0, em1, vlan0.10)
+            // Interface física/virtual no FreeBSD (Ex: igb0, em1, vlan0.10, vtnet1)
             $real_if = !empty($if_cfg['if']) ? $if_cfg['if'] : '';
             if (empty($real_if) && function_exists('get_real_interface')) {
                 $real_if = get_real_interface($if_key);
             }
             if (empty($real_if) && function_exists('convert_friendly_interface_to_real_interface_name')) {
                 $real_if = convert_friendly_interface_to_real_interface_name($if_key);
+            }
+
+            // Normaliza nomes padrão: garante que 'wan' seja 'WAN' e 'lan' seja 'LAN'
+            // se a descrição estiver vazia ou com o nome do dispositivo físico (ex: vtnet1, vtnet0)
+            if ($if_key === 'wan' && (empty($descr) || (!empty($real_if) && strcasecmp($descr, $real_if) === 0))) {
+                $descr = 'WAN';
+            }
+            if ($if_key === 'lan' && (empty($descr) || (!empty($real_if) && strcasecmp($descr, $real_if) === 0))) {
+                $descr = 'LAN';
             }
 
             // Endereço IPv4 da Interface

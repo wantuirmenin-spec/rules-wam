@@ -49,6 +49,11 @@ if (isset($_GET['export']) && ($_GET['export'] === 'csv' || $_GET['export'] === 
         $status_txt = !empty($ev['online']) ? 'Online' : 'Offline';
         $ev_if = function_exists('rules_wam_find_interface_for_ip') ? rules_wam_find_interface_for_ip($ev['ip']) : null;
         $if_name = !empty($ev_if['descr']) ? $ev_if['descr'] : (!empty($ev_if['logical_id']) ? $ev_if['logical_id'] : 'Local');
+        if (!empty($ev_if['key']) && $ev_if['key'] === 'wan') {
+            if (empty($if_name) || (!empty($ev_if['real_if']) && strcasecmp($if_name, $ev_if['real_if']) === 0)) {
+                $if_name = 'WAN';
+            }
+        }
         fputcsv($output, array(
             $ev['timestamp'],
             $ev['ip'],
@@ -132,6 +137,11 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv_devices') {
         $top_c = key($dev['categories']);
         $dev_if = function_exists('rules_wam_find_interface_for_ip') ? rules_wam_find_interface_for_ip($dev['ip']) : null;
         $if_name = !empty($dev_if['descr']) ? $dev_if['descr'] : (!empty($dev_if['logical_id']) ? $dev_if['logical_id'] : 'Local');
+        if (!empty($dev_if['key']) && $dev_if['key'] === 'wan') {
+            if (empty($if_name) || (!empty($dev_if['real_if']) && strcasecmp($if_name, $dev_if['real_if']) === 0)) {
+                $if_name = 'WAN';
+            }
+        }
         fputcsv($output, array(
             $dev['ip'],
             $dev['hostname'],
@@ -586,6 +596,11 @@ if ($status_filter === 'online') {
                         $is_on = !empty($dev['online']);
                         $dev_if = function_exists('rules_wam_find_interface_for_ip') ? rules_wam_find_interface_for_ip($dev['ip']) : null;
                         $dev_if_name = !empty($dev_if['descr']) ? $dev_if['descr'] : (!empty($dev_if['logical_id']) ? $dev_if['logical_id'] : 'Rede Local');
+                        if (!empty($dev_if['key']) && $dev_if['key'] === 'wan') {
+                            if (empty($dev_if_name) || (!empty($dev_if['real_if']) && strcasecmp($dev_if_name, $dev_if['real_if']) === 0)) {
+                                $dev_if_name = 'WAN';
+                            }
+                        }
                     ?>
                     <tr <?=$is_me ? 'class="info" style="background-color: #eef7fe;"' : ''?>>
                         <td>
@@ -663,6 +678,11 @@ if ($status_filter === 'online') {
                         $is_on = !empty($ev['online']);
                         $ev_if = function_exists('rules_wam_find_interface_for_ip') ? rules_wam_find_interface_for_ip($ev['ip']) : null;
                         $ev_if_name = !empty($ev_if['descr']) ? $ev_if['descr'] : (!empty($ev_if['logical_id']) ? $ev_if['logical_id'] : 'Local');
+                        if (!empty($ev_if['key']) && $ev_if['key'] === 'wan') {
+                            if (empty($ev_if_name) || (!empty($ev_if['real_if']) && strcasecmp($ev_if_name, $ev_if['real_if']) === 0)) {
+                                $ev_if_name = 'WAN';
+                            }
+                        }
                     ?>
                     <tr <?=$is_me ? 'style="background-color: #eef7fe;"' : ''?>>
                         <td><i class="fa fa-clock-o text-muted"></i> <?=htmlspecialchars($ev['timestamp'])?></td>

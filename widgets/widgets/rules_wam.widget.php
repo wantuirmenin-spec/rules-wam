@@ -129,8 +129,8 @@ $to_cidr = function($val) {
     return 24;
 };
 
-// 3.1 Obtém interfaces usando rules_wam_get_configured_interfaces()
-$all_configured_ifaces = function_exists('rules_wam_get_configured_interfaces') ? rules_wam_get_configured_interfaces(false) : array();
+// 3.1 Obtém interfaces usando rules_wam_get_configured_interfaces() (incluindo WAN)
+$all_configured_ifaces = function_exists('rules_wam_get_configured_interfaces') ? rules_wam_get_configured_interfaces(true) : array();
 
 // Fallback robusto caso rules_wam.inc ainda não tenha a função carregada
 if (empty($all_configured_ifaces)) {
@@ -165,6 +165,14 @@ if (empty($all_configured_ifaces)) {
         }
         if (empty($real_if) && function_exists('convert_friendly_interface_to_real_interface_name')) {
             $real_if = convert_friendly_interface_to_real_interface_name($if_key);
+        }
+
+        // Garante que a WAN seja sempre identificada como WAN
+        if ($if_key === 'wan' && (empty($descr_configured) || (!empty($real_if) && strcasecmp($descr_configured, $real_if) === 0))) {
+            $descr_configured = 'WAN';
+        }
+        if ($if_key === 'lan' && (empty($descr_configured) || (!empty($real_if) && strcasecmp($descr_configured, $real_if) === 0))) {
+            $descr_configured = 'LAN';
         }
 
         $if_ip = '';
@@ -224,12 +232,20 @@ if (empty($all_configured_ifaces)) {
 
 // 3.2 Constrói o array $network_summary com o nome exato configurado no pfSense
 foreach ($all_configured_ifaces as $if_key => $if_data) {
+    $real_dev = !empty($if_data['real_if']) ? $if_data['real_if'] : $if_key;
+    $if_descr = !empty($if_data['descr']) ? $if_data['descr'] : strtoupper($if_key);
+    if ($if_key === 'wan' && (empty($if_descr) || strcasecmp($if_descr, $real_dev) === 0)) {
+        $if_descr = 'WAN';
+    }
+    if ($if_key === 'lan' && (empty($if_descr) || strcasecmp($if_descr, $real_dev) === 0)) {
+        $if_descr = 'LAN';
+    }
     $network_summary[$if_key] = array(
         'if_key' => $if_key,
-        'logical_id' => $if_data['logical_id'] ?? strtoupper($if_key),
-        'descr' => !empty($if_data['descr']) ? $if_data['descr'] : strtoupper($if_key),
-        'name' => !empty($if_data['descr']) ? $if_data['descr'] : strtoupper($if_key),
-        'real_if' => !empty($if_data['real_if']) ? $if_data['real_if'] : $if_key,
+        'logical_id' => ($if_key === 'wan') ? 'WAN' : ($if_data['logical_id'] ?? strtoupper($if_key)),
+        'descr' => $if_descr,
+        'name' => $if_descr,
+        'real_if' => $real_dev,
         'ip' => $if_data['ip'] ?? '',
         'cidr' => $if_data['cidr'] ?? '',
         'has_ip' => !empty($if_data['has_ip']),
@@ -303,10 +319,10 @@ if (!empty($raw_if)) {
             $s_net_long = $s_long_ip & $s_long_mask;
             $s_cidr = long2ip($s_net_long) . '/' . $s_sub;
 
-            // Tenta casar com interface existente por real_if
+            // Tenta casar com interface existente por real_if ou if_key
             $found_match = false;
             foreach ($network_summary as $nk => &$nentry) {
-                if ($nentry['real_if'] === $cur_dev) {
+                if (strcasecmp($nentry['real_if'], $cur_dev) === 0 || strcasecmp($nentry['if_key'], $cur_dev) === 0) {
                     if (empty($nentry['ip'])) {
                         $nentry['ip'] = $s_ip;
                         $nentry['has_ip'] = true;
@@ -321,6 +337,51 @@ if (!empty($raw_if)) {
             unset($nentry);
 
             if (!$found_match) {
+                // Tenta resolver se $cur_dev corresponde a uma interface oficial do pfSense (ex: vtnet1 -> wan -> WAN)
+                $friendly_name = '';
+                if (function_exists('convert_real_interface_to_friendly_interface_name')) {
+                    $friendly_name = convert_real_interface_to_friendly_interface_name($cur_dev);
+                } elseif (function_exists('get_friendly_interface')) {
+                    $friendly_name = get_friendly_interface($cur_dev);
+                }
+                if (!empty($friendly_name)) {
+                    $friendly_key = strtolower($friendly_name);
+                    if (isset($network_summary[$friendly_key])) {
+                        if (empty($network_summary[$friendly_key]['ip'])) {
+                            $network_summary[$friendly_key]['ip'] = $s_ip;
+                            $network_summary[$friendly_key]['has_ip'] = true;
+                            $network_summary[$friendly_key]['net_long'] = $s_net_long;
+                            $network_summary[$friendly_key]['mask_long'] = $s_long_mask;
+                            $network_summary[$friendly_key]['cidr'] = $s_cidr;
+                        }
+                        continue;
+                    }
+                    $friendly_descr = '';
+                    if (function_exists('convert_friendly_interface_to_friendly_descr')) {
+                        $friendly_descr = convert_friendly_interface_to_friendly_descr($friendly_name);
+                    }
+                    if (empty($friendly_descr) || strcasecmp($friendly_descr, $cur_dev) === 0) {
+                        $friendly_descr = strtoupper($friendly_name);
+                    }
+                    $network_summary[$friendly_key] = array(
+                        'if_key' => $friendly_key,
+                        'logical_id' => strtoupper($friendly_key),
+                        'descr' => $friendly_descr,
+                        'name' => $friendly_descr,
+                        'real_if' => $cur_dev,
+                        'ip' => $s_ip,
+                        'cidr' => $s_cidr,
+                        'has_ip' => true,
+                        'net_long' => $s_net_long,
+                        'mask_long' => $s_long_mask,
+                        'online_hosts' => array(),
+                        'blocked_hosts' => array(),
+                        'block_count' => 0,
+                        'bypass_hosts' => array()
+                    );
+                    continue;
+                }
+
                 $network_summary[$cur_dev] = array(
                     'if_key' => $cur_dev,
                     'logical_id' => strtoupper($cur_dev),
