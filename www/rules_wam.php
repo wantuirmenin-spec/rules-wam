@@ -65,6 +65,8 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
         'corp_protect_idp'     => isset($_POST['corp_protect_idp']) ? 'yes' : 'no',
         'corp_protect_tools'   => isset($_POST['corp_protect_tools']) ? 'yes' : 'no',
         'corp_protect_cloudflare' => isset($_POST['corp_protect_cloudflare']) ? 'yes' : 'no',
+        'corp_protect_helpdesk'=> isset($_POST['corp_protect_helpdesk']) ? 'yes' : 'no',
+        'corp_protect_voip'    => isset($_POST['corp_protect_voip']) ? 'yes' : 'no',
         'corp_reverse_lookup'  => isset($_POST['corp_reverse_lookup']) ? 'yes' : 'no',
         'corp_allowed_subnets' => isset($_POST['corp_allowed_subnets']) ? trim($_POST['corp_allowed_subnets']) : "172.24.0.0/16\n192.168.0.0/16\n192.192.0.0/16\n10.0.0.0/8",
         'initialized'          => 'yes'
@@ -535,6 +537,32 @@ display_top_tabs($tab_array);
                         </label>
                     </div>
                     <span class="help-block"><?=gettext("Mantém liberadas as CDNs e serviços de validação de captcha da Cloudflare para que páginas da internet e links de download carreguem sem erros.")?></span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="col-sm-3 control-label"><strong><?=gettext("Helpdesk & Suporte Remoto")?></strong></label>
+                <div class="col-sm-9">
+                    <div class="checkbox">
+                        <label>
+                            <input type="checkbox" name="corp_protect_helpdesk" value="yes" <?=(!isset($wam_cfg['corp_protect_helpdesk']) || rules_wam_is_checked($wam_cfg['corp_protect_helpdesk'])) ? 'checked' : ''?> />
+                            <strong><?=gettext("Liberar Helpdesk & Suporte Remoto (Zendesk, GLPI, ScreenConnect / ConnectWise)")?></strong>
+                        </label>
+                    </div>
+                    <span class="help-block"><?=gettext("Protege plataformas de chamados, suporte ao cliente, ITSM e conexões de assistência remota ScreenConnect, impedindo qualquer bloqueio acidental.")?></span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="col-sm-3 control-label"><strong><?=gettext("Telefonia IP & Protocolo SIP")?></strong></label>
+                <div class="col-sm-9">
+                    <div class="checkbox">
+                        <label>
+                            <input type="checkbox" name="corp_protect_voip" value="yes" <?=(!isset($wam_cfg['corp_protect_voip']) || rules_wam_is_checked($wam_cfg['corp_protect_voip'])) ? 'checked' : ''?> />
+                            <strong><?=gettext("Liberar Telefonia IP, Protocolo SIP & Aparelhos SIP Phone (3CX, Zoiper, Linphone, Yealink, Grandstream, Twilio, etc.)")?></strong>
+                        </label>
+                    </div>
+                    <span class="help-block"><?=gettext("Garante comunicação de voz ininterrupta: registro SIP, servidores STUN, troncos PABX e provisionamento de telefones IP corporativos.")?></span>
                 </div>
             </div>
         </div>

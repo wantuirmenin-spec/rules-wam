@@ -340,6 +340,22 @@
 			<default_value>yes</default_value>
 			<description>Mantém liberada a infraestrutura CDN, bibliotecas (cdnjs), captchas Turnstile e APIs da Cloudflare para que sites legítimos e links de download carreguem normalmente.</description>
 		</field>
+		<field>
+			<fielddescr>Liberar Helpdesk &amp; Suporte Remoto (Zendesk, GLPI, ScreenConnect)</fielddescr>
+			<fieldname>corp_protect_helpdesk</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<default_value>yes</default_value>
+			<description>Garante que Zendesk, GLPI e ConnectWise ScreenConnect fiquem em Whitelist permanente para que sistemas de chamados, inventário e suporte técnico nunca sejam bloqueados.</description>
+		</field>
+		<field>
+			<fielddescr>Liberar Telefonia IP, Protocolo SIP &amp; SIP Phone</fielddescr>
+			<fieldname>corp_protect_voip</fieldname>
+			<type>checkbox</type>
+			<setflagcheckboxon>yes</setflagcheckboxon>
+			<default_value>yes</default_value>
+			<description>Garante que servidores SIP, softphones (Zoiper, Linphone, MicroSIP), PABX em nuvem (3CX, Twilio, Telnyx, etc.), servidores STUN e aparelhos físicos SIP Phone (Yealink, Grandstream, Intelbras) permaneçam 100% liberados.</description>
+		</field>
 
 		<field>
 			<name>Agendamento por Horário (Horário Comercial)</name>

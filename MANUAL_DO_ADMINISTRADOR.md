@@ -21,7 +21,9 @@
    - [Modo de Bloqueio: Banner Educativo (Padrão) vs Modo Silencioso](#47-modo-de-bloqueio-banner-educativo-padrão-vs-modo-silencioso)
    - [Auto-Whitelist de Ferramentas de TI e Downloads de Administrador (PuTTY, etc.)](#48-auto-whitelist-de-ferramentas-de-ti-e-downloads-de-administrador-putty-etc)
    - [Proteção da Infraestrutura Cloudflare & Ajuste Fino ZTNA](#49-proteção-da-infraestrutura-cloudflare--ajuste-fino-ztna)
-   - [Gestão Multi-Unidades & CA Centralizada (Opcional)](#410-gestão-multi-unidades-e-ca-centralizada-opcional)
+   - [Auto-Whitelist & Proteção de Helpdesk, ITSM & Suporte Remoto (Zendesk, GLPI, ScreenConnect)](#410-auto-whitelist--proteção-de-helpdesk-itsm--suporte-remoto-zendesk-glpi-screenconnect)
+   - [Proteção de Telefonia IP, PABX Cloud, Protocolo SIP & Aparelhos SIP Phone](#411-proteção-de-telefonia-ip-pabx-cloud-protocolo-sip--aparelhos-sip-phone)
+   - [Gestão Multi-Unidades & CA Centralizada (Opcional)](#412-gestão-multi-unidades-bulkylog--ca-centralizada-opcional)
 5. [Auditoria, Logs & Dashboard Forense](#5-auditoria-logs--dashboard-forense)
 6. [Guia de Implantação em Novos Firewalls (Passo a Passo)](#6-guia-de-implantação-em-novos-firewalls-passo-a-passo)
    - [Pré-Requisitos](#61-pré-requisitos)
@@ -274,7 +276,30 @@ Muitos sites legítimos e mirrors de download utilizam a rede da Cloudflare para
   - Quando a categoria de bloqueio Cloudflare WARP estiver ativada, ela bloqueia **exclusivamente** os pontos de conexão do cliente WARP (`cloudflareclient.com`, `warp.plus`, `zero-trust.cloudflare.com`, `teams.cloudflare.com`, `warp-svc.*`).
   - Domínios de túneis compartilhados como `cftunnel.com` e `cloudflareaccess.com` foram removidos do feed para garantir que aplicações corporativas publicadas atrás de túneis Cloudflare permaneçam 100% acessíveis.
 
-### 4.10. Gestão Multi-Unidades (Bulkylog) & CA Centralizada (Opcional)
+### 4.10. Auto-Whitelist & Proteção de Helpdesk, ITSM & Suporte Remoto (Zendesk, GLPI, ScreenConnect)
+
+Plataformas de atendimento ao cliente, centrais de serviços de TI (ITSM) e ferramentas de assistência remota são vitais para a operação corporativa. Para garantir que nenhuma regra de mensageiros, chat ou bloqueio de conexões remotas afete estes serviços:
+
+- **Configuração:** Opção **"Liberar Helpdesk & Suporte Remoto (Zendesk, GLPI, ScreenConnect)"** (`corp_protect_helpdesk`), ativada por padrão (`yes`).
+- **Escopo Blindado Permanentemente:**
+  - **Zendesk & Chat Integrado:** `zendesk.com`, `zdassets.com`, `zdstatic.com`, `zdusercontent.com`, `zopim.com`, `zopim.io`, `zopim.net`.
+  - **GLPI (ITSM & Gestão de Ativos):** `glpi-project.org`, `glpi-network.cloud`, `glpi-network.com`, `services.glpi-network.com`, `teclib.com`, `teclib-edition.com`.
+  - **ConnectWise ScreenConnect (Suporte Remoto):** `screenconnect.com`, `screenconnect.net`, `connectwise.com`, `connectwise.net`, `hostedrmm.com`.
+- **Garantia Técnica:** Mesmo que administradores ativem bloqueio integral de mensageiros ou feeds restritivos de VPN/ZTNA, o Rules WAM remove automaticamente estes domínios do banco de bloqueio e garante resolução limpa no Unbound DNS.
+
+### 4.11. Proteção de Telefonia IP, PABX Cloud, Protocolo SIP & Aparelhos SIP Phone
+
+O tráfego de voz sobre IP (VoIP) e sinalização SIP corporativa não pode sofrer nenhuma forma de bloqueio ou redirecionamento involuntário no DNS, sob risco de interrupção em ramais IP, call centers e centrais PABX:
+
+- **Configuração:** Opção **"Liberar Telefonia IP, Protocolo SIP & Aparelhos SIP Phone"** (`corp_protect_voip`), ativada por padrão (`yes`).
+- **Escopo Blindado Permanentemente:**
+  - **Servidores STUN / TURN (Travessia de NAT e Sinalização WebRTC/VoIP):** `stun.l.google.com`, `stun1` a `stun4.l.google.com`, `stun.sipgate.net`, `stun.voipbuster.com`, `stun.ekiga.net`, `stun.counterpath.com`, `stun.counterpath.net`.
+  - **Softphones e Clientes de Voz:** `zoiper.com`, `linphone.org`, `microsip.org`, `micro-sip.org`, `counterpath.com`, `bria.com`, `sip.audio`.
+  - **Fabricantes de Telefones IP & Provisionamento Zero-Touch (RPS / TR-069):** `yealink.com`, `yealinkphones.com`, `ycs.yealink.com`, `rps.yealink.com`, `grandstream.com`, `gdms.cloud`, `gaps.grandstream.com`, `intelbras.com.br`, `intelbras.com`, `fanvil.com`, `fdms.fanvil.com`, `poly.com`, `polycom.com`, `snom.com`.
+  - **Operadoras VoIP, Troncos SIP e PABX Cloud:** `3cx.com`, `3cx.net`, `3cx.eu`, `3cx.us`, `sipgate.de`, `sipgate.com`, `sipgate.net`, `twilio.com`, `telnyx.com`, `plivo.com`, `ringcentral.com`, `vonage.com`, `nexmo.com`, `8x8.com`, `voip.ms`, `callcentric.com`, `didlogic.com`, `flowroute.com`, `jive.com`, `goto.com`, `gotoconnect.com`, `dialpad.com`, `totalvoice.com.br`, `zenvia.com`, `locaweb.com.br`, `webex.com`.
+- **Compatibilidade com Anti-Bypass DNS:** Ao ativar o Anti-Bypass DNS (redirecionamento da porta 53 para o Unbound local), telefones IP físicos e softphones continuam resolvendo seus proxies e registradores SIP normalmente e sem degradação.
+
+### 4.12. Gestão Multi-Unidades (Bulkylog) & CA Centralizada (Opcional)
 Para padronizar o certificado do Banner entre múltiplas filiais:
 1. **Autoridade Certificadora (CA) Única:** Copie os arquivos `rules_wam_ca.crt` e `rules_wam_ca.key` da Matriz para a pasta `/tmp/` da filial antes de rodar o `wam-install.sh`.
 2. O instalador detecta os arquivos e utiliza a mesma CA corporativa existente.

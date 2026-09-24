@@ -610,6 +610,12 @@ if (!isset($cfg["corp_protect_tools"])) {
 if (!isset($cfg["corp_protect_cloudflare"])) {
     $cfg["corp_protect_cloudflare"] = "yes";
 }
+if (!isset($cfg["corp_protect_helpdesk"])) {
+    $cfg["corp_protect_helpdesk"] = "yes";
+}
+if (!isset($cfg["corp_protect_voip"])) {
+    $cfg["corp_protect_voip"] = "yes";
+}
 if (empty($cfg["block_action"])) {
     $cfg["block_action"] = "block_page";
 }

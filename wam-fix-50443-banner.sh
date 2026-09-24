@@ -1031,12 +1031,13 @@ function rules_wam_get_config() {
             'schedule_enable', 'schedule_weekend',
             'corp_enable', 'corp_protect_netskope', 'corp_protect_idp', 'corp_reverse_lookup',
             'corp_protect_tools', 'corp_protect_cloudflare',
+            'corp_protect_helpdesk', 'corp_protect_voip',
             'enable_upstream_forwarding'
         );
         foreach ($checkbox_keys as $chk) {
             if (!isset($cfg[$chk])) {
                 // Proteções essenciais devem ser padrão ativas se não definidas
-                if ($chk === 'corp_protect_tools' || $chk === 'corp_protect_cloudflare' || $chk === 'corp_protect_netskope' || $chk === 'corp_protect_idp') {
+                if ($chk === 'corp_protect_tools' || $chk === 'corp_protect_cloudflare' || $chk === 'corp_protect_netskope' || $chk === 'corp_protect_idp' || $chk === 'corp_protect_helpdesk' || $chk === 'corp_protect_voip') {
                     $cfg[$chk] = 'yes';
                 } else {
                     $cfg[$chk] = 'no';
@@ -1062,6 +1063,8 @@ function rules_wam_get_config() {
         'corp_protect_idp'           => 'yes',
         'corp_protect_tools'         => 'yes',
         'corp_protect_cloudflare'    => 'yes',
+        'corp_protect_helpdesk'      => 'yes',
+        'corp_protect_voip'          => 'yes',
         'corp_reverse_lookup'        => 'yes',
         'initialized'                => 'yes'
     );
@@ -1144,11 +1147,32 @@ function rules_wam_apply_rules($wam_cfg = null) {
     $whitelist['madeiramadeira.local'] = true;
     $whitelist['madeiramadeira.com.br'] = true;
 
-    // --- Integração Corporativa: Netskope, IdP, Ferramentas de TI e Cloudflare ---
+    // Proteção Essencial de Atendimento, Suporte e Helpdesk (Whitelist incondicional)
+    $whitelist['zendesk.com'] = true;
+    $whitelist['zdassets.com'] = true;
+    $whitelist['zdstatic.com'] = true;
+    $whitelist['zdusercontent.com'] = true;
+    $whitelist['zopim.com'] = true;
+    $whitelist['zopim.io'] = true;
+    $whitelist['zopim.net'] = true;
+    $whitelist['glpi-project.org'] = true;
+    $whitelist['glpi-network.cloud'] = true;
+    $whitelist['glpi-network.com'] = true;
+    $whitelist['services.glpi-network.com'] = true;
+    $whitelist['teclib.com'] = true;
+    $whitelist['screenconnect.com'] = true;
+    $whitelist['screenconnect.net'] = true;
+    $whitelist['connectwise.com'] = true;
+    $whitelist['connectwise.net'] = true;
+    $whitelist['hostedrmm.com'] = true;
+
+    // --- Integração Corporativa: Netskope, IdP, Ferramentas de TI, Cloudflare, Helpdesk e SIP/VoIP ---
     $protect_netskope = (!isset($wam_cfg['corp_protect_netskope']) || rules_wam_is_checked($wam_cfg['corp_protect_netskope']));
     $protect_idp = (!isset($wam_cfg['corp_protect_idp']) || rules_wam_is_checked($wam_cfg['corp_protect_idp']));
     $protect_tools = (!isset($wam_cfg['corp_protect_tools']) || rules_wam_is_checked($wam_cfg['corp_protect_tools']));
     $protect_cloudflare = (!isset($wam_cfg['corp_protect_cloudflare']) || rules_wam_is_checked($wam_cfg['corp_protect_cloudflare']));
+    $protect_helpdesk = (!isset($wam_cfg['corp_protect_helpdesk']) || rules_wam_is_checked($wam_cfg['corp_protect_helpdesk']));
+    $protect_voip = (!isset($wam_cfg['corp_protect_voip']) || rules_wam_is_checked($wam_cfg['corp_protect_voip']));
     $corp_enable = rules_wam_is_checked($wam_cfg['corp_enable'] ?? null);
     $corp_domains = rules_wam_parse_list($wam_cfg['corp_ad_domain'] ?? '');
     $corp_dns_ips = rules_wam_parse_list($wam_cfg['corp_ad_dns_ips'] ?? '');
@@ -1202,6 +1226,49 @@ function rules_wam_apply_rules($wam_cfg = null) {
         );
         foreach ($cf_domains as $cfd) {
             $whitelist[$cfd] = true;
+        }
+    }
+
+    // Liberação e Proteção de Plataformas de Helpdesk, ITSM e Suporte Remoto (Zendesk, GLPI, ScreenConnect)
+    if ($protect_helpdesk) {
+        $helpdesk_domains = array(
+            'zendesk.com', 'zdassets.com', 'zdstatic.com', 'zdusercontent.com',
+            'zopim.com', 'zopim.io', 'zopim.net',
+            'glpi-project.org', 'glpi-network.cloud', 'glpi-network.com',
+            'services.glpi-network.com', 'teclib.com', 'teclib-edition.com',
+            'screenconnect.com', 'screenconnect.net',
+            'connectwise.com', 'connectwise.net', 'hostedrmm.com'
+        );
+        foreach ($helpdesk_domains as $hd) {
+            $whitelist[$hd] = true;
+        }
+    }
+
+    // Liberação e Proteção de Telefonia IP, PABX Cloud, Protocolo SIP e Telefones IP (SIP Phones)
+    if ($protect_voip) {
+        $voip_domains = array(
+            // Servidores STUN / TURN essenciais para travessia NAT e sinalização VoIP/WebRTC
+            'stun.l.google.com', 'stun1.l.google.com', 'stun2.l.google.com', 'stun3.l.google.com', 'stun4.l.google.com',
+            'stun.sipgate.net', 'stun.voipbuster.com', 'stun.ekiga.net', 'stun.counterpath.com', 'stun.counterpath.net',
+            // Softphones e clientes SIP
+            'zoiper.com', 'linphone.org', 'microsip.org', 'micro-sip.org', 'counterpath.com', 'bria.com', 'sip.audio',
+            // Fabricantes de Telefones IP (SIP Phone) e provisionamento remoto / RPS / TR-069
+            'yealink.com', 'yealinkphones.com', 'ycs.yealink.com', 'rps.yealink.com',
+            'grandstream.com', 'gdms.cloud', 'gaps.grandstream.com',
+            'intelbras.com.br', 'intelbras.com',
+            'fanvil.com', 'fdms.fanvil.com',
+            'poly.com', 'polycom.com', 'snom.com',
+            // PABX em Nuvem, Troncos SIP e Operadoras VoIP
+            '3cx.com', '3cx.net', '3cx.eu', '3cx.us',
+            'sipgate.de', 'sipgate.com', 'sipgate.net',
+            'twilio.com', 'telnyx.com', 'plivo.com',
+            'ringcentral.com', 'vonage.com', 'nexmo.com', '8x8.com',
+            'voip.ms', 'callcentric.com', 'didlogic.com', 'flowroute.com',
+            'jive.com', 'goto.com', 'gotoconnect.com', 'dialpad.com',
+            'totalvoice.com.br', 'zenvia.com', 'locaweb.com.br', 'webex.com'
+        );
+        foreach ($voip_domains as $vd) {
+            $whitelist[$vd] = true;
         }
     }
 
@@ -1474,7 +1541,9 @@ function rules_wam_apply_rules($wam_cfg = null) {
         'dns_bypass_protection' => rules_wam_is_checked($wam_cfg['block_dns_bypass'] ?? null) ? 'Ativo (Redirecionando 8.8.8.8 / 1.1.1.1)' : 'Desativado',
         'upstream_forwarding' => rules_wam_is_checked($wam_cfg['enable_upstream_forwarding'] ?? null) ? 'Ativo (Google 8.8.8.8 & Cloudflare 1.1.1.1)' : 'Desativado',
         'corp_integration' => $corp_enable ? 'Ativo (AD & NPS via IPsec)' : 'Desativado',
-        'netskope_protection' => $protect_netskope ? 'Ativo (Auto-Whitelist)' : 'Desativado'
+        'netskope_protection' => $protect_netskope ? 'Ativo (Auto-Whitelist)' : 'Desativado',
+        'helpdesk_protection' => $protect_helpdesk ? 'Ativo (Zendesk, GLPI, ScreenConnect)' : 'Desativado',
+        'voip_protection' => $protect_voip ? 'Ativo (SIP & SIP Phone)' : 'Desativado'
     );
     file_put_contents(WAM_STATUS_FILE, json_encode($status_data, JSON_PRETTY_PRINT));
 
