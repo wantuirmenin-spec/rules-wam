@@ -196,18 +196,10 @@ case 'install':
 
     // 3. Ajustes de upgrade da 1.3
     if ($is_upgrade && empty($cfg['migrated_v14'])) {
-        // Domínios da empresa que eram liberados no código passam para a whitelist editável
-        $wl = trim($cfg['custom_whitelist'] ?? '');
-        foreach (array('madeiramadeira.local', 'madeiramadeira.com.br') as $d) {
-            if (stripos($wl, $d) === false) {
-                $wl .= ($wl === '' ? '' : ' ') . $d;
-            }
-        }
-        $cfg['custom_whitelist'] = $wl;
         $cfg['migrated_v14'] = 'yes';
         // A versão 1.3 já tinha alterado porta/redirecionamento da WebGUI: valores originais desconhecidos
         rules_wam_state_set_once('orig_gui_unknown', 'yes');
-        wam_out("Upgrade da 1.3: domínios da empresa movidos para a whitelist editável");
+        wam_out("Upgrade da 1.3 detectado: revise os campos de lista em Services > Rules WAM e salve novamente");
     }
     if (!$is_upgrade) {
         $cfg['initialized'] = 'yes';

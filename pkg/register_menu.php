@@ -12,7 +12,7 @@ require_once("services.inc"); // configure_cron()
 $packages = config_get_path('installedpackages/package', array());
 $pkg_info = array(
     "name" => "rules_wam",
-    "version" => "1.4.0",
+    "version" => "1.4.3",
     "status" => "Stable",
     "descr" => "Rules WAM - Web Access Manager",
     "configurationfile" => "rules_wam.xml"

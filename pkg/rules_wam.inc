@@ -9,7 +9,7 @@ require_once("config.inc");
 require_once("util.inc");
 require_once("services.inc");
 
-define('RULES_WAM_VERSION', '1.4.0');
+define('RULES_WAM_VERSION', '1.4.3');
 define('WAM_FEEDS_DIR', '/usr/local/share/wam/feeds');
 define('WAM_CONF_FILE', '/var/unbound/wam_blocklist.conf');
 // Include com curinga: se o arquivo sumir (ex.: /var em RAM disk após reboot) o Unbound continua subindo
@@ -1935,7 +1935,7 @@ function rules_wam_get_online_hosts() {
     }
     if (!empty($raw_arp)) {
         foreach ($raw_arp as $line) {
-            // Formato FreeBSD: ? (172.24.60.10) at 00:11:22:33:44:55 on em0 expires in 1198 seconds [ethernet]
+            // Formato FreeBSD: ? (192.168.10.10) at 00:11:22:33:44:55 on em0 expires in 1198 seconds [ethernet]
             if (preg_match('/\(([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\)\s+at\s+([0-9a-fA-F:]{11,17}|[0-9a-fA-F]{1,2}(?::[0-9a-fA-F]{1,2}){5})/i', $line, $m)) {
                 $ip = $m[1];
                 $mac = strtolower($m[2]);
