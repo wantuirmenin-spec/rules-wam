@@ -522,7 +522,7 @@ display_top_tabs($tab_array);
             <div class="form-group">
                 <label class="col-sm-3 control-label"><?=gettext("Domínio(s) do Active Directory")?></label>
                 <div class="col-sm-6">
-                    <input type="text" name="corp_ad_domain" class="form-control" value="<?=htmlspecialchars($wam_cfg['corp_ad_domain'] ?? '')?>" placeholder="Ex: madeiramadeira.local, corp.empresa.com.br" />
+                    <input type="text" name="corp_ad_domain" class="form-control" value="<?=htmlspecialchars($wam_cfg['corp_ad_domain'] ?? '')?>" placeholder="Ex: empresa.local, corp.empresa.com.br" />
                     <span class="help-block"><?=gettext("Nome do domínio interno da empresa (se houver mais de um, separe por vírgula).")?></span>
                 </div>
             </div>
@@ -551,7 +551,7 @@ display_top_tabs($tab_array);
                 <label class="col-sm-3 control-label"><?=gettext("Redes Corporativas Autorizadas no DNS (CIDR)")?></label>
                 <div class="col-sm-6">
                     <textarea name="corp_allowed_subnets" class="form-control" rows="4" placeholder="10.0.0.0/8&#10;172.16.0.0/12&#10;192.168.0.0/16"><?=htmlspecialchars(rules_wam_list_to_text($wam_cfg['corp_allowed_subnets'] ?? WAM_DEFAULT_CORP_SUBNETS))?></textarea>
-                    <span class="help-block"><?=gettext("Super-redes corporativas que terão permissão automática para resolver DNS no Unbound em todas as 18 unidades (incluindo sub-redes roteadas via Switch L3). Separe por linha.")?></span>
+                    <span class="help-block"><?=gettext("Super-redes corporativas que terão permissão automática para resolver DNS no Unbound em todas as unidades (incluindo sub-redes roteadas via Switch L3). Separe por linha.")?></span>
                 </div>
             </div>
 
@@ -788,7 +788,7 @@ display_top_tabs($tab_array);
             <div class="form-group">
                 <label class="col-sm-3 control-label"><?=gettext("IPs Isentos (Bypass IPs)")?></label>
                 <div class="col-sm-9">
-                    <textarea name="bypass_ips" rows="3" class="form-control" placeholder="172.24.60.20&#10;172.24.60.25"><?=htmlspecialchars(rules_wam_list_to_text($wam_cfg['bypass_ips'] ?? ''))?></textarea>
+                    <textarea name="bypass_ips" rows="3" class="form-control" placeholder="192.168.10.20&#10;192.168.10.25"><?=htmlspecialchars(rules_wam_list_to_text($wam_cfg['bypass_ips'] ?? ''))?></textarea>
                     <span class="help-block"><?=gettext("IPs ou redes (CIDR) que NUNCA sofrem bloqueio de DNS (Diretoria, TI, etc.). Um por linha ou separados por vírgula. Continuam resolvendo os host overrides e registros DHCP do pfSense.")?></span>
                 </div>
             </div>
@@ -812,7 +812,7 @@ display_top_tabs($tab_array);
             <div class="form-group">
                 <label class="col-sm-3 control-label"><?=gettext("Mapeamento de Nomes de Hosts / Computadores")?></label>
                 <div class="col-sm-9">
-                    <textarea name="custom_hosts" rows="4" class="form-control" placeholder="172.24.60.118 = Computador Principal&#10;172.24.60.119 = Notebook TI"><?=htmlspecialchars(rules_wam_hosts_to_text($wam_cfg['custom_hosts'] ?? ''))?></textarea>
+                    <textarea name="custom_hosts" rows="4" class="form-control" placeholder="192.168.10.118 = Computador Principal&#10;192.168.10.119 = Notebook TI"><?=htmlspecialchars(rules_wam_hosts_to_text($wam_cfg['custom_hosts'] ?? ''))?></textarea>
                     <span class="help-block">
                         <?=gettext("Defina ou corrija o nome dos computadores na rede (um por linha no formato <code>IP = Nome</code>).")?><br/>
                         <?=gettext("Ideal para hosts conectados através de antenas, switches gerenciáveis, pontos de acesso (APs) ou com IPs fixos.")?>
@@ -830,7 +830,7 @@ display_top_tabs($tab_array);
             <div class="form-group">
                 <label class="col-sm-3 control-label"><?=gettext("Origens Internas Autorizadas")?></label>
                 <div class="col-sm-9">
-                    <textarea name="gui_admin_sources" rows="3" class="form-control" placeholder="172.24.60.0/24&#10;10.10.0.5"><?=htmlspecialchars(rules_wam_list_to_text($wam_cfg['gui_admin_sources'] ?? ''))?></textarea>
+                    <textarea name="gui_admin_sources" rows="3" class="form-control" placeholder="192.168.10.0/24&#10;10.10.0.5"><?=htmlspecialchars(rules_wam_list_to_text($wam_cfg['gui_admin_sources'] ?? ''))?></textarea>
                     <span class="help-block"><?=gettext("O Rules WAM cria, em cada interface interna, uma regra liberando a porta da WebGUI para o próprio firewall. Em branco = qualquer origem interna (comportamento anterior). Recomendado: informe só as redes/IPs da equipe de TI. A regra anti-lockout da LAN do pfSense continua valendo.")?></span>
                 </div>
             </div>

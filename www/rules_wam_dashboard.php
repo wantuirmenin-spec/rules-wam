@@ -532,7 +532,7 @@ if ($status_filter === 'online') {
     <div class="panel-body" style="padding: 12px;">
         <form action="/rules_wam_dashboard.php" method="post" class="form-inline" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
             <span style="font-weight: bold;"><i class="fa fa-crosshairs"></i> <?=gettext("Simular/Testar Registro de Tentativa:")?></span>
-            <input type="text" name="simulate_ip" class="form-control" style="width: 150px;" placeholder="IP (ex: 172.24.60.111)" value="<?=htmlspecialchars($current_client_ip)?>" title="IP do host a registrar" />
+            <input type="text" name="simulate_ip" class="form-control" style="width: 150px;" placeholder="IP (ex: 192.168.10.111)" value="<?=htmlspecialchars($current_client_ip)?>" title="IP do host a registrar" />
             <input type="text" name="simulate_test_domain" class="form-control" style="min-width: 250px;" placeholder="Domínio (ex: betano.com, xvideo.com)" required />
             <button type="submit" class="btn btn-warning"><i class="fa fa-bolt"></i> <?=gettext("Registrar Tentativa Agora")?></button>
             <span class="text-muted" style="font-size: 12px;"><?=gettext("(Grava imediatamente no log com o IP informado e atualiza a auditoria)")?></span>
