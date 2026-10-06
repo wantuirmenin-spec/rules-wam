@@ -1,9 +1,0 @@
-# Cloudflare WARP & Cloudflare Zero Trust
-cloudflareclient.com
-warp.plus
-gateway.warp.plus
-zero-trust.cloudflare.com
-argo.tunnel.cloudflare.com
-teams.cloudflare.com
-warp-svc.cloudflare.com
-warp-svc.net
