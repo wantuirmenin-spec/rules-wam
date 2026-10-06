@@ -6,23 +6,13 @@
 
 require_once("config.inc");
 require_once("pkg-utils.inc");
-
-// 1. Limpa relatórios de crash antigos
-@unlink("/tmp/PHP_errors.log");
-if (is_dir("/var/crash")) {
-    $files = glob("/var/crash/*");
-    if (is_array($files)) {
-        foreach ($files as $f) {
-            @unlink($f);
-        }
-    }
-}
+require_once("services.inc"); // configure_cron()
 
 // 2. Registra pacote
 $packages = config_get_path('installedpackages/package', array());
 $pkg_info = array(
     "name" => "rules_wam",
-    "version" => "1.3.0",
+    "version" => "1.4.0",
     "status" => "Stable",
     "descr" => "Rules WAM - Web Access Manager",
     "configurationfile" => "rules_wam.xml"
@@ -30,16 +20,17 @@ $pkg_info = array(
 
 $found_pkg = false;
 foreach ($packages as $idx => $p) {
-    if (isset($p['name']) && ($p['name'] === 'rules_wam' || $p['name'] === 'wam')) {
+    if (isset($p['name']) && $p['name'] === 'rules_wam') {
         $packages[$idx] = $pkg_info;
         $found_pkg = true;
-        break;
+    } elseif (isset($p['name']) && $p['name'] === 'wam') {
+        unset($packages[$idx]); // entrada duplicada da versão 1.3
     }
 }
 if (!$found_pkg) {
     $packages[] = $pkg_info;
 }
-config_set_path('installedpackages/package', $packages);
+config_set_path('installedpackages/package', array_values($packages));
 
 // 3. Registra menus em Services e Firewall
 $menus = config_get_path('installedpackages/menu', array());
@@ -132,6 +123,5 @@ echo "Menus ativos:\n";
 foreach ($clean_menus as $m) {
     echo " -> [" . $m['section'] . "] " . $m['name'] . " (" . $m['url'] . ")\n";
 }
-echo "Crash reports antigos limpos!\n";
 echo "=====================================\n";
 ?>

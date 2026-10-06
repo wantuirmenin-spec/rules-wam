@@ -1,8 +1,13 @@
 # Rules WAM - Web Access Manager para pfSense 🛡️
 
-Pacote corporativo nativo para **pfSense 2.7.x / 2.8.x / Plus** projetado para controle corporativo de acesso à internet, **bloqueio de categorias de sites**, **página de bloqueio institucional com suporte HTTPS**, **agendamento por horário comercial**, **isenção por dispositivo (Bypass IPs)** e **integração com Active Directory, NPS RADIUS e Netskope** via Unbound DNS.
+**Versão 1.4.0** — veja o [CHANGELOG](CHANGELOG.md).
 
-📖 **Consulte o manual completo:** [Manual do Administrador & Guia de Implantação](file:///home/hermes/pfsense-wam/MANUAL_DO_ADMINISTRADOR.md)
+Pacote corporativo nativo para **pfSense 2.7.x / 2.8.x / Plus** projetado para controle corporativo de acesso à internet, **bloqueio de categorias de sites**, **página de bloqueio institucional (HTTP)**, **agendamento por horário comercial**, **isenção por dispositivo (Bypass IPs)** e **integração com Active Directory, NPS RADIUS e Netskope** via Unbound DNS.
+
+📖 **Consulte o manual completo:** [Manual do Administrador & Guia de Implantação](MANUAL_DO_ADMINISTRADOR.md) · [Guia de Instalação](MANUAL_DE_INSTALACAO.md)
+
+> [!WARNING]
+> A versão 1.4.0 ainda **não foi testada em um pfSense real**. Valide primeiro em uma unidade de laboratório.
 
 ---
 
@@ -44,6 +49,7 @@ Você pode ativar ou desativar qualquer categoria individualmente pelo painel we
 
 10. 🚫 **Anti-Bypass / Bloqueio DoH (`block_doh`):**
     - Bloqueio de servidores DNS-over-HTTPS públicos (Cloudflare, Google, Quad9) para impedir que navegadores e celulares burlem o filtro.
+    - Com esta categoria marcada, também é bloqueado o DNS-over-TLS (porta 853).
 
 11. 🔒 **VPN, ZTNA & Proxies Anônimos (`block_vpn`):**
     - Controle granular com opção de desativar fornecedores específicos individualmente:
@@ -58,7 +64,7 @@ Você pode ativar ou desativar qualquer categoria individualmente pelo painel we
 
 12. 💬 **Mensageiros & Ferramentas de Comunicação (`block_messaging`):**
     - Controle granular por aplicativo:
-      - 💬 **WhatsApp (`block_msg_whatsapp`)**
+      - 💬 **WhatsApp (`block_msg_whatsapp`)** — DNS + portas 5222/4244; bloqueio por faixa IP opcional (desligado por padrão, afeta Facebook/Instagram)
       - 💬 **Telegram (`block_msg_telegram`)**
       - 💬 **Facebook Messenger (`block_msg_messenger`)**
       - 💬 **Microsoft Teams & Skype (`block_msg_teams_skype`)**
@@ -74,35 +80,39 @@ Você pode ativar ou desativar qualquer categoria individualmente pelo painel we
 - **Horário de início e fim** (ex: das `08:00` às `18:00`).
 - **Intervalo de almoço liberado** (ex: das `12:00` às `13:30` liberado automaticamente).
 - **Fins de semana:** Opção de liberar o acesso aos sábados e domingos ou manter bloqueado.
-- Cron nativo no pfSense verifica o horário a cada 5 minutos sem reiniciar serviços bruscamente.
+- Cron nativo no pfSense verifica o horário a cada 5 minutos e volta a bloquear sozinho após cada pausa.
+- Fora do horário, as regras de firewall do pacote (WhatsApp, DoT, NAT da porta 53) também são suspensas.
+- Horários são normalizados (`8:00` → `08:00`) e janelas que passam da meia-noite são aceitas.
 
 ---
 
 ## 🛡️ Isenção de Dispositivos (Bypass IPs)
 
 - Permite definir uma lista de endereços IP da rede local (TI, Diretoria, Servidores).
-- O Unbound cria automaticamente uma `access-control-view` separada para esses IPs.
-- Dispositivos isentos navegam com resolução direta sem overhead ou regras de NAT.
+- O Unbound associa esses IPs à *view* `wam_bypass`, que ignora as zonas de bloqueio.
+- Os IPs isentos continuam resolvendo os host overrides e os registros DHCP do pfSense.
 
 ---
 
 ## 🏢 Integração Corporativa: Active Directory, NPS (RADIUS) & Netskope
 
-- **Split-DNS Automático para AD e NPS RADIUS:** Encaminha consultas para o domínio corporativo (ex: `madeiramadeira.local`, registros SRV do Kerberos/LDAP e autenticação RADIUS) diretamente aos servidores da Matriz pela VPN IPsec através de **Domain Overrides** sincronizados no pfSense.
-- **Bypass de Anti-Rebinding e DNSSEC:** Configura automaticamente diretivas `private-domain` e `domain-insecure` no Unbound para garantir que respostas com endereços IP privados (RFC 1918) não sejam bloqueadas pelo firewall.
-- **Auto-Whitelist para Netskope Security Cloud:** Protege permanentemente todos os domínios da Netskope (`goskope.com`, `netskope.com`, gateways ZTNA/NPA e IdPs como Microsoft Entra ID / Okta), impedindo quedas acidentais no agente Netskope.
+- **Split-DNS Automático para AD e NPS RADIUS:** Encaminha consultas para o domínio corporativo (ex: `empresa.local`, registros SRV do Kerberos/LDAP e autenticação RADIUS) diretamente aos servidores da Matriz pela VPN IPsec através de **Domain Overrides** sincronizados no pfSense.
+- **Bypass de Anti-Rebinding e DNSSEC:** Configura `private-domain` e `domain-insecure` no Unbound **somente para os domínios do AD informados**. A proteção global contra DNS rebind do pfSense não é desligada.
+- **Auto-Whitelist para Netskope Security Cloud & IdP:** Protege os domínios da Netskope (`goskope.com`, `netskope.com`, ...) e **apenas os endpoints de login** dos IdPs (ex.: `login.microsoftonline.com`, `login.live.com`, `okta.com`, `accounts.google.com`). Não libera `microsoft.com`/`office.com` inteiros, para não anular o bloqueio de Teams/Skype.
 - **Auto-Whitelist de Ferramentas de TI & Downloads de Admin:** Libera downloads essenciais de ferramentas como PuTTY (`putty.org`, `chiark.greenend.org.uk`, `the.earth.li`), WinSCP, 7-Zip, Notepad++, Git, GitHub, GitLab, SourceForge, Sysinternals, Wireshark, Nmap, DBeaver e Python, impedindo que feeds gerais interrompam o trabalho das equipes de suporte e infraestrutura.
 - **Auto-Whitelist de Helpdesk & Suporte Remoto (Zendesk, GLPI, ScreenConnect):** Garante imunidade absoluta contra bloqueios acidentais para plataformas de chamados e atendimento (Zendesk e chat Zopim), ITSM/inventário (GLPI) e sessões de suporte e assistência remota (ConnectWise ScreenConnect).
 - **Proteção de Telefonia IP, Protocolo SIP & Aparelhos SIP Phone:** Assegura que servidores SIP, softphones (Zoiper, Linphone, MicroSIP), PABX em nuvem (3CX, Twilio, Telnyx, etc.), servidores STUN/TURN e provisionamento de telefones IP corporativos (Yealink, Grandstream, Intelbras) permaneçam 100% operacionais.
-- **Proteção da Infraestrutura Cloudflare:** Garante que a CDN mundial (`cdnjs.cloudflare.com`), validações de Captcha Turnstile (`challenges.cloudflare.com`) e APIs necessárias para navegação e downloads continuem funcionando perfeitamente, mesmo com o bloqueio opcional do cliente Cloudflare WARP ativado.
-- **Banner de Bloqueio Educativo Nativo (HTTP/HTTPS):** Pré-configurado como ação padrão (`block_page`), com geração automática de certificados SSL e migração da WebGUI administrativa para a porta 50443, deixando as portas 80 e 443 livres para a exibição imediata da tela de bloqueio institucional.
+- **Proteção da Infraestrutura Cloudflare:** Garante que a CDN (`cdnjs.cloudflare.com`), validações de Captcha Turnstile (`challenges.cloudflare.com`) e APIs necessárias para navegação e downloads continuem funcionando perfeitamente, mesmo com o bloqueio opcional do cliente Cloudflare WARP ativado.
+- **Banner de Bloqueio Educativo (somente HTTP):** Ação padrão (`block_page`). Acessos **HTTP (80)** mostram a página institucional; acessos **HTTPS (443)** ao IP do banner têm o handshake TLS recusado na hora (o navegador mostra erro de conexão, sem aviso de certificado). Não há CA para instalar nas máquinas.
+- **Sem CA nas estações:** como as máquinas clientes não recebem nenhuma CA, qualquer página HTTPS servida pelo firewall geraria um aviso de certificado. Por isso o banner é só HTTP e a 443 falha rápido.
+- **WebGUI fora das portas 80/443:** o banner só funciona com a WebGUI em outra porta e sem redirecionamento HTTP. O instalador só move a WebGUI com `--move-gui` (ou confirmação interativa); caso contrário o bloqueio funciona no modo silencioso (0.0.0.0) e a aba Status mostra um aviso.
 
 ---
 
 ## 📊 Widget Nativo para o Dashboard do pfSense
 
 O Rules WAM acompanha um **Widget exclusivo para a tela inicial do pfSense** (`Status > Dashboard`):
-* **Status do Serviço:** Estado em tempo real (Ativo / Pausado / Desativado), status do Unbound DNS Resolver e do NGINX Banner.
+* **Status do Serviço:** Estado em tempo real (Ativo / Pausado / Desativado), status do Unbound DNS Resolver e do NGINX do banner.
 * **Categorias Ativas:** Tags visuais coloridas com ícones mostrando exatamente quais categorias estão sob filtro.
 * **Resumo Macro de Hosts por Rede:** Tabela executiva com coleta direta das interfaces e descrições cadastradas no pfSense (WAN, LAN, OPTs, VLANs, OpenVPN), exibindo identificador lógico, nome amigável da rede e porta física (ex: `LAN — Rede Corporativa (igb1)`, `OPT1 — WiFi Visitantes (igb2)`, `OpenVPN — Acesso Remoto (ovpns1)`):
   * Identificação automática do nome amigável e sub-redes ativas no firewall.
@@ -116,29 +126,51 @@ O Rules WAM acompanha um **Widget exclusivo para a tela inicial do pfSense** (`S
 
 ## 🚀 Como Instalar em Qualquer pfSense
 
-O instalador `wam-install.sh` embute todos os 12 feeds, as telas da WebGUI, a lógica PHP, a CA SSL, a instância NGINX e o agendador Cron em um único arquivo autônomo de ~277 KB.
+O instalador `wam-install.sh` (~130 KB) é um auto-extraível que contém o pacote inteiro (28 arquivos de feed das 12 categorias, telas da WebGUI, lógica PHP, configuração do NGINX do banner e agendador Cron) e executa o mesmo `install.sh` do pacote.
 
-### Passo 1: Enviar o Instalador para o Firewall
-```bash
-scp /home/hermes/pfsense-wam/wam-install.sh root@<IP_DO_PFSENSE>:/tmp/
+```text
+sh wam-install.sh [--move-gui] [--gui-port=50443] [--wan-gui-sources=IP1,IP2|none]
 ```
 
-### Passo 2: Executar no Terminal do pfSense
+| Opção | Efeito |
+|---|---|
+| `--move-gui` | Se a WebGUI estiver em 80/443 (ou com redirecionamento HTTP), move para `--gui-port` e desativa o redirecionamento, liberando a porta 80 para o banner. |
+| `--gui-port=` | Porta nova da WebGUI (padrão `50443`). |
+| `--wan-gui-sources=` | **Obrigatório na atualização a partir da 1.3**: IPs públicos que podem acessar a WebGUI pela WAN, ou `none`. Sem ele, a instalação é abortada sem alterações. |
+
+O instalador **não** altera bogons, redes privadas na WAN nem a proteção contra DNS rebind.
+
+### Passo 1: Enviar o Instalador para o Firewall
+Por `scp` ou pelo upload em **Diagnostics > Command Prompt > Upload File** (salva em `/tmp/wam-install.sh`). Confira o SHA-256 antes de executar:
 ```bash
-ssh root@<IP_DO_PFSENSE>
-chmod +x /tmp/wam-install.sh
-sh /tmp/wam-install.sh
+scp wam-install.sh root@<IP_DO_PFSENSE>:/tmp/
+sha256 /tmp/wam-install.sh   # no pfSense; compare com o hash publicado junto ao arquivo
+```
+
+### Passo 2: Executar no pfSense
+Via SSH (opção `8) Shell`) ou em **Diagnostics > Command Prompt > Execute Shell Command**:
+```bash
+sh /tmp/wam-install.sh --move-gui
 ```
 
 ### Passo 3: Acessar a Interface Web
-1. No menu superior do pfSense, acesse: **Services > Rules WAM** (ou **Firewall > Rules WAM**).
-2. Marque as categorias desejadas, configure os horários e IPs isentos.
-3. Clique em **Save**.
-4. Acesse a aba **Status & Teste de Bloqueio** ou a aba **Dashboard & Tentativas de Acesso**.
+1. Acesse a WebGUI (na nova porta, se usou `--move-gui`: `https://<IP>:50443`).
+2. No menu superior, acesse **Services > Rules WAM** (ou **Firewall > Rules WAM**).
+3. Marque as categorias, horários, IPs isentos e as origens autorizadas da WebGUI.
+4. Clique em **Salvar e Aplicar Regras**.
+5. Confira a aba **Status & Teste de Bloqueio** (avisos de conflito de porta aparecem ali).
+
+### Desinstalar
+```bash
+sh /usr/local/share/wam/uninstall.sh
+```
+Reverte a configuração antes de apagar os arquivos e mantém o log de auditoria.
 
 ---
 
 ## 📄 Documentação Completa
 
-Para detalhes de arquitetura, distribuição de certificados via GPO no Active Directory, comandos de manutenção e resolução de problemas, leia:
-👉 [Manual do Administrador & Guia de Implantação](file:///home/hermes/pfsense-wam/MANUAL_DO_ADMINISTRADOR.md)
+Para detalhes de arquitetura, regras de firewall criadas, comandos de manutenção e resolução de problemas, leia:
+👉 [Manual do Administrador & Guia de Implantação](MANUAL_DO_ADMINISTRADOR.md)
+👉 [Guia Prático de Instalação](MANUAL_DE_INSTALACAO.md)
+👉 [CHANGELOG](CHANGELOG.md)

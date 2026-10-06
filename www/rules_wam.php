@@ -9,6 +9,7 @@ require_once("guiconfig.inc");
 require_once("/usr/local/pkg/rules_wam.inc");
 
 $save_msg = null;
+$input_errors = array();
 
 $lan_default_ip = function_exists('rules_wam_get_lan_ip') ? rules_wam_get_lan_ip() : '192.168.1.1';
 
@@ -27,7 +28,6 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
         'block_p2p'            => isset($_POST['block_p2p']) ? 'yes' : 'no',
         'block_doh'            => isset($_POST['block_doh']) ? 'yes' : 'no',
         'block_dns_bypass'     => isset($_POST['block_dns_bypass']) ? 'yes' : 'no',
-        'enable_upstream_forwarding' => isset($_POST['enable_upstream_forwarding']) ? 'yes' : 'no',
         'block_vpn'            => isset($_POST['block_vpn']) ? 'yes' : 'no',
         'block_vpn_fortinet'   => isset($_POST['block_vpn_fortinet']) ? 'yes' : 'no',
         'block_vpn_cisco'      => isset($_POST['block_vpn_cisco']) ? 'yes' : 'no',
@@ -47,10 +47,10 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
         'block_msg_zoom_meet'  => isset($_POST['block_msg_zoom_meet']) ? 'yes' : 'no',
         'block_msg_others'     => isset($_POST['block_msg_others']) ? 'yes' : 'no',
         'schedule_enable'      => isset($_POST['schedule_enable']) ? 'yes' : 'no',
-        'schedule_start'       => !empty($_POST['schedule_start']) ? trim($_POST['schedule_start']) : '08:00',
-        'schedule_end'         => !empty($_POST['schedule_end']) ? trim($_POST['schedule_end']) : '18:00',
-        'schedule_lunch_start' => !empty($_POST['schedule_lunch_start']) ? trim($_POST['schedule_lunch_start']) : '',
-        'schedule_lunch_end'   => !empty($_POST['schedule_lunch_end']) ? trim($_POST['schedule_lunch_end']) : '',
+        'schedule_start'       => trim($_POST['schedule_start'] ?? ''),
+        'schedule_end'         => trim($_POST['schedule_end'] ?? ''),
+        'schedule_lunch_start' => trim($_POST['schedule_lunch_start'] ?? ''),
+        'schedule_lunch_end'   => trim($_POST['schedule_lunch_end'] ?? ''),
         'schedule_weekend'     => isset($_POST['schedule_weekend']) ? 'yes' : 'no',
         'bypass_ips'           => isset($_POST['bypass_ips']) ? trim($_POST['bypass_ips']) : '',
         'custom_whitelist'     => isset($_POST['custom_whitelist']) ? trim($_POST['custom_whitelist']) : '',
@@ -58,6 +58,10 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
         'custom_hosts'         => isset($_POST['custom_hosts']) ? trim($_POST['custom_hosts']) : '',
         'block_action'         => isset($_POST['block_action']) ? trim($_POST['block_action']) : 'block_page',
         'block_page_ip'        => !empty($_POST['block_page_ip']) ? trim($_POST['block_page_ip']) : $lan_default_ip,
+        'block_wa_by_ip'       => isset($_POST['block_wa_by_ip']) ? 'yes' : 'no',
+        'support_email'        => trim($_POST['support_email'] ?? ''),
+        'gui_admin_sources'    => trim($_POST['gui_admin_sources'] ?? ''),
+        'gui_wan_sources'      => trim($_POST['gui_wan_sources'] ?? ''),
         'corp_enable'          => isset($_POST['corp_enable']) ? 'yes' : 'no',
         'corp_ad_domain'       => isset($_POST['corp_ad_domain']) ? trim($_POST['corp_ad_domain']) : '',
         'corp_ad_dns_ips'      => isset($_POST['corp_ad_dns_ips']) ? trim($_POST['corp_ad_dns_ips']) : '',
@@ -68,26 +72,97 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
         'corp_protect_helpdesk'=> isset($_POST['corp_protect_helpdesk']) ? 'yes' : 'no',
         'corp_protect_voip'    => isset($_POST['corp_protect_voip']) ? 'yes' : 'no',
         'corp_reverse_lookup'  => isset($_POST['corp_reverse_lookup']) ? 'yes' : 'no',
-        'corp_allowed_subnets' => isset($_POST['corp_allowed_subnets']) ? trim($_POST['corp_allowed_subnets']) : "172.24.0.0/16\n192.168.0.0/16\n192.192.0.0/16\n10.0.0.0/8",
+        'corp_allowed_subnets' => isset($_POST['corp_allowed_subnets']) ? trim($_POST['corp_allowed_subnets']) : WAM_DEFAULT_CORP_SUBNETS,
         'initialized'          => 'yes'
     );
 
-    // Grava no config.xml (em ambos os caminhos para compatibilidade total)
-    config_set_path('installedpackages/rules_wam/config/0', $wam_cfg);
-    config_set_path('installedpackages/wam/config/0', $wam_cfg);
-    write_config("Rules WAM: configurações salvas via WebGUI");
+    // Listas em uma linha só (o config.xml do pfSense descarta quebras de linha)
+    foreach (array('bypass_ips', 'custom_whitelist', 'custom_blacklist', 'corp_allowed_subnets',
+                   'corp_ad_domain', 'corp_ad_dns_ips', 'gui_admin_sources', 'gui_wan_sources') as $lk) {
+        $wam_cfg[$lk] = rules_wam_list_to_store($wam_cfg[$lk] ?? '');
+    }
+    $wam_cfg['custom_hosts'] = rules_wam_hosts_to_store($wam_cfg['custom_hosts'] ?? '');
 
-    if ($wam_cfg['enable'] === 'yes') {
-        rules_wam_apply_rules($wam_cfg);
-        $save_msg = "Configurações salvas com sucesso! O serviço Rules WAM está ATIVO e as regras foram aplicadas no Unbound DNS.";
+    // Mantém chaves internas que não estão no formulário
+    $prev_cfg = rules_wam_get_config();
+    foreach (array('migrated_v14') as $ik) {
+        if (isset($prev_cfg[$ik])) {
+            $wam_cfg[$ik] = $prev_cfg[$ik];
+        }
+    }
+
+    // ---- Validação ----
+    foreach (array('schedule_start' => 'Início do expediente', 'schedule_end' => 'Fim do expediente',
+                   'schedule_lunch_start' => 'Início do almoço', 'schedule_lunch_end' => 'Fim do almoço') as $tk => $tlabel) {
+        if ($wam_cfg[$tk] === '') continue;
+        $norm = rules_wam_normalize_time($wam_cfg[$tk]);
+        if ($norm === '') {
+            $input_errors[] = sprintf(gettext("%s: horário inválido (use HH:MM)."), $tlabel);
+        } else {
+            $wam_cfg[$tk] = $norm;
+        }
+    }
+    if ($wam_cfg['schedule_start'] === '') $wam_cfg['schedule_start'] = '08:00';
+    if ($wam_cfg['schedule_end'] === '') $wam_cfg['schedule_end'] = '18:00';
+    if (($wam_cfg['schedule_lunch_start'] === '') !== ($wam_cfg['schedule_lunch_end'] === '')) {
+        $input_errors[] = gettext("Preencha início e fim do almoço, ou deixe os dois em branco.");
+    }
+    if (!filter_var($wam_cfg['block_page_ip'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+        $input_errors[] = gettext("IP do banner inválido.");
     } else {
-        rules_wam_disable();
-        $save_msg = "Configurações salvas. O serviço Rules WAM foi DESABILITADO e os acessos estão liberados.";
+        $ip_ok = false;
+        foreach (rules_wam_get_configured_interfaces(false) as $ifd) {
+            if (!empty($ifd['ip']) && $ifd['ip'] === $wam_cfg['block_page_ip']) { $ip_ok = true; break; }
+        }
+        if (!$ip_ok) {
+            $input_errors[] = gettext("O IP do banner precisa ser o IP de uma interface interna do firewall.");
+        }
+    }
+    if (!in_array($wam_cfg['block_action'], array('block_page', 'always_null'), true)) {
+        $wam_cfg['block_action'] = 'block_page';
+    }
+    if ($wam_cfg['support_email'] !== '' && !filter_var($wam_cfg['support_email'], FILTER_VALIDATE_EMAIL)) {
+        $input_errors[] = gettext("E-mail do suporte inválido.");
+    }
+    foreach (array('bypass_ips' => 'IPs isentos', 'gui_admin_sources' => 'Origens da WebGUI (rede interna)', 'gui_wan_sources' => 'Origens da WebGUI (WAN)') as $fk => $flabel) {
+        foreach (rules_wam_parse_list($wam_cfg[$fk]) as $item) {
+            if (!is_ipaddr($item) && !is_subnet($item)) {
+                $input_errors[] = sprintf(gettext("%s: '%s' não é um IP ou rede (CIDR) válido."), $flabel, htmlspecialchars($item));
+            }
+        }
+    }
+    foreach (rules_wam_parse_list($wam_cfg['corp_allowed_subnets']) as $item) {
+        if (!is_subnetv4($item) && !is_ipaddrv4($item)) {
+            $input_errors[] = sprintf(gettext("Redes autorizadas: '%s' não é uma rede IPv4 válida."), htmlspecialchars($item));
+        }
+    }
+    // Preserva o estado interno do pacote (valores originais para desinstalação)
+    $wam_state = config_get_path('installedpackages/rules_wam/state', null);
+
+    if (empty($input_errors)) {
+        config_set_path('installedpackages/rules_wam/config/0', $wam_cfg);
+        if ($wam_state !== null) {
+            config_set_path('installedpackages/rules_wam/state', $wam_state);
+        }
+        write_config("Rules WAM: configurações salvas via WebGUI");
+
+        if ($wam_cfg['enable'] === 'yes') {
+            rules_wam_resync();
+            $save_msg = "Configurações salvas e aplicadas.";
+            if (rules_wam_banner_conflict() !== '' && $wam_cfg['block_action'] === 'block_page') {
+                $save_msg .= " Atenção: " . rules_wam_banner_conflict() . " O banner fica desligado e o bloqueio usa 0.0.0.0.";
+            }
+        } else {
+            rules_wam_disable();
+            $save_msg = "Configurações salvas. O serviço Rules WAM foi DESABILITADO e os acessos estão liberados.";
+        }
     }
 }
 
-// Carrega dados atuais do config.xml
-$wam_cfg = rules_wam_get_config();
+// Carrega dados atuais do config.xml (ou mantém o que foi digitado se houve erro)
+if (empty($input_errors)) {
+    $wam_cfg = rules_wam_get_config();
+}
 
 $pgtitle = array(gettext("Services"), gettext("Rules WAM"), gettext("Configurações de Bloqueio"));
 include("head.inc");
@@ -100,6 +175,7 @@ $tab_array[] = array(gettext("Banner de Bloqueio (Prévia)"), false, "/rules_wam
 display_top_tabs($tab_array);
 ?>
 
+<?php if (!empty($input_errors)) { print_input_errors($input_errors); } ?>
 <?php if ($save_msg): ?>
     <div class="alert alert-success alert-dismissible" role="alert">
         <button type="button" class="close" data-dismiss="alert"><span aria-hidden="true">&times;</span></button>
@@ -266,19 +342,6 @@ display_top_tabs($tab_array);
             </div>
 
             <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Forwarding Upstream (Google & Cloudflare)")?></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="enable_upstream_forwarding" value="yes" <?=rules_wam_is_checked($wam_cfg['enable_upstream_forwarding'] ?? 'no') ? 'checked' : ''?> />
-                            <strong><?=gettext("Usar Google DNS (8.8.8.8, 8.8.4.4) e Cloudflare (1.1.1.1, 1.0.0.1) como Forwarders Upstream")?></strong><br />
-                            <span class="text-muted"><?=gettext("O Unbound do pfSense bloqueia as categorias do WAM instantaneamente (0.0.0.0) na rede local e encaminha todas as consultas permitidas aos Anycast de alta performance do Google e Cloudflare, acelerando a navegação na internet.")?></span>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group">
                 <label class="col-sm-3 control-label"><?=gettext("VPN, ZTNA & Proxies Anônimos")?></label>
                 <div class="col-sm-9">
                     <div class="checkbox">
@@ -373,6 +436,12 @@ display_top_tabs($tab_array);
                                     <label>
                                         <input type="checkbox" name="block_msg_whatsapp" value="yes" <?=(!isset($wam_cfg['block_msg_whatsapp']) || rules_wam_is_checked($wam_cfg['block_msg_whatsapp'])) ? 'checked' : ''?> />
                                         <strong>WhatsApp</strong> (WhatsApp Web, apps desktop/móvel e chamadas)
+                                    </label>
+                                </div>
+                                <div class="checkbox" style="margin-left: 20px;">
+                                    <label>
+                                        <input type="checkbox" name="block_wa_by_ip" value="yes" <?=rules_wam_is_checked($wam_cfg['block_wa_by_ip'] ?? 'no') ? 'checked' : ''?> />
+                                        <?=gettext("Bloquear também por faixa IP")?> <span class="text-danger"><?=gettext("(afeta Facebook e Instagram: as faixas são compartilhadas pela Meta)")?></span>
                                     </label>
                                 </div>
                                 <div class="checkbox">
@@ -481,7 +550,7 @@ display_top_tabs($tab_array);
             <div class="form-group">
                 <label class="col-sm-3 control-label"><?=gettext("Redes Corporativas Autorizadas no DNS (CIDR)")?></label>
                 <div class="col-sm-6">
-                    <textarea name="corp_allowed_subnets" class="form-control" rows="4" placeholder="172.24.0.0/16&#10;192.168.0.0/16&#10;192.192.0.0/16&#10;10.0.0.0/8"><?=htmlspecialchars($wam_cfg['corp_allowed_subnets'] ?? "172.24.0.0/16\n192.168.0.0/16\n192.192.0.0/16\n10.0.0.0/8")?></textarea>
+                    <textarea name="corp_allowed_subnets" class="form-control" rows="4" placeholder="10.0.0.0/8&#10;172.16.0.0/12&#10;192.168.0.0/16"><?=htmlspecialchars(rules_wam_list_to_text($wam_cfg['corp_allowed_subnets'] ?? WAM_DEFAULT_CORP_SUBNETS))?></textarea>
                     <span class="help-block"><?=gettext("Super-redes corporativas que terão permissão automática para resolver DNS no Unbound em todas as 18 unidades (incluindo sub-redes roteadas via Switch L3). Separe por linha.")?></span>
                 </div>
             </div>
@@ -600,11 +669,11 @@ display_top_tabs($tab_array);
             <div class="form-group">
                 <label class="col-sm-3 control-label"><?=gettext("Pausa de Almoço (Liberado)")?></label>
                 <div class="col-sm-4">
-                    <input type="time" name="schedule_lunch_start" class="form-control" value="<?=htmlspecialchars($wam_cfg['schedule_lunch_start'] ?? '12:00')?>" />
+                    <input type="time" name="schedule_lunch_start" class="form-control" value="<?=htmlspecialchars($wam_cfg['schedule_lunch_start'] ?? '')?>" />
                     <span class="help-block"><?=gettext("Início do almoço (deixe em branco para não pausar)")?></span>
                 </div>
                 <div class="col-sm-4">
-                    <input type="time" name="schedule_lunch_end" class="form-control" value="<?=htmlspecialchars($wam_cfg['schedule_lunch_end'] ?? '13:00')?>" />
+                    <input type="time" name="schedule_lunch_end" class="form-control" value="<?=htmlspecialchars($wam_cfg['schedule_lunch_end'] ?? '')?>" />
                     <span class="help-block"><?=gettext("Fim do almoço")?></span>
                 </div>
             </div>
@@ -633,14 +702,14 @@ display_top_tabs($tab_array);
                 <div class="col-sm-9">
                     <select name="block_action" class="form-control" style="max-width: 480px;">
                         <option value="block_page" <?=($wam_cfg['block_action'] ?? 'block_page') === 'block_page' ? 'selected' : ''?>>
-                            <?=gettext("Exibir Banner de Bloqueio da Empresa (Porta 80 HTTP e 443 HTTPS)")?>
+                            <?=gettext("Exibir Banner de Bloqueio da Empresa (HTTP)")?>
                         </option>
                         <option value="always_null" <?=($wam_cfg['block_action'] ?? '') === 'always_null' ? 'selected' : ''?>>
                             <?=gettext("Retornar 0.0.0.0 (Silencioso - Sem Banner)")?>
                         </option>
                     </select>
                     <span class="help-block">
-                        <?=gettext("No modo <strong>Banner</strong>, o firewall intercepta a porta 80 (HTTP sem certificado) e 443 (HTTPS com suporte a CA) e exibe a página institucional com as políticas da empresa.")?><br/>
+                        <?=gettext("No modo <strong>Banner</strong>, acessos HTTP (porta 80) a domínios bloqueados mostram a página institucional. Acessos HTTPS (porta 443) são recusados na hora, sem aviso de certificado: o navegador mostra erro de conexão. Exige a WebGUI fora das portas 80/443 e sem redirecionamento HTTP.")?><br/>
                         <?=gettext("No modo <strong>Silencioso (0.0.0.0)</strong>, a conexão é recusada imediatamente pelo navegador.")?>
                         <br/>
                         <a href="/rules_wam_block.php" target="_blank" class="btn btn-default btn-xs" style="margin-top: 5px;">
@@ -695,7 +764,7 @@ display_top_tabs($tab_array);
                         <?php endforeach; ?>
                     </div>
                     <span class="help-block" style="margin-top: 6px;">
-                        <?=gettext("Interfaces ativas no pfSense com seus nomes amigáveis oficiais. O firewall responde o banner HTTP/HTTPS em todas as interfaces internas.")?>
+                        <?=gettext("Interfaces ativas no pfSense. O banner escuta somente no IP escolhido acima; as demais redes internas chegam até ele pelo roteamento do firewall.")?>
                     </span>
                 </div>
             </div>
@@ -709,17 +778,25 @@ display_top_tabs($tab_array);
         </div>
         <div class="panel-body">
             <div class="form-group">
+                <label class="col-sm-3 control-label"><?=gettext("E-mail do Suporte (Banner)")?></label>
+                <div class="col-sm-5">
+                    <input type="email" name="support_email" class="form-control" value="<?=htmlspecialchars($wam_cfg['support_email'] ?? '')?>" placeholder="suporte@suaempresa.com.br" />
+                    <span class="help-block"><?=gettext("Usado no botão \"Contatar Suporte TI\" do banner. Em branco, o botão não aparece.")?></span>
+                </div>
+            </div>
+
+            <div class="form-group">
                 <label class="col-sm-3 control-label"><?=gettext("IPs Isentos (Bypass IPs)")?></label>
                 <div class="col-sm-9">
-                    <textarea name="bypass_ips" rows="3" class="form-control" placeholder="172.24.60.20&#10;172.24.60.25"><?=htmlspecialchars($wam_cfg['bypass_ips'] ?? '')?></textarea>
-                    <span class="help-block"><?=gettext("IPs locais que NUNCA sofrem bloqueio (Diretoria, TI, etc.). Um IP por linha ou separado por vírgula.")?></span>
+                    <textarea name="bypass_ips" rows="3" class="form-control" placeholder="172.24.60.20&#10;172.24.60.25"><?=htmlspecialchars(rules_wam_list_to_text($wam_cfg['bypass_ips'] ?? ''))?></textarea>
+                    <span class="help-block"><?=gettext("IPs ou redes (CIDR) que NUNCA sofrem bloqueio de DNS (Diretoria, TI, etc.). Um por linha ou separados por vírgula. Continuam resolvendo os host overrides e registros DHCP do pfSense.")?></span>
                 </div>
             </div>
 
             <div class="form-group">
                 <label class="col-sm-3 control-label"><?=gettext("Lista Branca (Whitelist)")?></label>
                 <div class="col-sm-9">
-                    <textarea name="custom_whitelist" rows="3" class="form-control" placeholder="linkedin.com&#10;globoesporte.globo.com"><?=htmlspecialchars($wam_cfg['custom_whitelist'] ?? '')?></textarea>
+                    <textarea name="custom_whitelist" rows="3" class="form-control" placeholder="linkedin.com&#10;globoesporte.globo.com"><?=htmlspecialchars(rules_wam_list_to_text($wam_cfg['custom_whitelist'] ?? ''))?></textarea>
                     <span class="help-block"><?=gettext("Domínios que devem ser sempre permitidos, mesmo que pertençam a uma categoria bloqueada.")?></span>
                 </div>
             </div>
@@ -727,7 +804,7 @@ display_top_tabs($tab_array);
             <div class="form-group">
                 <label class="col-sm-3 control-label"><?=gettext("Lista Negra Adicional (Blacklist)")?></label>
                 <div class="col-sm-9">
-                    <textarea name="custom_blacklist" rows="3" class="form-control" placeholder="site-indesejado.com&#10;outro-site.com"><?=htmlspecialchars($wam_cfg['custom_blacklist'] ?? '')?></textarea>
+                    <textarea name="custom_blacklist" rows="3" class="form-control" placeholder="site-indesejado.com&#10;outro-site.com"><?=htmlspecialchars(rules_wam_list_to_text($wam_cfg['custom_blacklist'] ?? ''))?></textarea>
                     <span class="help-block"><?=gettext("Domínios adicionais manuais que você deseja bloquear agora.")?></span>
                 </div>
             </div>
@@ -735,11 +812,33 @@ display_top_tabs($tab_array);
             <div class="form-group">
                 <label class="col-sm-3 control-label"><?=gettext("Mapeamento de Nomes de Hosts / Computadores")?></label>
                 <div class="col-sm-9">
-                    <textarea name="custom_hosts" rows="4" class="form-control" placeholder="172.24.60.118 = Computador Principal&#10;172.24.60.119 = Notebook TI"><?=htmlspecialchars($wam_cfg['custom_hosts'] ?? '')?></textarea>
+                    <textarea name="custom_hosts" rows="4" class="form-control" placeholder="172.24.60.118 = Computador Principal&#10;172.24.60.119 = Notebook TI"><?=htmlspecialchars(rules_wam_hosts_to_text($wam_cfg['custom_hosts'] ?? ''))?></textarea>
                     <span class="help-block">
                         <?=gettext("Defina ou corrija o nome dos computadores na rede (um por linha no formato <code>IP = Nome</code>).")?><br/>
                         <?=gettext("Ideal para hosts conectados através de antenas, switches gerenciáveis, pontos de acesso (APs) ou com IPs fixos.")?>
                     </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            <h2 class="panel-title"><?=gettext("Acesso Administrativo à WebGUI")?></h2>
+        </div>
+        <div class="panel-body">
+            <div class="form-group">
+                <label class="col-sm-3 control-label"><?=gettext("Origens Internas Autorizadas")?></label>
+                <div class="col-sm-9">
+                    <textarea name="gui_admin_sources" rows="3" class="form-control" placeholder="172.24.60.0/24&#10;10.10.0.5"><?=htmlspecialchars(rules_wam_list_to_text($wam_cfg['gui_admin_sources'] ?? ''))?></textarea>
+                    <span class="help-block"><?=gettext("O Rules WAM cria, em cada interface interna, uma regra liberando a porta da WebGUI para o próprio firewall. Em branco = qualquer origem interna (comportamento anterior). Recomendado: informe só as redes/IPs da equipe de TI. A regra anti-lockout da LAN do pfSense continua valendo.")?></span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="col-sm-3 control-label"><?=gettext("Origens Autorizadas pela WAN")?></label>
+                <div class="col-sm-9">
+                    <textarea name="gui_wan_sources" rows="2" class="form-control" placeholder="203.0.113.10/32"><?=htmlspecialchars(rules_wam_list_to_text($wam_cfg['gui_wan_sources'] ?? ''))?></textarea>
+                    <span class="help-block"><?=gettext("Em branco = nenhuma regra na WAN (recomendado). Só preencha com IPs públicos fixos da equipe de TI, se precisar administrar o firewall pela internet.")?></span>
                 </div>
             </div>
         </div>

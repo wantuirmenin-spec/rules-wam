@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rules WAM - Download dos Arquivos de Atualização</title>
+    <title>Rules WAM Download</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
         body { background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
@@ -21,20 +21,20 @@
         .btn-icon { font-size: 20px; margin-left: 12px; }
         .instructions { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-size: 13px; color: #cbd5e1; line-height: 1.6; }
         .instructions h3 { color: #38bdf8; font-size: 14px; margin-bottom: 8px; }
-        code { background: #1e293b; padding: 2px 6px; border-radius: 4px; color: #38bdf8; font-family: monospace; }
+        code { background: #1e293b; padding: 2px 6px; border-radius: 4px; color: #38bdf8; font-family: monospace; overflow-wrap: anywhere; }
     </style>
 </head>
 <body>
     <div class="card">
-        <span class="badge">Rules WAM v2.0 • Atualizado</span>
+        <span class="badge">Rules WAM 1.4.0</span>
         <h1>Central de Download</h1>
-        <p class="subtitle">Baixe o instalador atualizado com suporte a <strong>Zendesk</strong>, <strong>GLPI</strong>, <strong>ScreenConnect</strong> e <strong>SIP / VoIP</strong>.</p>
+        <p class="subtitle">Instalador da versão 1.4.0 (revisão de segurança). Banner de bloqueio somente HTTP: nenhuma CA é instalada nas estações. <strong>Ainda não testado em pfSense real — valide em laboratório.</strong></p>
         
         <div class="btn-list">
             <a href="/wam-install.sh" download="wam-install.sh" class="btn">
                 <div class="btn-info">
                     <span>Baixar wam-install.sh</span>
-                    <span class="btn-desc">Instalador autônomo standalone (~400 KB)</span>
+                    <span class="btn-desc">Instalador auto-extraível (~130 KB)</span>
                 </div>
                 <span class="btn-icon">📥</span>
             </a>
@@ -42,7 +42,7 @@
             <a href="/rules-wam-pacote.zip" download="rules-wam-pacote.zip" class="btn secondary">
                 <div class="btn-info">
                     <span>Baixar rules-wam-pacote.zip</span>
-                    <span class="btn-desc">Pacote completo com fontes, feeds e manuais (~300 KB)</span>
+                    <span class="btn-desc">Pacote completo com fontes, 28 feeds e manuais (~240 KB)</span>
                 </div>
                 <span class="btn-icon">📦</span>
             </a>
@@ -54,8 +54,16 @@
                 <li>Baixe o <code>wam-install.sh</code> clicando no botão azul acima.</li>
                 <li>Acesse o pfSense: <code>Diagnostics &gt; Command Prompt</code>.</li>
                 <li>Na opção <strong>Upload File</strong>, selecione o <code>wam-install.sh</code> e clique em <strong>Upload</strong>.</li>
-                <li>Em <strong>Execute Shell Command</strong>, digite: <code>sh /tmp/wam-install.sh</code></li>
+                <li>Confira o hash: <code>sha256 /tmp/wam-install.sh</code> (compare com o SHA-256 publicado).</li>
+                <li>Em <strong>Execute Shell Command</strong>, digite: <code>sh /tmp/wam-install.sh --move-gui</code></li>
             </ol>
+            <h3 style="margin-top: 12px;">⚙️ Opções do instalador:</h3>
+            <ul style="margin-left: 20px;">
+                <li><code>--move-gui</code>: move a WebGUI das portas 80/443 para liberar o banner. Sem ela, o bloqueio fica no modo silencioso (0.0.0.0).</li>
+                <li><code>--gui-port=50443</code>: porta nova da WebGUI (padrão 50443).</li>
+                <li><code>--wan-gui-sources=IP1,IP2</code> ou <code>none</code>: <strong>obrigatório ao atualizar da 1.3</strong>; sem ela a instalação é abortada sem alterações.</li>
+            </ul>
+            <p style="margin-top: 12px;">Desinstalar: <code>sh /usr/local/share/wam/uninstall.sh</code></p>
         </div>
     </div>
 </body>

@@ -481,11 +481,12 @@ $total_blocked_hosts_all = array();
 $total_block_events_all = 0;
 
 if (file_exists($audit_file)) {
-    $audit_lines = @file($audit_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    // Lê apenas o final do log (o arquivo inteiro pode ter vários MB)
+    $audit_lines = array();
+    @exec('/usr/bin/tail -n 5000 ' . escapeshellarg($audit_file) . ' 2>/dev/null', $audit_lines);
     if ($audit_lines) {
-        $max_lines = 5000;
         $total_lines = count($audit_lines);
-        $start_idx = max(0, $total_lines - $max_lines);
+        $start_idx = 0;
 
         for ($i = $start_idx; $i < $total_lines; $i++) {
             $line = trim($audit_lines[$i]);
@@ -501,7 +502,7 @@ if (file_exists($audit_file)) {
                 $a_ip = trim($cm[1]);
             }
 
-            if (!empty($a_ip)) {
+            if (!empty($a_ip) && filter_var($a_ip, FILTER_VALIDATE_IP)) {
                 $net_k = $assign_ip_to_network($a_ip, $network_summary);
                 if ($net_k !== null && isset($network_summary[$net_k])) {
                     $network_summary[$net_k]['blocked_hosts'][$a_ip] = true;
@@ -517,7 +518,7 @@ if (file_exists($audit_file)) {
 // 3.9 Bypass IPs
 $total_bypass_all = array();
 if (!empty($wam_cfg['bypass_ips'])) {
-    $raw_bypass = preg_split('/[\r\n,;]+/', $wam_cfg['bypass_ips']);
+    $raw_bypass = preg_split('/[\s,;]+/', $wam_cfg['bypass_ips']);
     foreach ($raw_bypass as $b_ip) {
         $b_ip = trim($b_ip);
         if (!empty($b_ip) && filter_var($b_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
@@ -562,7 +563,7 @@ if ($is_ajax) {
 
             <?php if ($is_enabled && $block_action === 'block_page'): ?>
                 <span class="label <?=$nginx_banner_running ? 'label-info' : 'label-warning'?>" style="font-size: 11px; padding: 4px 7px;" title="<?=gettext('Instância NGINX nas portas 80 e 443 para banner institucional')?>">
-                    <i class="fa fa-desktop"></i> Banner: <?=$nginx_banner_running ? '80/443 OK' : gettext('Alerta')?>
+                    <i class="fa fa-desktop"></i> Banner: <?=$nginx_banner_running ? 'HTTP OK' : ((($status_data['block_action'] ?? '') === 'always_null') ? gettext('Silencioso') : gettext('Alerta'))?>
                 </span>
             <?php elseif ($is_enabled): ?>
                 <span class="label label-default" style="font-size: 11px; padding: 4px 7px;" title="<?=gettext('Respostas DNS retornam 0.0.0.0 sem exibição de tela de bloqueio')?>">

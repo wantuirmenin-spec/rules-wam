@@ -18,12 +18,23 @@ $tab_array[] = array(gettext("Dashboard & Tentativas de Acesso"), false, "/rules
 $tab_array[] = array(gettext("Banner de Bloqueio (Prévia)"), false, "/rules_wam_block.php");
 display_top_tabs($tab_array);
 
+if (function_exists('rules_wam_banner_conflict') && rules_wam_banner_conflict() !== '' && (rules_wam_get_config()['block_action'] ?? 'block_page') === 'block_page') {
+    print_info_box(htmlspecialchars(rules_wam_banner_conflict()) . ' ' . gettext('O banner de bloqueio está desligado e os domínios bloqueados retornam 0.0.0.0. Para usar o banner, mova a WebGUI para outra porta (System > Advanced > Admin Access) e desative o redirecionamento HTTP.'), 'warning', false);
+}
+
 // Teste de domínio solicitado
 $test_domain = isset($_POST['test_domain']) ? trim($_POST['test_domain']) : '';
 $test_result = null;
 
+$test_error = '';
 if (!empty($test_domain)) {
     $clean_test = rules_wam_clean_domain($test_domain);
+    if (empty($clean_test)) {
+        $test_error = gettext('Domínio inválido.');
+        $test_domain = '';
+    }
+}
+if (!empty($test_domain)) {
     
     // 1. Verifica se o domínio está listado no arquivo de bloqueio ativo
     $is_in_blocklist = false;
@@ -75,11 +86,7 @@ if (!empty($test_domain)) {
             'msg' => 'Domínio BLOQUEADO pelo Rules WAM!'
         );
 
-        // Registra o teste na auditoria
-        $client_ip = !empty($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '127.0.0.1';
-        $cat = rules_wam_get_domain_category($clean_test);
-        $entry = date('M d H:i:s') . '|' . $client_ip . '|' . $clean_test . '|' . $cat . "\n";
-        @file_put_contents(WAM_AUDIT_LOG, $entry, FILE_APPEND);
+        // Testes do administrador não entram no log de auditoria
     } else {
         $test_result = array(
             'status' => 'ALLOWED',
@@ -197,14 +204,6 @@ $categories_info = array(
                 <?php endif; ?>
             </dd>
 
-            <dt><?=gettext("Forwarding Upstream")?></dt>
-            <dd>
-                <?php if (rules_wam_is_checked($wam_cfg['enable_upstream_forwarding'] ?? null)): ?>
-                    <span class="label label-info"><i class="fa fa-bolt"></i> <?=gettext("Ativo (Google 8.8.8.8 & Cloudflare 1.1.1.1)")?></span>
-                <?php else: ?>
-                    <em><?=gettext("Padrão do pfSense (Resolução Raiz / General DNS)")?></em>
-                <?php endif; ?>
-            </dd>
         </dl>
     </div>
 </div>
@@ -267,6 +266,9 @@ $categories_info = array(
             <button type="submit" class="btn btn-primary"><i class="fa fa-search"></i> <?=gettext("Testar Bloqueio")?></button>
         </form>
 
+        <?php if (!empty($test_error)): ?>
+            <div class="alert alert-warning" style="margin-top: 15px;"><?=htmlspecialchars($test_error)?></div>
+        <?php endif; ?>
         <?php if ($test_result): ?>
             <div style="margin-top: 15px;">
                 <?php if ($test_result['status'] === 'BLOCKED'): ?>

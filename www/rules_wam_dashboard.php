@@ -54,7 +54,7 @@ if (isset($_GET['export']) && ($_GET['export'] === 'csv' || $_GET['export'] === 
                 $if_name = 'WAN';
             }
         }
-        fputcsv($output, array(
+        fputcsv($output, array_map('rules_wam_csv_safe', array(
             $ev['timestamp'],
             $ev['ip'],
             $ev['hostname'],
@@ -62,8 +62,8 @@ if (isset($_GET['export']) && ($_GET['export'] === 'csv' || $_GET['export'] === 
             $if_name,
             $ev['domain'],
             $ev['category'],
-            'BLOQUEADO (0.0.0.0)'
-        ), ';');
+            'BLOQUEADO'
+        )), ';');
     }
 
     fclose($output);
@@ -142,7 +142,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv_devices') {
                 $if_name = 'WAN';
             }
         }
-        fputcsv($output, array(
+        fputcsv($output, array_map('rules_wam_csv_safe', array(
             $dev['ip'],
             $dev['hostname'],
             $dev['status_label'],
@@ -152,7 +152,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv_devices') {
             $top_c,
             $dev['last_domain'],
             $dev['last_time']
-        ), ';');
+        )), ';');
     }
 
     fclose($output);
@@ -199,14 +199,23 @@ if (isset($_GET['export']) && $_GET['export'] === 'json') {
 
 // 3. Simulação de Teste Direto na Dashboard
 $alert_msg = null;
+// Ações que alteram o log exigem o privilégio de configuração (não apenas o de auditoria)
+$can_modify_log = !function_exists('isAllowedPage') || isAllowedPage('rules_wam.php');
+if (!$can_modify_log && (isset($_POST['simulate_test_domain']) || isset($_POST['clear_audit_logs']))) {
+    unset($_POST['simulate_test_domain'], $_POST['clear_audit_logs']);
+    $alert_msg = "Sem permissão para alterar o log de auditoria.";
+}
 if (isset($_POST['simulate_test_domain'])) {
     $s_dom = rules_wam_clean_domain($_POST['simulate_test_domain'] ?? '');
-    if (!empty($s_dom)) {
-        $client_ip = !empty($_POST['simulate_ip']) ? trim($_POST['simulate_ip']) : (!empty($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '127.0.0.1');
+    $client_ip = !empty($_POST['simulate_ip']) ? trim($_POST['simulate_ip']) : ($_SERVER['REMOTE_ADDR'] ?? '');
+    if (empty($s_dom)) {
+        $alert_msg = "Domínio inválido.";
+    } elseif (!filter_var($client_ip, FILTER_VALIDATE_IP)) {
+        $alert_msg = "IP inválido.";
+    } else {
         $cat = rules_wam_get_domain_category($s_dom);
-        $entry = date('M d H:i:s') . '|' . $client_ip . '|' . $s_dom . '|' . $cat . "\n";
-        @file_put_contents(WAM_AUDIT_LOG, $entry, FILE_APPEND);
-        $alert_msg = "Tentativa de acesso a '{$s_dom}' registrada no log para o IP {$client_ip}!";
+        rules_wam_audit_write($client_ip, $s_dom, $cat, 'SIMULACAO (registrado pelo administrador)');
+        $alert_msg = "Tentativa de acesso a '{$s_dom}' registrada no log para o IP {$client_ip} (marcada como simulação).";
     }
 }
 
@@ -215,6 +224,7 @@ if (isset($_POST['clear_audit_logs'])) {
     if (file_exists(WAM_AUDIT_LOG)) {
         @file_put_contents(WAM_AUDIT_LOG, '');
     }
+    @unlink(WAM_AUDIT_LOG . '.1');
     $alert_msg = "Histórico de auditoria do Rules WAM foi limpo com sucesso!";
 }
 
@@ -237,17 +247,7 @@ $cache_hn = array();
 $current_client_hostname = rules_wam_resolve_hostname($current_client_ip, $cache_hn);
 $wam_cfg = rules_wam_get_config();
 
-$is_current_in_bypass = false;
-if (!empty($wam_cfg['bypass_ips'])) {
-    $raw_ips = preg_split('/[\r\n,;]+/', $wam_cfg['bypass_ips']);
-    foreach ($raw_ips as $rip) {
-        $rip = trim($rip);
-        if ($rip === $current_client_ip || strpos($rip, $current_client_ip) !== false) {
-            $is_current_in_bypass = true;
-            break;
-        }
-    }
-}
+$is_current_in_bypass = rules_wam_ip_in_bypass($current_client_ip, $wam_cfg);
 
 // Agrupamento geral por IP/Dispositivo
 $by_device = array();

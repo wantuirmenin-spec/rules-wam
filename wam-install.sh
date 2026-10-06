@@ -1,12510 +1,1981 @@
 #!/bin/sh
-# ====================================================================
-# Rules WAM para pfSense (Instalador Standalone)
-# Bloqueio de Categorias de Sites e Proteção DNS Avançada
-# ====================================================================
-
-set -e
-
+# Rules WAM - instalador autônomo (auto-extraível)
+# Uso: sh wam-install.sh [--move-gui] [--gui-port=50443] [--wan-gui-sources=IP1,IP2|none]
+# Para desinstalar depois: sh /usr/local/share/wam/uninstall.sh
+set -eu
 if [ "$(id -u)" -ne 0 ]; then
-    echo "❌ Erro: Execute este script como root no pfSense."
+    echo "Erro: execute como root no pfSense."
     exit 1
 fi
-
-echo "======================================================"
-echo " 🚀 Instalando Pacote Rules WAM no pfSense"
-echo "======================================================"
-
-TMP_DIR="/tmp/wam_install_tmp"
-rm -rf "$TMP_DIR"
-mkdir -p "$TMP_DIR/pkg" "$TMP_DIR/www" "$TMP_DIR/feeds" "$TMP_DIR/widgets/include" "$TMP_DIR/widgets/widgets"
-
-echo '>> Extraindo pkg/rules_wam.xml...'
-cat << 'EOF_XML' > $TMP_DIR/pkg/rules_wam.xml
-<?xml version="1.0" encoding="utf-8" ?>
-<!DOCTYPE packagegui SYSTEM "../schema/packages.dtd">
-<?xml-stylesheet type="text/xsl" href="../xsl/package.xsl"?>
-<packagegui>
-	<copyright>
-	<![CDATA[
-/*
- * rules_wam.xml
- * Rules WAM - Web Access Manager para pfSense
- * Bloqueio de Categorias de Sites e Proteção DNS Avançada
- */
-	]]>
-	</copyright>
-	<name>rules_wam</name>
-	<version>1.3.0</version>
-	<title>Services: Rules WAM</title>
-	<include_file>/usr/local/pkg/rules_wam.inc</include_file>
-	<menu>
-		<name>Rules WAM</name>
-		<section>Services</section>
-		<configfile>rules_wam.xml</configfile>
-		<url>/rules_wam.php</url>
-		<tooltiptext>Rules WAM - Gerenciamento e Bloqueio de Categorias de Sites</tooltiptext>
-	</menu>
-	<tabs>
-		<tab>
-			<text>Configurações de Bloqueio</text>
-			<url>/rules_wam.php</url>
-			<active/>
-		</tab>
-		<tab>
-			<text>Status &amp; Teste de Bloqueio</text>
-			<url>/rules_wam_status.php</url>
-		</tab>
-	</tabs>
-	<fields>
-		<field>
-			<name>Controle Geral</name>
-			<type>listtopic</type>
-		</field>
-		<field>
-			<fielddescr>Habilitar Serviço Rules WAM</fielddescr>
-			<fieldname>enable</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Marque para ativar a filtragem de categorias via DNS (Unbound).</description>
-		</field>
-
-		<field>
-			<name>Categorias de Bloqueio Disponíveis</name>
-			<type>listtopic</type>
-		</field>
-		<field>
-			<fielddescr>Mídias Sociais</fielddescr>
-			<fieldname>block_social</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia Facebook, Instagram, Threads, TikTok, Twitter/X, Kwai, LinkedIn, Pinterest, Reddit, Discord, etc.</description>
-		</field>
-		<field>
-			<fielddescr>Conteúdo Adulto &amp; Pornografia</fielddescr>
-			<fieldname>block_adult</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia sites adultos, canais eróticos, chats e plataformas explícitas (Pornhub, XVideos, OnlyFans, etc.).</description>
-		</field>
-		<field>
-			<fielddescr>Notícias &amp; Portais de Jornalismo</fielddescr>
-			<fieldname>block_news</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia portais de notícias e jornais (G1, Globo, UOL, Folha, Estadão, CNN, R7, Metrópoles, Terra, BBC, etc.).</description>
-		</field>
-		<field>
-			<fielddescr>Esportes &amp; Placares ao Vivo</fielddescr>
-			<fieldname>block_sports</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia portais esportivos, placares e transmissões de jogos (GE/Globo Esporte, ESPN, Lance, Flashscore, SofaScore, Futemax, etc.).</description>
-		</field>
-		<field>
-			<fielddescr>Jogos Online &amp; Games</fielddescr>
-			<fieldname>block_gaming</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia Steam, Epic Games, Roblox, Riot Games (LoL, Valorant), Blizzard/Battle.net, Xbox Live, PlayStation, etc.</description>
-		</field>
-		<field>
-			<fielddescr>Streaming &amp; Vídeos</fielddescr>
-			<fieldname>block_streaming</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia plataformas de vídeo e áudio sob demanda (YouTube, Netflix, Prime Video, Disney+, Twitch, Spotify, etc.).</description>
-		</field>
-		<field>
-			<fielddescr>Apostas, Bets &amp; Cassinos</fielddescr>
-			<fieldname>block_gambling</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia casas de apostas esportivas, bets e cassinos online (Bet365, Betano, Sportingbet, Blaze, Stake, Pixbet, etc.).</description>
-		</field>
-		<field>
-			<fielddescr>Compras &amp; E-commerce</fielddescr>
-			<fieldname>block_shopping</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia sites de compras (Mercado Livre, Shopee, AliExpress, Shein, Amazon, Magalu, Casas Bahia, etc.).</description>
-		</field>
-		<field>
-			<fielddescr>Torrents &amp; P2P</fielddescr>
-			<fieldname>block_p2p</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia sites e rastreadores de torrent (The Pirate Bay, 1337x, YTS, RARBG, BitTorrent, uTorrent, etc.).</description>
-		</field>
-		<field>
-			<fielddescr>Anti-Bypass (Bloquear DoH)</fielddescr>
-			<fieldname>block_doh</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia servidores DNS-over-HTTPS públicos (Cloudflare, Google, Quad9) para impedir que navegadores e celulares burlem o filtro.</description>
-		</field>
-		<field>
-			<fielddescr>Forçar DNS Local (Porta 53 Anti-Bypass)</fielddescr>
-			<fieldname>block_dns_bypass</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<default_value>no</default_value>
-			<description>Recurso corporativo Anti-Bypass: Redireciona consultas DNS externas (porta 53 UDP/TCP enviadas a 8.8.8.8, 1.1.1.1, etc.) para o Unbound local via NAT Port Forward. Garante que dispositivos com DNS manual sejam filtrados pelo WAM.</description>
-		</field>
-		<field>
-			<fielddescr>Forwarding Upstream (Google &amp; Cloudflare)</fielddescr>
-			<fieldname>enable_upstream_forwarding</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<default_value>no</default_value>
-			<description>Encaminha consultas legítimas permitidas diretamente aos servidores Anycast de alta performance do Google (8.8.8.8, 8.8.4.4) e Cloudflare (1.1.1.1, 1.0.0.1). O WAM bloqueia as categorias restritas localmente antes de enviar à internet.</description>
-		</field>
-		<field>
-			<fielddescr>VPN, ZTNA &amp; Proxies Anônimos (Geral)</fielddescr>
-			<fieldname>block_vpn</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Ativa o controle e bloqueio de redes virtuais VPN, provedores ZTNA e proxies. Use os campos abaixo para habilitar/desabilitar fornecedores específicos.</description>
-		</field>
-		<field>
-			<fielddescr>Bloquear Fortinet / FortiGate SSL-VPN</fielddescr>
-			<fieldname>block_vpn_fortinet</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia conexões e portais Fortinet / FortiClient SSL-VPN. Desmarque se sua organização utiliza este serviço.</description>
-		</field>
-		<field>
-			<fielddescr>Bloquear Cisco AnyConnect / Secure Client</fielddescr>
-			<fieldname>block_vpn_cisco</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia Cisco AnyConnect, Secure Client e gateways corporativos Cisco. Desmarque se sua organização utiliza este serviço.</description>
-		</field>
-		<field>
-			<fielddescr>Bloquear Palo Alto GlobalProtect / Prisma</fielddescr>
-			<fieldname>block_vpn_paloalto</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia portais Palo Alto Networks GlobalProtect e Prisma Access. Desmarque se sua organização utiliza este serviço.</description>
-		</field>
-		<field>
-			<fielddescr>Bloquear Zscaler (ZPA &amp; ZIA Cloud)</fielddescr>
-			<fieldname>block_ztna_zscaler</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia infraestrutura Zscaler ZPA (Private Access) e ZIA (Internet Access). Desmarque se sua organização utiliza este serviço.</description>
-		</field>
-		<field>
-			<fielddescr>Bloquear Netskope Security Cloud &amp; NPA</fielddescr>
-			<fieldname>block_ztna_netskope</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia Netskope Private Access e Security Cloud. Desmarque se sua organização utiliza este serviço.</description>
-		</field>
-		<field>
-			<fielddescr>Bloquear Cloudflare WARP &amp; Zero Trust</fielddescr>
-			<fieldname>block_ztna_cloudflare</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia Cloudflare WARP client e túneis Zero Trust.</description>
-		</field>
-		<field>
-			<fielddescr>Bloquear Tailscale, ZeroTier &amp; Mesh Tunnels</fielddescr>
-			<fieldname>block_ztna_tailscale</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia redes mesh P2P (Tailscale, ZeroTier) e túneis de portas (Ngrok, Twingate, Hamachi, Localtunnel).</description>
-		</field>
-		<field>
-			<fielddescr>Bloquear VPNs Comerciais &amp; Proxies Web</fielddescr>
-			<fieldname>block_vpn_commercial</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia provedores de VPN comercial (NordVPN, ExpressVPN, Surfshark, Proton, etc.), Tor e proxies anônimos web.</description>
-		</field>
-		<field>
-			<fielddescr>Mensageiros &amp; Ferramentas de Comunicação (Geral)</fielddescr>
-			<fieldname>block_messaging</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Ativa o bloqueio de aplicativos e sites de comunicação instantânea, chats e mensageiros corporativos/pessoais.</description>
-		</field>
-		<field>
-			<fielddescr>Bloquear WhatsApp (Web, Desktop &amp; Mobile)</fielddescr>
-			<fieldname>block_msg_whatsapp</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia WhatsApp Web, aplicativo para desktop e conexões mobile (whatsapp.com, whatsapp.net, wa.me).</description>
-		</field>
-		<field>
-			<fielddescr>Bloquear Telegram (Web, App &amp; t.me)</fielddescr>
-			<fieldname>block_msg_telegram</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia Telegram Web, API e links (telegram.org, t.me, telegra.ph).</description>
-		</field>
-		<field>
-			<fielddescr>Bloquear Facebook Messenger</fielddescr>
-			<fieldname>block_msg_messenger</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia Facebook Messenger (messenger.com, m.me, chat.facebook.com).</description>
-		</field>
-		<field>
-			<fielddescr>Bloquear Microsoft Teams &amp; Skype / MSN</fielddescr>
-			<fieldname>block_msg_teams_skype</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia Microsoft Teams, Skype e redes legadas MSN Messenger (teams.microsoft.com, skype.com, messenger.msn.com).</description>
-		</field>
-		<field>
-			<fielddescr>Bloquear Discord (Chat &amp; Voz)</fielddescr>
-			<fieldname>block_msg_discord</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia Discord e convites (discord.com, discord.gg, discordapp.com).</description>
-		</field>
-		<field>
-			<fielddescr>Bloquear Slack</fielddescr>
-			<fieldname>block_msg_slack</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia plataforma de comunicação Slack (slack.com, slack-msgs.com).</description>
-		</field>
-		<field>
-			<fielddescr>Bloquear Zoom &amp; Google Meet / Chat</fielddescr>
-			<fieldname>block_msg_zoom_meet</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia plataformas de reuniões e chat Zoom (zoom.us) e Google Meet/Chat (meet.google.com, chat.google.com).</description>
-		</field>
-		<field>
-			<fielddescr>Bloquear Outros Mensageiros (Signal, WeChat, Viber, LINE, Omegle, etc.)</fielddescr>
-			<fieldname>block_msg_others</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Bloqueia mensageiros adicionais: Signal, WeChat, Viber, LINE, KakaoTalk, ICQ, Kik, Element/Matrix, Omegle, etc.</description>
-		</field>
-
-		<field>
-			<name>Integração Corporativa: Active Directory, NPS (RADIUS) &amp; Netskope</name>
-			<type>listtopic</type>
-		</field>
-		<field>
-			<fielddescr>Habilitar Split-DNS Corporativo</fielddescr>
-			<fieldname>corp_enable</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Encaminha consultas de Active Directory e NPS RADIUS diretamente para a Matriz através da VPN IPsec.</description>
-		</field>
-		<field>
-			<fielddescr>Domínio(s) do Active Directory</fielddescr>
-			<fieldname>corp_ad_domain</fieldname>
-			<type>input</type>
-			<size>40</size>
-			<description>Domínio interno (ex: madeiramadeira.local, corp.empresa.com.br). Se múltiplos, separe por vírgula.</description>
-		</field>
-		<field>
-			<fielddescr>IPs dos Servidores DNS da Matriz (AD/NPS)</fielddescr>
-			<fieldname>corp_ad_dns_ips</fieldname>
-			<type>input</type>
-			<size>40</size>
-			<description>IPs dos controladores de domínio e servidores NPS RADIUS na Matriz acessíveis via IPsec.</description>
-		</field>
-		<field>
-			<fielddescr>Encaminhar Zonas Reversas (in-addr.arpa)</fielddescr>
-			<fieldname>corp_reverse_lookup</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<default_value>yes</default_value>
-			<description>Encaminha resolução reversa de IP das sub-redes corporativas para os servidores da Matriz.</description>
-		</field>
-		<field>
-			<fielddescr>Redes Corporativas Autorizadas no DNS (CIDR)</fielddescr>
-			<fieldname>corp_allowed_subnets</fieldname>
-			<type>textarea</type>
-			<rows>4</rows>
-			<cols>40</cols>
-			<default_value>172.24.0.0/16
-192.168.0.0/16
-192.192.0.0/16
-10.0.0.0/8</default_value>
-			<description>Super-redes corporativas com autorização automática para consultar o Unbound DNS em todas as 18 unidades, incluindo sub-redes roteadas via Switch L3.</description>
-		</field>
-		<field>
-			<fielddescr>Proteção Netskope Security Cloud</fielddescr>
-			<fieldname>corp_protect_netskope</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<default_value>yes</default_value>
-			<description>Garante que os domínios da Netskope (goskope.com, netskope.com) fiquem em Whitelist permanente.</description>
-		</field>
-		<field>
-			<fielddescr>Proteger Provedores de Identidade Cloud (IdP)</fielddescr>
-			<fieldname>corp_protect_idp</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<default_value>yes</default_value>
-			<description>Mantém liberados Microsoft 365/Entra ID, Okta e Google para autenticação SSO/MFA.</description>
-		</field>
-		<field>
-			<fielddescr>Liberar Ferramentas de TI &amp; Downloads (PuTTY, etc.)</fielddescr>
-			<fieldname>corp_protect_tools</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<default_value>yes</default_value>
-			<description>Garante que downloads de ferramentas essenciais de TI e administração (PuTTY, WinSCP, 7-Zip, Notepad++, Git/GitHub, Sysinternals, etc.) fiquem em Whitelist permanente.</description>
-		</field>
-		<field>
-			<fielddescr>Liberar Infraestrutura Pública Cloudflare</fielddescr>
-			<fieldname>corp_protect_cloudflare</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<default_value>yes</default_value>
-			<description>Mantém liberada a infraestrutura CDN, bibliotecas (cdnjs), captchas Turnstile e APIs da Cloudflare para que sites legítimos e links de download carreguem normalmente.</description>
-		</field>
-		<field>
-			<fielddescr>Liberar Helpdesk &amp; Suporte Remoto (Zendesk, GLPI, ScreenConnect)</fielddescr>
-			<fieldname>corp_protect_helpdesk</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<default_value>yes</default_value>
-			<description>Garante que Zendesk, GLPI e ConnectWise ScreenConnect fiquem em Whitelist permanente para que sistemas de chamados, inventário e suporte técnico nunca sejam bloqueados.</description>
-		</field>
-		<field>
-			<fielddescr>Liberar Telefonia IP, Protocolo SIP &amp; SIP Phone</fielddescr>
-			<fieldname>corp_protect_voip</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<default_value>yes</default_value>
-			<description>Garante que servidores SIP, softphones (Zoiper, Linphone, MicroSIP), PABX em nuvem (3CX, Twilio, Telnyx, etc.), servidores STUN e aparelhos físicos SIP Phone (Yealink, Grandstream, Intelbras) permaneçam 100% liberados.</description>
-		</field>
-
-		<field>
-			<name>Agendamento por Horário (Horário Comercial)</name>
-			<type>listtopic</type>
-		</field>
-		<field>
-			<fielddescr>Ativar Agendamento por Horário</fielddescr>
-			<fieldname>schedule_enable</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Se ativado, o bloqueio funcionará apenas nos horários configurados abaixo (fora do horário, os sites são liberados).</description>
-		</field>
-		<field>
-			<fielddescr>Horário de Início do Bloqueio</fielddescr>
-			<fieldname>schedule_start</fieldname>
-			<type>input</type>
-			<size>10</size>
-			<default_value>08:00</default_value>
-			<description>Formato HH:MM (Exemplo: 08:00).</description>
-		</field>
-		<field>
-			<fielddescr>Início do Intervalo de Almoço (Liberado)</fielddescr>
-			<fieldname>schedule_lunch_start</fieldname>
-			<type>input</type>
-			<size>10</size>
-			<default_value>12:00</default_value>
-			<description>Horário em que o bloqueio pausa para o almoço (Exemplo: 12:00. Deixe em branco se não houver pausa).</description>
-		</field>
-		<field>
-			<fielddescr>Fim do Intervalo de Almoço (Retoma Bloqueio)</fielddescr>
-			<fieldname>schedule_lunch_end</fieldname>
-			<type>input</type>
-			<size>10</size>
-			<default_value>13:30</default_value>
-			<description>Horário em que o bloqueio é retomado (Exemplo: 13:30. Deixe em branco se não houver pausa).</description>
-		</field>
-		<field>
-			<fielddescr>Horário de Término do Bloqueio</fielddescr>
-			<fieldname>schedule_end</fieldname>
-			<type>input</type>
-			<size>10</size>
-			<default_value>18:00</default_value>
-			<description>Formato HH:MM (Exemplo: 18:00. Após este horário, o acesso é liberado).</description>
-		</field>
-		<field>
-			<fielddescr>Bloquear nos Fins de Semana</fielddescr>
-			<fieldname>schedule_weekend</fieldname>
-			<type>checkbox</type>
-			<setflagcheckboxon>yes</setflagcheckboxon>
-			<description>Marque se desejar manter o bloqueio ativo aos sábados e domingos.</description>
-		</field>
-
-		<field>
-			<name>Exceções &amp; Personalização</name>
-			<type>listtopic</type>
-		</field>
-		<field>
-			<fielddescr>IPs Isentos do Bloqueio (Bypass IPs)</fielddescr>
-			<fieldname>bypass_ips</fieldname>
-			<type>textarea</type>
-			<rows>4</rows>
-			<cols>60</cols>
-			<description>Insira os IPs locais de dispositivos que NUNCA devem sofrer bloqueio (Diretoria, TI, Marketing, etc.). Um IP por linha ou separados por vírgula. Exemplo: &lt;strong&gt;172.24.60.20&lt;/strong&gt;.</description>
-		</field>
-		<field>
-			<fielddescr>Lista Branca de Domínios (Whitelist)</fielddescr>
-			<fieldname>custom_whitelist</fieldname>
-			<type>textarea</type>
-			<rows>4</rows>
-			<cols>60</cols>
-			<description>Insira domínios que NUNCA devem ser bloqueados, mesmo que estejam nas categorias acima (um por linha). Exemplo: &lt;strong&gt;linkedin.com&lt;/strong&gt;</description>
-		</field>
-		<field>
-			<fielddescr>Lista Negra Adicional (Blacklist)</fielddescr>
-			<fieldname>custom_blacklist</fieldname>
-			<type>textarea</type>
-			<rows>4</rows>
-			<cols>60</cols>
-			<description>Insira domínios adicionais manuais para bloquear (um por linha). Exemplo: &lt;strong&gt;exemplo.com&lt;/strong&gt;</description>
-		</field>
-		<field>
-			<fielddescr>Ação do Bloqueio</fielddescr>
-			<fieldname>block_action</fieldname>
-			<type>select</type>
-			<default_value>block_page</default_value>
-			<options>
-				<option><name>Exibir Banner de Bloqueio da Empresa (Página de Bloqueio / Recomendado)</name><value>block_page</value></option>
-				<option><name>Retornar 0.0.0.0 (Silencioso - Sem Certificado SSL)</name><value>always_null</value></option>
-			</options>
-			<description>Selecione o comportamento ao bloquear um domínio. Ao selecionar a Página de Bloqueio, conexões HTTP/HTTPS em domínios restritos são direcionadas ao banner institucional corporativo.</description>
-		</field>
-	</fields>
-	<custom_php_resync_config_command>
-		rules_wam_resync();
-	</custom_php_resync_config_command>
-</packagegui>
-
-EOF_XML
-echo '>> Extraindo pkg/rules_wam.inc...'
-cat << 'EOF_INC' > $TMP_DIR/pkg/rules_wam.inc
-<?php
-/*
- * rules_wam.inc
- * Rules WAM - Web Access Manager para pfSense
- * Motor de aplicação de regras de bloqueio e auditoria no Unbound DNS
- */
-
-require_once("config.inc");
-require_once("util.inc");
-require_once("services.inc");
-
-define('WAM_FEEDS_DIR', '/usr/local/share/wam/feeds');
-define('WAM_CONF_FILE', '/var/unbound/wam_blocklist.conf');
-define('WAM_STATUS_FILE', '/var/log/wam_status.json');
-define('WAM_AUDIT_LOG', '/var/log/wam_audit.log');
-
-/**
- * Auxiliar para verificar se checkbox está marcada (aceita "yes", "on", 1, true)
- */
-function rules_wam_is_checked($val) {
-    if (empty($val)) return false;
-    if ($val === 'yes' || $val === 'on' || $val === true || $val === '1' || $val === 1) return true;
-    return false;
-}
-
-/**
- * Obtém todas as interfaces configuradas no pfSense com seus nomes amigáveis (descr) reais.
- * Suporta LAN, OPT1..OPTn, VLANs, Bridges, etc., exatamente como configurado no pfSense.
- */
-function rules_wam_get_configured_interfaces($include_wan = false) {
-    global $config;
-
-    $interfaces = array();
-    $ifdescrs = array();
-
-    if (file_exists('/etc/inc/interfaces.inc')) {
-        require_once("interfaces.inc");
-        if (function_exists('get_configured_interface_with_descr')) {
-            $ifdescrs = get_configured_interface_with_descr(false);
-        }
-    }
-
-    $raw_interfaces = function_exists('config_get_path') ? config_get_path('interfaces', array()) : (!empty($config['interfaces']) ? $config['interfaces'] : array());
-
-    if (!empty($raw_interfaces) && is_array($raw_interfaces)) {
-        foreach ($raw_interfaces as $if_key => $if_cfg) {
-            if (!$include_wan && $if_key === 'wan') {
-                continue;
-            }
-
-            // No pfSense, interfaces OPT só estão ativas se tiverem 'enable'. LAN e WAN são ativas por padrão.
-            $is_active = true;
-            if (function_exists('interface_is_enabled')) {
-                $is_active = interface_is_enabled($if_key);
-            } else {
-                $is_active = ($if_key === 'lan' || $if_key === 'wan' || isset($if_cfg['enable']));
-            }
-            if (!$is_active) {
-                continue;
-            }
-
-            // Nome descritivo amigável configurado no pfSense (Ex: LAN_CORP, WIFI_VISITANTES, REDE_LOCAL)
-            $descr = '';
-            if (!empty($if_cfg['descr'])) {
-                $descr = trim($if_cfg['descr']);
-            } elseif (function_exists('convert_friendly_interface_to_friendly_descr')) {
-                $descr = trim(convert_friendly_interface_to_friendly_descr($if_key));
-            } elseif (!empty($ifdescrs[$if_key])) {
-                $descr = trim($ifdescrs[$if_key]);
-            } else {
-                $descr = strtoupper($if_key);
-            }
-
-            // Interface física/virtual no FreeBSD (Ex: igb0, em1, vlan0.10, vtnet1)
-            $real_if = !empty($if_cfg['if']) ? $if_cfg['if'] : '';
-            if (empty($real_if) && function_exists('get_real_interface')) {
-                $real_if = get_real_interface($if_key);
-            }
-            if (empty($real_if) && function_exists('convert_friendly_interface_to_real_interface_name')) {
-                $real_if = convert_friendly_interface_to_real_interface_name($if_key);
-            }
-
-            // Normaliza nomes padrão: garante que 'wan' seja 'WAN' e 'lan' seja 'LAN'
-            // se a descrição estiver vazia ou com o nome do dispositivo físico (ex: vtnet1, vtnet0)
-            if ($if_key === 'wan' && (empty($descr) || (!empty($real_if) && strcasecmp($descr, $real_if) === 0))) {
-                $descr = 'WAN';
-            }
-            if ($if_key === 'lan' && (empty($descr) || (!empty($real_if) && strcasecmp($descr, $real_if) === 0))) {
-                $descr = 'LAN';
-            }
-
-            // Endereço IPv4 da Interface
-            $if_ip = '';
-            $if_subnet = 24;
-
-            if (function_exists('get_interface_ip')) {
-                $g_ip = get_interface_ip($if_key);
-                if (!empty($g_ip) && filter_var($g_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-                    $if_ip = $g_ip;
-                }
-            }
-
-            if (empty($if_ip) && function_exists('get_interface_info')) {
-                $info = get_interface_info($if_key);
-                if (!empty($info['ipaddr']) && filter_var($info['ipaddr'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-                    $if_ip = $info['ipaddr'];
-                }
-                if (!empty($info['subnet']) && is_numeric($info['subnet'])) {
-                    $if_subnet = (int)$info['subnet'];
-                }
-                if (empty($real_if) && !empty($info['if'])) {
-                    $real_if = $info['if'];
-                } elseif (empty($real_if) && !empty($info['hwif'])) {
-                    $real_if = $info['hwif'];
-                }
-            }
-
-            if (empty($if_ip) && !empty($if_cfg['ipaddr']) && filter_var($if_cfg['ipaddr'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-                $if_ip = $if_cfg['ipaddr'];
-                if (!empty($if_cfg['subnet']) && is_numeric($if_cfg['subnet'])) {
-                    $if_subnet = (int)$if_cfg['subnet'];
-                }
-            }
-
-            // Fallback via ifconfig para capturar IP dinâmico/DHCP/VLAN
-            if (empty($if_ip) && !empty($real_if)) {
-                $raw_out = array();
-                @exec("/sbin/ifconfig " . escapeshellarg($real_if) . " 2>/dev/null", $raw_out);
-                foreach ($raw_out as $r_line) {
-                    if (preg_match('/inet\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\s+netmask\s+(0x[0-9a-fA-F]+|[0-9\.]+)/i', $r_line, $im)) {
-                        $if_ip = $im[1];
-                        if (stripos($im[2], '0x') === 0) {
-                            $if_subnet = substr_count(decbin(hexdec($im[2])), '1');
-                        } elseif (filter_var($im[2], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-                            $if_subnet = substr_count(decbin(ip2long($im[2])), '1');
-                        }
-                        break;
-                    }
-                }
-            }
-
-            // Calcula CIDR da sub-rede
-            $has_valid_ip = (!empty($if_ip) && filter_var($if_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4));
-            $cidr = '';
-            $net_long = 0;
-            $long_mask = 0;
-            if ($has_valid_ip) {
-                if ($if_subnet <= 0 || $if_subnet > 32) $if_subnet = 24;
-                $long_ip = ip2long($if_ip);
-                $long_mask = -1 << (32 - $if_subnet);
-                $net_long = $long_ip & $long_mask;
-                $cidr = long2ip($net_long) . '/' . $if_subnet;
-            } else {
-                $cidr = strtoupper($if_key) . ' (Sem IP)';
-            }
-
-            $interfaces[$if_key] = array(
-                'key'         => $if_key,
-                'logical_id'  => strtoupper($if_key),
-                'descr'       => $descr,
-                'name'        => $descr,
-                'real_if'     => !empty($real_if) ? $real_if : $if_key,
-                'ip'          => $if_ip,
-                'subnet'      => $if_subnet,
-                'cidr'        => $cidr,
-                'net_long'    => $net_long,
-                'mask_long'   => $long_mask,
-                'has_ip'      => $has_valid_ip,
-                'is_internal' => ($if_key !== 'wan')
-            );
-        }
-    }
-
-    return $interfaces;
-}
-
-/**
- * Localiza a interface do pfSense correspondente a um endereço IP de cliente
- */
-function rules_wam_find_interface_for_ip($ip) {
-    if (empty($ip) || !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-        return null;
-    }
-    static $interfaces_cache = null;
-    if ($interfaces_cache === null) {
-        $interfaces_cache = rules_wam_get_configured_interfaces(true);
-    }
-    $ipl = ip2long($ip);
-    foreach ($interfaces_cache as $if_key => $if_data) {
-        if (!empty($if_data['has_ip']) && !empty($if_data['mask_long'])) {
-            if (($ipl & $if_data['mask_long']) === $if_data['net_long']) {
-                return $if_data;
-            }
-        }
-    }
-    return null;
-}
-
-/**
- * Obtém o IP IPv4 de banner/redirecionamento da rede local em tempo de execução
- */
-function rules_wam_get_lan_ip() {
-    global $config;
-
-    // 1. Tenta obter IP de todas as interfaces configuradas no pfSense
-    $ifaces = rules_wam_get_configured_interfaces(false);
-
-    // Se a interface 'lan' existir e tiver IP, usa ela como prioritária
-    if (!empty($ifaces['lan']['ip'])) {
-        return $ifaces['lan']['ip'];
-    }
-
-    // Se a LAN foi renomeada ou não tem IP, busca a primeira interface interna com IPv4 ativo
-    foreach ($ifaces as $if_data) {
-        if (!empty($if_data['ip'])) {
-            return $if_data['ip'];
-        }
-    }
-
-    // Fallbacks legados
-    if (function_exists('get_interface_ip')) {
-        $lan_ip = get_interface_ip('lan');
-        if (!empty($lan_ip) && filter_var($lan_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-            return $lan_ip;
-        }
-        // Se interfaces internas não tiverem IP, tenta WAN (caso de testes/laboratório em VM)
-        $wan_ip = get_interface_ip('wan');
-        if (!empty($wan_ip) && filter_var($wan_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-            return $wan_ip;
-        }
-    }
-
-    $cfg_ip = function_exists('config_get_path') ? config_get_path('interfaces/lan/ipaddr', '') : ($config['interfaces']['lan']['ipaddr'] ?? '');
-    if (filter_var($cfg_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-        return $cfg_ip;
-    }
-
-    $cfg_wan = function_exists('config_get_path') ? config_get_path('interfaces/wan/ipaddr', '') : ($config['interfaces']['wan']['ipaddr'] ?? '');
-    if (filter_var($cfg_wan, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-        return $cfg_wan;
-    }
-
-    return '192.168.1.1';
-}
-
-/**
- * Obtém a configuração do Rules WAM de qualquer estrutura do config.xml ou $_POST
- */
-function rules_wam_get_config() {
-    global $config;
-
-    $cfg = null;
-
-    $cfg0 = config_get_path('installedpackages/rules_wam/config/0', null);
-    if (is_array($cfg0) && !empty($cfg0)) {
-        $cfg = $cfg0;
-    } else {
-        $cfga = config_get_path('installedpackages/rules_wam/config', null);
-        if (is_array($cfga) && !empty($cfga)) {
-            $cfg = (isset($cfga[0]) && is_array($cfga[0])) ? $cfga[0] : $cfga;
-        } elseif (isset($config['installedpackages']['rules_wam']['config'][0])) {
-            $cfg = $config['installedpackages']['rules_wam']['config'][0];
-        } elseif (isset($config['installedpackages']['rules_wam']['config']) && is_array($config['installedpackages']['rules_wam']['config'])) {
-            $cfg = $config['installedpackages']['rules_wam']['config'];
-        }
-    }
-
-    if (empty($cfg) || !is_array($cfg)) {
-        $cfg_w0 = config_get_path('installedpackages/wam/config/0', null);
-        if (is_array($cfg_w0) && !empty($cfg_w0)) {
-            $cfg = $cfg_w0;
-        } else {
-            $cfg_wa = config_get_path('installedpackages/wam/config', null);
-            if (is_array($cfg_wa) && !empty($cfg_wa)) {
-                $cfg = (isset($cfg_wa[0]) && is_array($cfg_wa[0])) ? $cfg_wa[0] : $cfg_wa;
-            }
-        }
-    }
-
-    if (is_array($cfg) && !empty($cfg)) {
-        // Se a configuração já existe no pfSense, checkboxes ausentes no XML representam 'no'
-        $checkbox_keys = array(
-            'enable', 'block_adult', 'block_gambling', 'block_news', 'block_social',
-            'block_sports', 'block_gaming', 'block_streaming', 'block_shopping',
-            'block_p2p', 'block_doh', 'block_dns_bypass', 'block_vpn', 'block_messaging',
-            'block_vpn_fortinet', 'block_vpn_cisco', 'block_vpn_paloalto',
-            'block_ztna_zscaler', 'block_ztna_netskope', 'block_ztna_cloudflare',
-            'block_ztna_tailscale', 'block_vpn_commercial',
-            'block_msg_whatsapp', 'block_msg_telegram', 'block_msg_messenger',
-            'block_msg_teams_skype', 'block_msg_discord', 'block_msg_slack',
-            'block_msg_zoom_meet', 'block_msg_others',
-            'schedule_enable', 'schedule_weekend',
-            'corp_enable', 'corp_protect_netskope', 'corp_protect_idp', 'corp_reverse_lookup',
-            'corp_protect_tools', 'corp_protect_cloudflare',
-            'corp_protect_helpdesk', 'corp_protect_voip',
-            'enable_upstream_forwarding'
-        );
-        foreach ($checkbox_keys as $chk) {
-            if (!isset($cfg[$chk])) {
-                // Proteções essenciais devem ser padrão ativas se não definidas
-                if ($chk === 'corp_protect_tools' || $chk === 'corp_protect_cloudflare' || $chk === 'corp_protect_netskope' || $chk === 'corp_protect_idp' || $chk === 'corp_protect_helpdesk' || $chk === 'corp_protect_voip') {
-                    $cfg[$chk] = 'yes';
-                } else {
-                    $cfg[$chk] = 'no';
-                }
-            }
-        }
-        if (empty($cfg['block_action'])) {
-            $cfg['block_action'] = 'block_page';
-        }
-        return $cfg;
-    }
-
-    // Configuração inicial padrão (apenas se instalação virgem sem registro prévio):
-    return array(
-        'enable'                     => 'yes',
-        'block_adult'                => 'yes',
-        'block_gambling'             => 'yes',
-        'block_gaming'               => 'yes',
-        'block_dns_bypass'           => 'no',
-        'enable_upstream_forwarding' => 'no',
-        'block_action'               => 'block_page',
-        'corp_protect_netskope'      => 'yes',
-        'corp_protect_idp'           => 'yes',
-        'corp_protect_tools'         => 'yes',
-        'corp_protect_cloudflare'    => 'yes',
-        'corp_protect_helpdesk'      => 'yes',
-        'corp_protect_voip'          => 'yes',
-        'corp_reverse_lookup'        => 'yes',
-        'initialized'                => 'yes'
-    );
-}
-
-/**
- * Função chamada pelo pfSense ao salvar configurações
- */
-function rules_wam_resync() {
-    global $config;
-
-    $wam_cfg = rules_wam_get_config();
-    log_error("[Rules WAM] Resync disparado.");
-
-    if (!rules_wam_is_checked($wam_cfg['enable'] ?? null)) {
-        log_error("[Rules WAM] 'enable' desmarcado. Desabilitando serviço...");
-        rules_wam_disable();
-        return;
-    }
-
-    if (rules_wam_is_checked($wam_cfg['schedule_enable'] ?? null)) {
-        if (!rules_wam_is_in_schedule_window($wam_cfg)) {
-            rules_wam_suspend_schedule();
-            return;
-        }
-    }
-
-    rules_wam_apply_rules($wam_cfg);
-}
-
-function wam_resync() {
-    rules_wam_resync();
-}
-
-/**
- * Aplica as regras ativas no Unbound
- */
-function rules_wam_apply_rules($wam_cfg = null) {
-    log_error("[Rules WAM] Compilando regras de bloqueio por categoria...");
-
-    if (empty($wam_cfg) || !is_array($wam_cfg)) {
-        $wam_cfg = rules_wam_get_config();
-    }
-
-    if (!isset($wam_cfg['enable'])) {
-        $wam_cfg['enable'] = 'yes';
-    }
-
-    $all_cat_keys = array(
-        'block_adult', 'block_gambling', 'block_news', 'block_social',
-        'block_sports', 'block_gaming', 'block_streaming', 'block_shopping',
-        'block_p2p', 'block_doh', 'block_dns_bypass', 'block_vpn', 'block_messaging',
-        'enable_upstream_forwarding'
-    );
-    foreach ($all_cat_keys as $ack) {
-        if (!isset($wam_cfg[$ack])) {
-            $wam_cfg[$ack] = 'no';
-        }
-    }
-
-    $blocked_domains = array();
-    $whitelist = array();
-    $bypass_ips = array();
-
-    if (!empty($wam_cfg['custom_whitelist'])) {
-        $lines = preg_split('/\r\n|\r|\n/', $wam_cfg['custom_whitelist']);
-        foreach ($lines as $line) {
-            $d = rules_wam_clean_domain($line);
-            if ($d) {
-                $whitelist[$d] = true;
-            }
-        }
-    }
-
-    // Garante que o Google Meet e recursos essenciais nunca sejam bloqueados
-    $whitelist['meet.google.com'] = true;
-    $whitelist['apis.google.com'] = true;
-    $whitelist['ssl.gstatic.com'] = true;
-    $whitelist['clients6.google.com'] = true;
-    $whitelist['madeiramadeira.local'] = true;
-    $whitelist['madeiramadeira.com.br'] = true;
-
-    // Proteção Essencial de Atendimento, Suporte e Helpdesk (Whitelist incondicional)
-    $whitelist['zendesk.com'] = true;
-    $whitelist['zdassets.com'] = true;
-    $whitelist['zdstatic.com'] = true;
-    $whitelist['zdusercontent.com'] = true;
-    $whitelist['zopim.com'] = true;
-    $whitelist['zopim.io'] = true;
-    $whitelist['zopim.net'] = true;
-    $whitelist['glpi-project.org'] = true;
-    $whitelist['glpi-network.cloud'] = true;
-    $whitelist['glpi-network.com'] = true;
-    $whitelist['services.glpi-network.com'] = true;
-    $whitelist['teclib.com'] = true;
-    $whitelist['screenconnect.com'] = true;
-    $whitelist['screenconnect.net'] = true;
-    $whitelist['connectwise.com'] = true;
-    $whitelist['connectwise.net'] = true;
-    $whitelist['hostedrmm.com'] = true;
-
-    // --- Integração Corporativa: Netskope, IdP, Ferramentas de TI, Cloudflare, Helpdesk e SIP/VoIP ---
-    $protect_netskope = (!isset($wam_cfg['corp_protect_netskope']) || rules_wam_is_checked($wam_cfg['corp_protect_netskope']));
-    $protect_idp = (!isset($wam_cfg['corp_protect_idp']) || rules_wam_is_checked($wam_cfg['corp_protect_idp']));
-    $protect_tools = (!isset($wam_cfg['corp_protect_tools']) || rules_wam_is_checked($wam_cfg['corp_protect_tools']));
-    $protect_cloudflare = (!isset($wam_cfg['corp_protect_cloudflare']) || rules_wam_is_checked($wam_cfg['corp_protect_cloudflare']));
-    $protect_helpdesk = (!isset($wam_cfg['corp_protect_helpdesk']) || rules_wam_is_checked($wam_cfg['corp_protect_helpdesk']));
-    $protect_voip = (!isset($wam_cfg['corp_protect_voip']) || rules_wam_is_checked($wam_cfg['corp_protect_voip']));
-    $corp_enable = rules_wam_is_checked($wam_cfg['corp_enable'] ?? null);
-    $corp_domains = rules_wam_parse_list($wam_cfg['corp_ad_domain'] ?? '');
-    $corp_dns_ips = rules_wam_parse_list($wam_cfg['corp_ad_dns_ips'] ?? '');
-    $corp_reverse = (!isset($wam_cfg['corp_reverse_lookup']) || rules_wam_is_checked($wam_cfg['corp_reverse_lookup']));
-    $block_action = !empty($wam_cfg['block_action']) ? trim($wam_cfg['block_action']) : 'block_page';
-
-    if ($protect_netskope) {
-        $netskope_domains = array(
-            'netskope.com', 'goskope.com', 'netskopedns.com', 'netskope.io',
-            'addon-netskope.com', 'nsclient.netskope.com', 'npa.netskope.com',
-            'gateway.goskope.com', 'ep.goskope.com', 'ca.goskope.com',
-            'eu.goskope.com', 'us.goskope.com', 'app.netskope.com'
-        );
-        foreach ($netskope_domains as $nd) {
-            $whitelist[$nd] = true;
-        }
-    }
-
-    if ($protect_idp) {
-        $idp_domains = array(
-            'login.microsoftonline.com', 'login.microsoft.com', 'microsoft.com',
-            'msftauth.net', 'msauth.net', 'windows.net', 'office.com',
-            'okta.com', 'oktacdn.com', 'accounts.google.com'
-        );
-        foreach ($idp_domains as $idp) {
-            $whitelist[$idp] = true;
-        }
-    }
-
-    // Liberação e Proteção de Ferramentas de TI e Downloads Administrativos (PuTTY, WinSCP, etc.)
-    if ($protect_tools) {
-        $tools_domains = array(
-            'putty.org', 'chiark.greenend.org.uk', 'greenend.org.uk', 'the.earth.li', 'tartarus.org',
-            'winscp.net', 'filezilla-project.org', '7-zip.org', 'notepad-plus-plus.org',
-            'github.com', 'githubusercontent.com', 'raw.githubusercontent.com', 'github.githubassets.com',
-            'gitlab.com', 'git-scm.com', 'sourceforge.net', 'osdn.net',
-            'sysinternals.com', 'live.sysinternals.com', 'download.sysinternals.com',
-            'wireshark.org', 'nmap.org', 'dbeaver.io', 'postman.com', 'curl.se', 'mobatek.net',
-            'python.org', 'pypi.org', 'pypi.python.org', 'files.pythonhosted.org'
-        );
-        foreach ($tools_domains as $td) {
-            $whitelist[$td] = true;
-        }
-    }
-
-    // Proteção da Infraestrutura Pública Cloudflare (CDN cdnjs, Captchas Turnstile, APIs públicas)
-    if ($protect_cloudflare) {
-        $cf_domains = array(
-            'cloudflare.com', 'cdnjs.cloudflare.com', 'challenges.cloudflare.com',
-            'static.cloudflareinsights.com', 'cloudflareinsights.com', 'cf-assets.net'
-        );
-        foreach ($cf_domains as $cfd) {
-            $whitelist[$cfd] = true;
-        }
-    }
-
-    // Liberação e Proteção de Plataformas de Helpdesk, ITSM e Suporte Remoto (Zendesk, GLPI, ScreenConnect)
-    if ($protect_helpdesk) {
-        $helpdesk_domains = array(
-            'zendesk.com', 'zdassets.com', 'zdstatic.com', 'zdusercontent.com',
-            'zopim.com', 'zopim.io', 'zopim.net',
-            'glpi-project.org', 'glpi-network.cloud', 'glpi-network.com',
-            'services.glpi-network.com', 'teclib.com', 'teclib-edition.com',
-            'screenconnect.com', 'screenconnect.net',
-            'connectwise.com', 'connectwise.net', 'hostedrmm.com'
-        );
-        foreach ($helpdesk_domains as $hd) {
-            $whitelist[$hd] = true;
-        }
-    }
-
-    // Liberação e Proteção de Telefonia IP, PABX Cloud, Protocolo SIP e Telefones IP (SIP Phones)
-    if ($protect_voip) {
-        $voip_domains = array(
-            // Servidores STUN / TURN essenciais para travessia NAT e sinalização VoIP/WebRTC
-            'stun.l.google.com', 'stun1.l.google.com', 'stun2.l.google.com', 'stun3.l.google.com', 'stun4.l.google.com',
-            'stun.sipgate.net', 'stun.voipbuster.com', 'stun.ekiga.net', 'stun.counterpath.com', 'stun.counterpath.net',
-            // Softphones e clientes SIP
-            'zoiper.com', 'linphone.org', 'microsip.org', 'micro-sip.org', 'counterpath.com', 'bria.com', 'sip.audio',
-            // Fabricantes de Telefones IP (SIP Phone) e provisionamento remoto / RPS / TR-069
-            'yealink.com', 'yealinkphones.com', 'ycs.yealink.com', 'rps.yealink.com',
-            'grandstream.com', 'gdms.cloud', 'gaps.grandstream.com',
-            'intelbras.com.br', 'intelbras.com',
-            'fanvil.com', 'fdms.fanvil.com',
-            'poly.com', 'polycom.com', 'snom.com',
-            // PABX em Nuvem, Troncos SIP e Operadoras VoIP
-            '3cx.com', '3cx.net', '3cx.eu', '3cx.us',
-            'sipgate.de', 'sipgate.com', 'sipgate.net',
-            'twilio.com', 'telnyx.com', 'plivo.com',
-            'ringcentral.com', 'vonage.com', 'nexmo.com', '8x8.com',
-            'voip.ms', 'callcentric.com', 'didlogic.com', 'flowroute.com',
-            'jive.com', 'goto.com', 'gotoconnect.com', 'dialpad.com',
-            'totalvoice.com.br', 'zenvia.com', 'locaweb.com.br', 'webex.com'
-        );
-        foreach ($voip_domains as $vd) {
-            $whitelist[$vd] = true;
-        }
-    }
-
-    if ($corp_enable && !empty($corp_domains)) {
-        foreach ($corp_domains as $cdom) {
-            $cdom_clean = rules_wam_clean_domain($cdom);
-            if ($cdom_clean) {
-                $whitelist[$cdom_clean] = true;
-            }
-        }
-    }
-
-    if (!empty($wam_cfg['bypass_ips'])) {
-        $raw_ips = preg_split('/[\r\n,;]+/', $wam_cfg['bypass_ips']);
-        foreach ($raw_ips as $rip) {
-            $rip = trim($rip);
-            if (filter_var($rip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-                $bypass_ips[] = $rip . '/32';
-            } elseif (filter_var($rip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
-                $bypass_ips[] = $rip . '/128';
-            } elseif (preg_match('#^\d+\.\d+\.\d+\.\d+/\d+$#', $rip)) {
-                $bypass_ips[] = $rip;
-            }
-        }
-    }
-
-    $categories_active = array();
-
-    $category_map = array(
-        'block_adult'     => array('label' => 'Conteúdo Adulto',        'file' => 'adult.txt'),
-        'block_gambling'  => array('label' => 'Apostas & Bets',         'file' => 'gambling.txt'),
-        'block_news'      => array('label' => 'Notícias & Portais',      'file' => 'news.txt'),
-        'block_social'    => array('label' => 'Mídias Sociais',         'file' => 'social-media.txt'),
-        'block_sports'    => array('label' => 'Esportes & Placares',    'file' => 'sports.txt'),
-        'block_gaming'    => array('label' => 'Jogos & Games',          'file' => 'gaming.txt'),
-        'block_streaming' => array('label' => 'Streaming & Vídeo',      'file' => 'streaming.txt'),
-        'block_shopping'  => array('label' => 'Compras & E-commerce',   'file' => 'shopping.txt'),
-        'block_p2p'       => array('label' => 'Torrents & P2P',         'file' => 'p2p.txt'),
-        'block_doh'       => array('label' => 'Anti-Bypass DoH',        'file' => 'doh-providers.txt'),
-        'block_vpn'       => array('label' => 'VPN, ZTNA & Proxies',    'file' => 'vpn-ztna.txt'),
-        'block_messaging' => array('label' => 'Mensageiros & Chat',     'file' => 'messaging.txt'),
-    );
-
-    foreach ($category_map as $cfg_key => $meta) {
-        if (rules_wam_is_checked($wam_cfg[$cfg_key] ?? null)) {
-            $categories_active[] = $meta['label'];
-            if ($cfg_key === 'block_vpn') {
-                $vpn_sub_map = array(
-                    'block_vpn_fortinet'    => 'vpn-fortinet.txt',
-                    'block_vpn_cisco'       => 'vpn-cisco.txt',
-                    'block_vpn_paloalto'    => 'vpn-paloalto.txt',
-                    'block_ztna_zscaler'    => 'ztna-zscaler.txt',
-                    'block_ztna_netskope'   => 'ztna-netskope.txt',
-                    'block_ztna_cloudflare' => 'ztna-cloudflare.txt',
-                    'block_ztna_tailscale'  => 'ztna-tailscale.txt',
-                    'block_vpn_commercial'  => 'vpn-commercial.txt',
-                );
-                $any_sub_specified = false;
-                foreach (array_keys($vpn_sub_map) as $sub_k) {
-                    if (isset($wam_cfg[$sub_k])) {
-                        $any_sub_specified = true;
-                        break;
-                    }
-                }
-                foreach ($vpn_sub_map as $sub_k => $sub_f) {
-                    if ($sub_k === 'block_ztna_netskope' && $protect_netskope) {
-                        continue; // Netskope protegido contra bloqueio acidental
-                    }
-                    if ($sub_k === 'block_ztna_cloudflare' && $protect_cloudflare) {
-                        // Se proteção à Cloudflare estiver ativa, só bloqueia WARP se explicitamente marcado
-                        if (!rules_wam_is_checked($wam_cfg['block_ztna_cloudflare'] ?? null)) {
-                            continue;
-                        }
-                    }
-                    $is_sub_active = $any_sub_specified ? rules_wam_is_checked($wam_cfg[$sub_k] ?? null) : true;
-                    if ($is_sub_active) {
-                        rules_wam_load_feed_domains($sub_f, $blocked_domains, $whitelist);
-                    }
-                }
-            } elseif ($cfg_key === 'block_messaging') {
-                $msg_sub_map = array(
-                    'block_msg_whatsapp'    => 'msg-whatsapp.txt',
-                    'block_msg_telegram'    => 'msg-telegram.txt',
-                    'block_msg_messenger'   => 'msg-messenger.txt',
-                    'block_msg_teams_skype' => 'msg-teams-skype.txt',
-                    'block_msg_discord'     => 'msg-discord.txt',
-                    'block_msg_slack'       => 'msg-slack.txt',
-                    'block_msg_zoom_meet'   => 'msg-zoom-meet.txt',
-                    'block_msg_others'      => 'msg-others.txt',
-                );
-                $any_sub_specified = false;
-                foreach (array_keys($msg_sub_map) as $sub_k) {
-                    if (isset($wam_cfg[$sub_k])) {
-                        $any_sub_specified = true;
-                        break;
-                    }
-                }
-                foreach ($msg_sub_map as $sub_k => $sub_f) {
-                    $is_sub_active = $any_sub_specified ? rules_wam_is_checked($wam_cfg[$sub_k] ?? null) : true;
-                    if ($is_sub_active) {
-                        rules_wam_load_feed_domains($sub_f, $blocked_domains, $whitelist);
-                    }
-                }
-            } else {
-                rules_wam_load_feed_domains($meta['file'], $blocked_domains, $whitelist);
-            }
-        }
-    }
-
-    if (!empty($wam_cfg['custom_blacklist'])) {
-        $lines = preg_split('/\r\n|\r|\n/', $wam_cfg['custom_blacklist']);
-        foreach ($lines as $line) {
-            $d = rules_wam_clean_domain($line);
-            if ($d && !isset($whitelist[$d])) {
-                $blocked_domains[$d] = true;
-            }
-        }
-    }
-
-    $total = count($blocked_domains);
-    $conf_content  = "# ====================================================\n";
-    $conf_content .= "# Rules WAM - Auto-gerado\n";
-    $conf_content .= "# Atualizado em: " . date('Y-m-d H:i:s') . "\n";
-    $conf_content .= "# Categorias ativas (" . count($categories_active) . "): " . implode(', ', $categories_active) . "\n";
-    $conf_content .= "# Total de dominios bloqueados: {$total}\n";
-    $conf_content .= "# ====================================================\n";
-    $conf_content .= "server:\n";
-    $conf_content .= "  log-local-actions: yes\n";
-    $conf_content .= "  log-queries: yes\n";
-
-    // --- Integração Corporativa: Active Directory e NPS RADIUS (Anti-Rebinding e DNSSEC Bypass) ---
-    if ($corp_enable && !empty($corp_domains)) {
-        $conf_content .= "  # Excecoes para Active Directory e NPS RADIUS (Anti-Rebinding e DNSSEC Bypass)\n";
-        foreach ($corp_domains as $cdom) {
-            $cdom = rules_wam_clean_domain($cdom);
-            if (!empty($cdom)) {
-                $conf_content .= "  private-domain: \"{$cdom}\"\n";
-                $conf_content .= "  domain-insecure: \"{$cdom}\"\n";
-            }
-        }
-        if ($corp_reverse) {
-            $conf_content .= "  private-domain: \"in-addr.arpa\"\n";
-            $conf_content .= "  domain-insecure: \"in-addr.arpa\"\n";
-        }
-    }
-
-    // --- Autorização Global de Redes Corporativas no Unbound (Access Control) ---
-    $corp_subnets_raw = !empty($wam_cfg['corp_allowed_subnets']) ? $wam_cfg['corp_allowed_subnets'] : "172.24.0.0/16\n192.168.0.0/16\n192.192.0.0/16\n10.0.0.0/8";
-    $corp_subnets = rules_wam_parse_list($corp_subnets_raw);
-    if (!empty($corp_subnets)) {
-        $conf_content .= "  # Redes Corporativas Autorizadas no Unbound (18 Unidades / Matriz / Filiais)\n";
-        foreach ($corp_subnets as $snet) {
-            $snet = trim($snet);
-            if (empty($snet)) continue;
-            if (preg_match('#^(\d{1,3}\.){3}\d{1,3}(/(?:[0-9]|[12][0-9]|3[0-2]))?$#', $snet)) {
-                $conf_content .= "  access-control: {$snet} allow\n";
-            }
-        }
-    }
-
-    $block_page_ip = !empty($wam_cfg['block_page_ip']) ? trim($wam_cfg['block_page_ip']) : '';
-    $all_ifaces = rules_wam_get_configured_interfaces(false);
-    $ip_found = false;
-    if (!empty($block_page_ip) && filter_var($block_page_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-        foreach ($all_ifaces as $if_data) {
-            if (!empty($if_data['ip']) && $if_data['ip'] === $block_page_ip) {
-                $ip_found = true;
-                break;
-            }
-        }
-    }
-    if (!$ip_found) {
-        $block_page_ip = rules_wam_get_lan_ip();
-    }
-
-    // Remove subdomínios cujo domínio pai já está na lista para evitar conflitos no Unbound
-    $clean_domains = array();
-    foreach ($blocked_domains as $d => $v) {
-        if (rules_wam_is_whitelisted($d, $whitelist)) {
-            continue;
-        }
-        $parts = explode('.', $d);
-        $has_parent = false;
-        while (count($parts) > 1) {
-            array_shift($parts);
-            $parent = implode('.', $parts);
-            if (isset($blocked_domains[$parent])) {
-                $has_parent = true;
-                break;
-            }
-        }
-        if (!$has_parent) {
-            $clean_domains[$d] = true;
-        }
-    }
-
-    foreach (array_keys($clean_domains) as $dom) {
-        if ($block_action === 'always_null') {
-            $conf_content .= "  local-zone: \"{$dom}\" always_null\n";
-        } else {
-            $conf_content .= "  local-zone: \"{$dom}\" redirect\n";
-            $conf_content .= "  local-data: \"{$dom} 60 IN A {$block_page_ip}\"\n";
-        }
-    }
-
-    // Grava o arquivo de regras do Unbound
-    file_put_contents(WAM_CONF_FILE, $conf_content);
-    @chmod(WAM_CONF_FILE, 0644);
-
-    // Neutraliza qualquer arquivo antigo em conf.d para evitar duplicidade
-    if (file_exists('/var/unbound/conf.d/wam_blocklist.conf')) {
-        @file_put_contents('/var/unbound/conf.d/wam_blocklist.conf', "# Rules WAM - Migrado para " . WAM_CONF_FILE . "\n");
-    }
-
-    // Habilita log de consultas no pfSense
-    config_set_path('unbound/log_queries', 'yes');
-
-    // Injeta include no Unbound custom_options usando base64 (padrão pfSense)
-    $raw_opts = config_get_path('unbound/custom_options', '');
-    $cur_opts = '';
-    if (!empty($raw_opts)) {
-        $decoded = @base64_decode($raw_opts, true);
-        if ($decoded !== false && base64_encode($decoded) === $raw_opts) {
-            $cur_opts = $decoded;
-        } else {
-            $cur_opts = $raw_opts;
-        }
-    }
-
-    // Limpa referências antigas e adiciona include correto
-    $opt_lines = explode("\n", $cur_opts);
-    $cleaned_opt_lines = array();
-    foreach ($opt_lines as $oline) {
-        $tline = trim($oline);
-        if (empty($tline)) continue;
-        if (strpos($tline, 'wam_blocklist.conf') !== false) {
-            continue;
-        }
-        $cleaned_opt_lines[] = $tline;
-    }
-    $cleaned_opt_lines[] = "include: " . WAM_CONF_FILE;
-    $new_custom = trim(implode("\n", $cleaned_opt_lines));
-    $ub_conf = '/var/unbound/unbound.conf';
-    $need_unbound_configure = ($new_custom !== trim($cur_opts));
-    if (file_exists($ub_conf) && strpos(@file_get_contents($ub_conf), 'wam_blocklist.conf') === false) {
-        $need_unbound_configure = true;
-    }
-    if ($need_unbound_configure) {
-        config_set_path('unbound/custom_options', base64_encode($new_custom));
-        write_config("Rules WAM ativado no Unbound com logging");
-        if (function_exists('services_unbound_configure')) {
-            services_unbound_configure();
-        }
-    }
-
-    // Se a ação for exibir o Banner, assegura que o NGINX HTTP/HTTPS do WAM esteja ativo e sincronizado
-    if ($block_action === 'block_page') {
-        rules_wam_sync_banner_nginx();
-    }
-
-    $status_data = array(
-        'enabled' => true,
-        'schedule_active' => rules_wam_is_checked($wam_cfg['schedule_enable'] ?? null),
-        'is_blocking' => true,
-        'updated_at' => date('Y-m-d H:i:s'),
-        'total_blocked' => $total,
-        'categories' => $categories_active,
-        'whitelist_count' => count($whitelist),
-        'bypass_ips_count' => count($bypass_ips),
-        'dns_bypass_protection' => rules_wam_is_checked($wam_cfg['block_dns_bypass'] ?? null) ? 'Ativo (Redirecionando 8.8.8.8 / 1.1.1.1)' : 'Desativado',
-        'upstream_forwarding' => rules_wam_is_checked($wam_cfg['enable_upstream_forwarding'] ?? null) ? 'Ativo (Google 8.8.8.8 & Cloudflare 1.1.1.1)' : 'Desativado',
-        'corp_integration' => $corp_enable ? 'Ativo (AD & NPS via IPsec)' : 'Desativado',
-        'netskope_protection' => $protect_netskope ? 'Ativo (Auto-Whitelist)' : 'Desativado',
-        'helpdesk_protection' => $protect_helpdesk ? 'Ativo (Zendesk, GLPI, ScreenConnect)' : 'Desativado',
-        'voip_protection' => $protect_voip ? 'Ativo (SIP & SIP Phone)' : 'Desativado'
-    );
-    file_put_contents(WAM_STATUS_FILE, json_encode($status_data, JSON_PRETTY_PRINT));
-
-    rules_wam_sync_domain_overrides($wam_cfg);
-    rules_wam_reload_unbound();
-    rules_wam_sync_firewall_rules($wam_cfg);
-    log_error("[Rules WAM] Sucesso: {$total} domínios bloqueados aplicados no Unbound DNS.");
-}
-
-function rules_wam_suspend_schedule() {
-    $wam_cfg = rules_wam_get_config();
-    $corp_enable = rules_wam_is_checked($wam_cfg['corp_enable'] ?? null);
-    $corp_domains = rules_wam_parse_list($wam_cfg['corp_ad_domain'] ?? '');
-    $corp_dns_ips = rules_wam_parse_list($wam_cfg['corp_ad_dns_ips'] ?? '');
-    $corp_reverse = (!isset($wam_cfg['corp_reverse_lookup']) || rules_wam_is_checked($wam_cfg['corp_reverse_lookup']));
-    $upstream_enable = rules_wam_is_checked($wam_cfg['enable_upstream_forwarding'] ?? null);
-
-    $conf = "# Rules WAM - Fora do Horario Comercial (Acesso Liberado)\nserver:\n  log-local-actions: yes\n";
-    if ($corp_enable && !empty($corp_domains)) {
-        foreach ($corp_domains as $cdom) {
-            $cdom = rules_wam_clean_domain($cdom);
-            if (!empty($cdom)) {
-                $conf .= "  private-domain: \"{$cdom}\"\n";
-                $conf .= "  domain-insecure: \"{$cdom}\"\n";
-            }
-        }
-        if ($corp_reverse) {
-            $conf .= "  private-domain: \"in-addr.arpa\"\n";
-            $conf .= "  domain-insecure: \"in-addr.arpa\"\n";
-        }
-    }
-    $corp_subnets_raw = !empty($wam_cfg['corp_allowed_subnets']) ? $wam_cfg['corp_allowed_subnets'] : "172.24.0.0/16\n192.168.0.0/16\n192.192.0.0/16\n10.0.0.0/8";
-    $corp_subnets = rules_wam_parse_list($corp_subnets_raw);
-    if (!empty($corp_subnets)) {
-        foreach ($corp_subnets as $snet) {
-            $snet = trim($snet);
-            if (empty($snet)) continue;
-            if (preg_match('#^(\d{1,3}\.){3}\d{1,3}(/(?:[0-9]|[12][0-9]|3[0-2]))?$#', $snet)) {
-                $conf .= "  access-control: {$snet} allow\n";
-            }
-        }
-    }
-    file_put_contents(WAM_CONF_FILE, $conf);
-    @chmod(WAM_CONF_FILE, 0644);
-
-    $status_data = array(
-        'enabled' => true,
-        'schedule_active' => true,
-        'is_blocking' => false,
-        'updated_at' => date('Y-m-d H:i:s'),
-        'total_blocked' => 0,
-        'categories' => array('Horário Comercial Pausado (Acesso Liberado)'),
-        'whitelist_count' => 0,
-        'bypass_ips_count' => 0
-    );
-    file_put_contents(WAM_STATUS_FILE, json_encode($status_data, JSON_PRETTY_PRINT));
-    rules_wam_reload_unbound();
-    log_error("[Rules WAM] Fora do horário comercial: bloqueios temporariamente liberados.");
-}
-
-function rules_wam_disable() {
-    @file_put_contents(WAM_CONF_FILE, "# Rules WAM - Desativado\nserver:\n");
-    @chmod(WAM_CONF_FILE, 0644);
-    if (file_exists('/var/unbound/conf.d/wam_blocklist.conf')) {
-        @file_put_contents('/var/unbound/conf.d/wam_blocklist.conf', "# Desativado\nserver:\n");
-    }
-
-    $raw_opts = config_get_path('unbound/custom_options', '');
-    $cur_opts = '';
-    if (!empty($raw_opts)) {
-        $decoded = @base64_decode($raw_opts, true);
-        if ($decoded !== false && base64_encode($decoded) === $raw_opts) {
-            $cur_opts = $decoded;
-        } else {
-            $cur_opts = $raw_opts;
-        }
-    }
-
-    $lines = explode("\n", $cur_opts);
-    $new_lines = array();
-    foreach ($lines as $line) {
-        $tline = trim($line);
-        if (empty($tline)) continue;
-        if (strpos($tline, 'wam_blocklist.conf') === false) {
-            $new_lines[] = $tline;
-        }
-    }
-    $new_custom = trim(implode("\n", $new_lines));
-    if ($new_custom !== trim($cur_opts)) {
-        config_set_path('unbound/custom_options', empty($new_custom) ? '' : base64_encode($new_custom));
-        write_config("Rules WAM desativado no Unbound");
-        if (function_exists('services_unbound_configure')) {
-            services_unbound_configure();
-        }
-    }
-
-    rules_wam_sync_domain_overrides(array('corp_enable' => 'no'));
-
-    $status_data = array(
-        'enabled' => false,
-        'schedule_active' => false,
-        'is_blocking' => false,
-        'updated_at' => date('Y-m-d H:i:s'),
-        'total_blocked' => 0,
-        'categories' => array(),
-        'whitelist_count' => 0,
-        'bypass_ips_count' => 0
-    );
-    file_put_contents(WAM_STATUS_FILE, json_encode($status_data, JSON_PRETTY_PRINT));
-    rules_wam_reload_unbound();
-    rules_wam_remove_firewall_rules();
-    log_error("[Rules WAM] Serviço desabilitado.");
-}
-
-/**
- * Remove as regras automáticas de firewall do Rules WAM
- */
-function rules_wam_remove_firewall_rules() {
-    require_once("config.inc");
-    require_once("filter.inc");
-    global $config;
-
-    init_config_arr(array("filter", "rule"));
-    init_config_arr(array("nat", "rule"));
-    $changed = false;
-    $new_rules = array();
-    foreach ($config["filter"]["rule"] as $r) {
-        if (isset($r["descr"]) && strpos($r["descr"], "Rules WAM") !== false) {
-            $changed = true;
-        } else {
-            $new_rules[] = $r;
-        }
-    }
-
-    $new_nat = array();
-    foreach ($config["nat"]["rule"] as $nr) {
-        if (isset($nr["descr"]) && strpos($nr["descr"], "Rules WAM") !== false) {
-            $changed = true;
-        } else {
-            $new_nat[] = $nr;
-        }
-    }
-
-    if ($changed) {
-        $config["filter"]["rule"] = $new_rules;
-        $config["nat"]["rule"] = $new_nat;
-        write_config("Rules WAM: Remocao de regras de protecao de firewall e NAT");
-        filter_configure();
-    }
-}
-
-/**
- * Sincroniza regras de firewall automáticas para evitar bypass em dispositivos móveis (Android/iOS)
- * e bloquear portas nativas de mensageiros como o WhatsApp (5222, 5223, etc.)
- */
-function rules_wam_sync_firewall_rules($wam_cfg = null) {
-    require_once("config.inc");
-    require_once("filter.inc");
-    global $config;
-
-    if ($wam_cfg === null) {
-        $wam_cfg = rules_wam_get_config();
-    }
-
-    if (!rules_wam_is_checked($wam_cfg['enable'] ?? null)) {
-        rules_wam_remove_firewall_rules();
-        return;
-    }
-
-    init_config_arr(array("aliases", "alias"));
-    init_config_arr(array("filter", "rule"));
-
-    // 1. Alias de Portas do WhatsApp
-    $alias_name = "WAM_WhatsApp_Ports";
-    $alias_idx = null;
-    foreach ($config["aliases"]["alias"] as $idx => $a) {
-        if ($a["name"] === $alias_name) {
-            $alias_idx = $idx;
-            break;
-        }
-    }
-    $alias_data = array(
-        "name" => $alias_name,
-        "type" => "port",
-        "address" => "5222 5223 4244",
-        "descr" => "Portas de comunicacao nativa WhatsApp Mobile (Rules WAM)",
-        "detail" => "5222 (XMPP)||5223 (SSL)||4244 (Media)"
-    );
-    if ($alias_idx !== null) {
-        $config["aliases"]["alias"][$alias_idx] = $alias_data;
-    } else {
-        $config["aliases"]["alias"][] = $alias_data;
-    }
-
-    // 2. Alias de Redes IP do WhatsApp (AS63293 e clusters de chat Meta)
-    $alias_nets_name = "WAM_WhatsApp_Nets";
-    $alias_nets_idx = null;
-    foreach ($config["aliases"]["alias"] as $idx => $a) {
-        if ($a["name"] === $alias_nets_name) {
-            $alias_nets_idx = $idx;
-            break;
-        }
-    }
-    $wa_cidrs = array(
-        "157.240.128.0/17", "129.134.128.0/17", "102.132.112.0/20", "102.221.188.0/22",
-        "185.89.216.0/22", "196.49.68.0/23", "204.15.20.0/22", "31.13.64.0/18"
-    );
-    $alias_nets_data = array(
-        "name" => $alias_nets_name,
-        "type" => "network",
-        "address" => implode(" ", $wa_cidrs),
-        "descr" => "Redes IP WhatsApp Inc AS63293 (Rules WAM)",
-        "detail" => implode("||", $wa_cidrs)
-    );
-    if ($alias_nets_idx !== null) {
-        $config["aliases"]["alias"][$alias_nets_idx] = $alias_nets_data;
-    } else {
-        $config["aliases"]["alias"][] = $alias_nets_data;
-    }
-
-    // 2.1 Alias para Servidores DNS / Controladores de Dominio AD e NPS Matriz
-    $corp_enable = rules_wam_is_checked($wam_cfg['corp_enable'] ?? null);
-    $corp_dns_ips = rules_wam_parse_list($wam_cfg['corp_ad_dns_ips'] ?? '');
-    $valid_ad_ips = array();
-    if ($corp_enable && !empty($corp_dns_ips)) {
-        foreach ($corp_dns_ips as $cip) {
-            if (filter_var($cip, FILTER_VALIDATE_IP)) {
-                $valid_ad_ips[] = $cip;
-            }
-        }
-    }
-    $alias_corp_name = "WAM_Corp_AD_DNS";
-    $alias_corp_idx = null;
-    foreach ($config["aliases"]["alias"] as $idx => $a) {
-        if ($a["name"] === $alias_corp_name) {
-            $alias_corp_idx = $idx;
-            break;
-        }
-    }
-    if (!empty($valid_ad_ips)) {
-        $alias_corp_data = array(
-            "name" => $alias_corp_name,
-            "type" => "host",
-            "address" => implode(" ", $valid_ad_ips),
-            "descr" => "Servidores DNS/AD e NPS RADIUS Matriz (Rules WAM)",
-            "detail" => implode("||", $valid_ad_ips)
-        );
-        if ($alias_corp_idx !== null) {
-            $config["aliases"]["alias"][$alias_corp_idx] = $alias_corp_data;
-        } else {
-            $config["aliases"]["alias"][] = $alias_corp_data;
-        }
-    } elseif ($alias_corp_idx !== null) {
-        unset($config["aliases"]["alias"][$alias_corp_idx]);
-        $config["aliases"]["alias"] = array_values($config["aliases"]["alias"]);
-    }
-
-    // 2.2 Alias de Portas do Banner HTTP/HTTPS (Portas 80 e 443)
-    $alias_banner_name = "WAM_Banner_Ports";
-    $alias_banner_idx = null;
-    foreach ($config["aliases"]["alias"] as $idx => $a) {
-        if ($a["name"] === $alias_banner_name) {
-            $alias_banner_idx = $idx;
-            break;
-        }
-    }
-    $alias_banner_data = array(
-        "name" => $alias_banner_name,
-        "type" => "port",
-        "address" => "80 443",
-        "descr" => "Portas HTTP/HTTPS Banner de Bloqueio (Rules WAM)",
-        "detail" => "80 (HTTP)||443 (HTTPS)"
-    );
-    if ($alias_banner_idx !== null) {
-        $config["aliases"]["alias"][$alias_banner_idx] = $alias_banner_data;
-    } else {
-        $config["aliases"]["alias"][] = $alias_banner_data;
-    }
-
-    // 3. Interfaces internas ativas configuradas no pfSense (com seus nomes amigáveis reais)
-    $configured_internal = rules_wam_get_configured_interfaces(false);
-    if (empty($configured_internal)) {
-        $configured_internal = array(
-            'lan' => array('key' => 'lan', 'descr' => 'LAN', 'is_internal' => true)
-        );
-    }
-    $internal_ifaces = array_keys($configured_internal);
-    $if_list = implode(",", $internal_ifaces);
-
-    // 4. Filtra regras existentes que não sejam do Rules WAM
-    $cleaned_rules = array();
-    foreach ($config["filter"]["rule"] as $r) {
-        if (!isset($r["descr"]) || strpos($r["descr"], "Rules WAM") === false) {
-            $cleaned_rules[] = $r;
-        }
-    }
-
-    $rules_to_add = array();
-
-    // Identifica protocolo e porta da WebGUI (ex: 50443, 8443, 443)
-    $gui_proto = !empty($config['system']['webgui']['protocol']) ? $config['system']['webgui']['protocol'] : 'https';
-    $gui_port = !empty($config['system']['webgui']['port']) ? $config['system']['webgui']['port'] : ($gui_proto === 'https' ? '50443' : '80');
-
-    // Blindagem de Acesso Administrativo (LAN e WAN):
-    // 1. Anti-lockout na LAN sempre garantido
-    unset($config['system']['webgui']['noantilockout']);
-    // 2. Sem bloqueio por DNS Rebind
-    $config['system']['webgui']['nodnsrebindcheck'] = true;
-    // 3. Sem redirecionamento HTTP nativo (libera porta 80 para o Banner)
-    $config['system']['webgui']['disablehttpredirect'] = true;
-    // 4. Se a WAN for rede privada RFC1918 (comum em testes e laboratorios), desativa o descarte
-    if (isset($config['interfaces']['wan']['blockprivatenets'])) {
-        unset($config['interfaces']['wan']['blockprivatenets']);
-    }
-    if (isset($config['interfaces']['wan']['blockbogons'])) {
-        unset($config['interfaces']['wan']['blockbogons']);
-    }
-
-    // Regra WAN Permanente: Garante acesso WebGUI na WAN (Porta $gui_port, ex: 50443)
-    $rules_to_add[] = array(
-        "id" => "",
-        "tracker" => "1700000010",
-        "type" => "pass",
-        "interface" => "wan",
-        "ipprotocol" => "inet46",
-        "tag" => "",
-        "tagged" => "",
-        "direction" => "in",
-        "quick" => "yes",
-        "protocol" => "tcp",
-        "source" => array("any" => true),
-        "destination" => array(
-            "any" => true,
-            "port" => (string)$gui_port
-        ),
-        "descr" => "Rules WAM - Acesso Permanente WebGUI WAN (Porta {$gui_port})",
-        "created" => function_exists("make_config_revision_entry") ? make_config_revision_entry() : array("time" => 1700000000, "username" => "Rules WAM")
-    );
-
-    // Regras Permanentes por Interface Interna: WebGUI e Banners HTTP/HTTPS (Portas 80 e 443)
-    // Traz a descrição configurada no pfSense (Ex: LAN, LAN_CORP, WIFI_VISITANTES, etc.)
-    $tracker_idx = 11;
-    foreach ($configured_internal as $if_key => $if_data) {
-        $if_label = !empty($if_data['descr']) ? $if_data['descr'] : strtoupper($if_key);
-
-        // Regra de Acesso WebGUI na Interface
-        $rules_to_add[] = array(
-            "id" => "",
-            "tracker" => (string)(1700000000 + $tracker_idx++),
-            "type" => "pass",
-            "interface" => $if_key,
-            "ipprotocol" => "inet46",
-            "tag" => "",
-            "tagged" => "",
-            "direction" => "in",
-            "quick" => "yes",
-            "protocol" => "tcp",
-            "source" => array("any" => true),
-            "destination" => array(
-                "any" => true,
-                "port" => (string)$gui_port
-            ),
-            "descr" => "Rules WAM - Acesso Permanente WebGUI {$if_label} (Porta {$gui_port})",
-            "created" => function_exists("make_config_revision_entry") ? make_config_revision_entry() : array("time" => 1700000000, "username" => "Rules WAM")
-        );
-
-        // Regra de Liberação do Banner HTTP/HTTPS na Interface
-        $rules_to_add[] = array(
-            "id" => "",
-            "tracker" => (string)(1700000000 + $tracker_idx++),
-            "type" => "pass",
-            "interface" => $if_key,
-            "ipprotocol" => "inet46",
-            "tag" => "",
-            "tagged" => "",
-            "direction" => "in",
-            "quick" => "yes",
-            "protocol" => "tcp",
-            "source" => array("any" => true),
-            "destination" => array(
-                "any" => true,
-                "port" => "WAM_Banner_Ports"
-            ),
-            "descr" => "Rules WAM - Liberacao Portas Banner HTTP/HTTPS {$if_label} (80 e 443)",
-            "created" => function_exists("make_config_revision_entry") ? make_config_revision_entry() : array("time" => 1700000000, "username" => "Rules WAM")
-        );
-    }
-
-    // Regra Flutuante para todas as interfaces internas ativas
-    $rules_to_add[] = array(
-        "id" => "",
-        "tracker" => "1700000099",
-        "type" => "pass",
-        "interface" => $if_list,
-        "ipprotocol" => "inet46",
-        "tag" => "",
-        "tagged" => "",
-        "direction" => "in",
-        "floating" => "yes",
-        "quick" => "yes",
-        "protocol" => "tcp",
-        "source" => array("any" => true),
-        "destination" => array(
-            "any" => true,
-            "port" => "WAM_Banner_Ports"
-        ),
-        "descr" => "Rules WAM - Liberacao Portas Banner HTTP/HTTPS Global (80 e 443)",
-        "created" => function_exists("make_config_revision_entry") ? make_config_revision_entry() : array("time" => 1700000000, "username" => "Rules WAM")
-    );
-
-    // 5. Regra Anti-Bypass DoT (Porta 853) - Bloqueia DNS Privado do Android
-    $rules_to_add[] = array(
-        "id" => "",
-        "tracker" => "1700000101",
-        "type" => "reject",
-        "interface" => $if_list,
-        "ipprotocol" => "inet46",
-        "tag" => "",
-        "tagged" => "",
-        "direction" => "in",
-        "floating" => "yes",
-        "quick" => "yes",
-        "protocol" => "tcp/udp",
-        "source" => array("any" => true),
-        "destination" => array(
-            "any" => true,
-            "port" => "853"
-        ),
-        "descr" => "Rules WAM - Anti-Bypass DNS Privado Android (DoT 853)",
-        "created" => function_exists("make_config_revision_entry") ? make_config_revision_entry() : array("time" => 1700000000, "username" => "Rules WAM")
-    );
-
-    // 6. Regra WhatsApp Mobile - Bloqueia portas nativas 5222/5223/4244/3478/5349 e redes IP AS63293
-    $is_msg_active = rules_wam_is_checked($wam_cfg['block_messaging'] ?? null);
-    $is_wa_active = !isset($wam_cfg['block_msg_whatsapp']) || rules_wam_is_checked($wam_cfg['block_msg_whatsapp']);
-    if ($is_msg_active && $is_wa_active) {
-        $rules_to_add[] = array(
-            "id" => "",
-            "tracker" => "1700000202",
-            "type" => "reject",
-            "interface" => $if_list,
-            "ipprotocol" => "inet46",
-            "tag" => "",
-            "tagged" => "",
-            "direction" => "in",
-            "floating" => "yes",
-            "quick" => "yes",
-            "protocol" => "tcp/udp",
-            "source" => array("any" => true),
-            "destination" => array(
-                "any" => true,
-                "port" => $alias_name
-            ),
-            "descr" => "Rules WAM - Bloqueio de Portas App WhatsApp Mobile",
-            "created" => function_exists("make_config_revision_entry") ? make_config_revision_entry() : array("time" => 1700000000, "username" => "Rules WAM")
-        );
-
-        $rules_to_add[] = array(
-            "id" => "",
-            "tracker" => "1700000303",
-            "type" => "reject",
-            "interface" => $if_list,
-            "ipprotocol" => "inet46",
-            "tag" => "",
-            "tagged" => "",
-            "direction" => "in",
-            "floating" => "yes",
-            "quick" => "yes",
-            "protocol" => "tcp/udp",
-            "source" => array("any" => true),
-            "destination" => array(
-                "address" => $alias_nets_name
-            ),
-            "descr" => "Rules WAM - Bloqueio de Redes IP WhatsApp Mobile (AS63293)",
-            "created" => function_exists("make_config_revision_entry") ? make_config_revision_entry() : array("time" => time(), "username" => "Rules WAM")
-        );
-    }
-
-    // 7. Anti-Bypass DNS Porta 53 (Interceptar consultas a DNS externos como 8.8.8.8)
-    $block_dns_bypass = rules_wam_is_checked($wam_cfg['block_dns_bypass'] ?? 'no');
-    init_config_arr(array("nat", "rule"));
-    $cleaned_nat = array();
-    foreach ($config["nat"]["rule"] as $nr) {
-        if (!isset($nr["descr"]) || strpos($nr["descr"], "Rules WAM") === false) {
-            $cleaned_nat[] = $nr;
-        }
-    }
-
-    if ($block_dns_bypass) {
-        foreach ($internal_ifaces as $idx => $intf) {
-            $intf_label = !empty($configured_internal[$intf]['descr']) ? $configured_internal[$intf]['descr'] : strtoupper($intf);
-            if (!empty($valid_ad_ips)) {
-                $cleaned_nat[] = array(
-                    "id" => "",
-                    "tracker" => (string)(1700004030 + $idx),
-                    "interface" => $intf,
-                    "nordr" => "yes",
-                    "ipprotocol" => "inet",
-                    "protocol" => "tcp/udp",
-                    "source" => array("any" => true),
-                    "destination" => array(
-                        "address" => $alias_corp_name,
-                        "port" => "53"
-                    ),
-                    "descr" => "Rules WAM - Excecao NAT Anti-Bypass AD/DNS ({$intf_label})",
-                    "created" => function_exists("make_config_revision_entry") ? make_config_revision_entry() : array("time" => 1700000000, "username" => "Rules WAM")
-                );
-            }
-
-            $cleaned_nat[] = array(
-                "id" => "",
-                "tracker" => (string)(1700004040 + $idx),
-                "interface" => $intf,
-                "ipprotocol" => "inet",
-                "protocol" => "tcp/udp",
-                "source" => array("any" => true),
-                "destination" => array(
-                    "not" => true,
-                    "network" => "{$intf}ip",
-                    "port" => "53"
-                ),
-                "target" => "127.0.0.1",
-                "local-port" => "53",
-                "descr" => "Rules WAM - Anti-Bypass DNS Redirection ({$intf_label} Porta 53)",
-                "associated-rule-id" => "pass",
-                "created" => function_exists("make_config_revision_entry") ? make_config_revision_entry() : array("time" => 1700000000, "username" => "Rules WAM")
-            );
-        }
-
-        if (!empty($valid_ad_ips)) {
-            $rules_to_add[] = array(
-                "id" => "",
-                "tracker" => "1700000504",
-                "type" => "pass",
-                "interface" => $if_list,
-                "ipprotocol" => "inet46",
-                "tag" => "",
-                "tagged" => "",
-                "direction" => "in",
-                "floating" => "yes",
-                "quick" => "yes",
-                "protocol" => "tcp/udp",
-                "source" => array("any" => true),
-                "destination" => array(
-                    "address" => $alias_corp_name,
-                    "port" => "53"
-                ),
-                "descr" => "Rules WAM - Liberacao Direta de DNS para Controladores de Dominio AD",
-                "created" => function_exists("make_config_revision_entry") ? make_config_revision_entry() : array("time" => 1700000000, "username" => "Rules WAM")
-            );
-        }
-    }
-
-    // Adiciona as regras Rules WAM no topo
-    foreach (array_reverse($rules_to_add) as $r_add) {
-        array_unshift($cleaned_rules, $r_add);
-    }
-
-    $current_filter_rules = $config["filter"]["rule"] ?? array();
-    $current_nat_rules = $config["nat"]["rule"] ?? array();
-
-    $filter_changed = (serialize($cleaned_rules) !== serialize($current_filter_rules));
-    $nat_changed = (serialize($cleaned_nat) !== serialize($current_nat_rules));
-
-    if ($filter_changed || $nat_changed) {
-        $config["nat"]["rule"] = $cleaned_nat;
-        $config["filter"]["rule"] = $cleaned_rules;
-        write_config("Rules WAM: Sincronizacao automatica de regras de protecao de rede e NAT");
-        filter_configure();
-
-        if ($is_msg_active && $is_wa_active) {
-            mwexec('/sbin/pfctl -k 0.0.0.0/0 -k 157.240.0.0/16 2>/dev/null');
-            mwexec('/sbin/pfctl -k 0.0.0.0/0 -k 129.134.0.0/16 2>/dev/null');
-            mwexec('/sbin/pfctl -k 0.0.0.0/0 -k 31.13.64.0/18 2>/dev/null');
-        }
-
-        log_error("[Rules WAM] Regras automaticas de firewall sincronizadas com sucesso (DoT 853 e WhatsApp).");
-    }
-}
-
-function rules_wam_is_in_schedule_window($wam_cfg) {
-    $now_dow = intval(date('w'));
-    $now_time = date('H:i');
-
-    if ($now_dow === 0 || $now_dow === 6) {
-        if (!rules_wam_is_checked($wam_cfg['schedule_weekend'] ?? null)) {
-            return false;
-        }
-    }
-
-    $start = !empty($wam_cfg['schedule_start']) ? $wam_cfg['schedule_start'] : '08:00';
-    $end   = !empty($wam_cfg['schedule_end']) ? $wam_cfg['schedule_end'] : '18:00';
-    $l_start = !empty($wam_cfg['schedule_lunch_start']) ? $wam_cfg['schedule_lunch_start'] : '';
-    $l_end   = !empty($wam_cfg['schedule_lunch_end']) ? $wam_cfg['schedule_lunch_end'] : '';
-
-    if (!empty($l_start) && !empty($l_end)) {
-        if ($now_time >= $l_start && $now_time < $l_end) {
-            return false;
-        }
-    }
-
-    if ($now_time >= $start && $now_time < $end) {
-        return true;
-    }
-
-    return false;
-}
-
-function rules_wam_is_whitelisted($domain, &$whitelist) {
-    if (empty($domain)) return false;
-    if (isset($whitelist[$domain])) return true;
-    $parts = explode('.', $domain);
-    while (count($parts) > 1) {
-        array_shift($parts);
-        $parent = implode('.', $parts);
-        if (isset($whitelist[$parent])) return true;
-    }
-    return false;
-}
-
-function rules_wam_parse_list($str) {
-    if (empty($str)) return array();
-    $str = str_replace(array('\r\n', '\r', '\n', "\\r\\n", "\\r", "\\n"), "\n", $str);
-    $items = preg_split('/[\r\n,;\s]+/', trim($str));
-    $clean = array();
-    foreach ($items as $it) {
-        $it = trim($it);
-        if (!empty($it)) {
-            $clean[] = $it;
-        }
-    }
-    return array_values(array_unique($clean));
-}
-
-/**
- * Sincroniza Domain Overrides no DNS Resolver do pfSense para Active Directory e NPS RADIUS (via VPN IPsec)
- */
-function rules_wam_sync_domain_overrides($wam_cfg) {
-    if (!function_exists('config_get_path') || !function_exists('config_set_path')) {
-        return;
-    }
-
-    $existing_overrides = config_get_path('unbound/domainoverrides', array());
-    if (!is_array($existing_overrides)) {
-        $existing_overrides = array();
-    }
-
-    // Preserva overrides manuais pré-existentes, removendo apenas os gerenciados pelo Rules WAM
-    $new_overrides = array();
-    foreach ($existing_overrides as $ov) {
-        if (!isset($ov['descr']) || strpos($ov['descr'], 'Rules WAM') === false) {
-            $new_overrides[] = $ov;
-        }
-    }
-
-    if (rules_wam_is_checked($wam_cfg['corp_enable'] ?? null)) {
-        $domains = rules_wam_parse_list($wam_cfg['corp_ad_domain'] ?? '');
-        $ips = rules_wam_parse_list($wam_cfg['corp_ad_dns_ips'] ?? '');
-
-        foreach ($domains as $dom) {
-            $dom = rules_wam_clean_domain($dom);
-            if (empty($dom)) continue;
-            foreach ($ips as $ip) {
-                if (filter_var($ip, FILTER_VALIDATE_IP)) {
-                    $new_overrides[] = array(
-                        'domain' => $dom,
-                        'ip' => $ip,
-                        'descr' => 'Rules WAM: AD/NPS Matriz IPsec'
-                    );
-                }
-            }
-        }
-
-        if (rules_wam_is_checked($wam_cfg['corp_reverse_lookup'] ?? 'yes')) {
-            $rev_zones = array();
-            foreach ($ips as $ip) {
-                $p = explode('.', $ip);
-                if (count($p) === 4) {
-                    $rev_zones[$p[0] . '.in-addr.arpa'] = true;
-                    $rev_zones[$p[1] . '.' . $p[0] . '.in-addr.arpa'] = true;
-                }
-            }
-            foreach (array_keys($rev_zones) as $rz) {
-                foreach ($ips as $ip) {
-                    if (filter_var($ip, FILTER_VALIDATE_IP)) {
-                        $new_overrides[] = array(
-                            'domain' => $rz,
-                            'ip' => $ip,
-                            'descr' => 'Rules WAM: Reverso AD/NPS Matriz IPsec'
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    config_set_path('unbound/domainoverrides', $new_overrides);
-}
-
-function rules_wam_load_feed_domains($feed_file, &$blocked_domains, &$whitelist) {
-    $path = WAM_FEEDS_DIR . '/' . $feed_file;
-    if (!file_exists($path)) {
-        return;
-    }
-    $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    foreach ($lines as $line) {
-        $line = trim($line);
-        if (empty($line) || $line[0] === '#') {
-            continue;
-        }
-        $d = rules_wam_clean_domain($line);
-        if ($d && !rules_wam_is_whitelisted($d, $whitelist)) {
-            $blocked_domains[$d] = true;
-        }
-    }
-}
-
-function rules_wam_clean_domain($domain) {
-    $domain = trim($domain);
-    $domain = rtrim($domain, '.');
-    $domain = preg_replace('#^https?://#i', '', $domain);
-    $domain = preg_replace('#/.*$#', '', $domain);
-    $domain = preg_replace('#:\d+$#', '', $domain);
-    $domain = strtolower($domain);
-    $domain = rtrim($domain, '.');
-    if (empty($domain)) return null;
-    if (strpos($domain, 'www.') === 0) {
-        $domain = substr($domain, 4);
-    }
-    // Filtro rigoroso de caracteres para impedir quebra ou injeção na sintaxe do Unbound
-    // Permite apenas caracteres RFC válidos para hostnames e subdomínios (letras, dígitos, hífens, pontos e sublinhados para SRV)
-    if (!preg_match('/^(\*\.)?[a-z0-9_\-\.]+$/', $domain)) {
-        return null;
-    }
-    // Impede pontos consecutivos e comprimentos acima do limite RFC
-    if (strpos($domain, '..') !== false || strlen($domain) > 253) {
-        return null;
-    }
-    return $domain;
-}
-
-function rules_wam_reload_unbound() {
-    $ub_conf = '/var/unbound/unbound.conf';
-
-    // 1. Garante que o arquivo de blocklist exista e tenha permissão de leitura pelo Unbound
-    if (!file_exists(WAM_CONF_FILE)) {
-        @file_put_contents(WAM_CONF_FILE, "# Rules WAM - Inicial\nserver:\n");
-    }
-    @chmod(WAM_CONF_FILE, 0644);
-
-    // 2. Validação estrita de sintaxe com unbound-checkconf
-    if (file_exists('/usr/local/sbin/unbound-checkconf') && file_exists($ub_conf)) {
-        $check_out = array();
-        $check_rc = 0;
-        exec("/usr/local/sbin/unbound-checkconf " . escapeshellarg($ub_conf) . " 2>&1", $check_out, $check_rc);
-        if ($check_rc !== 0) {
-            $err_str = implode("\n", $check_out);
-            @file_put_contents('/var/log/wam_checkconf_err.log', $err_str);
-            log_error("[Rules WAM] Falha na validação do Unbound ({$err_str}). Neutralizando regras para proteger a rede.");
-            @file_put_contents(WAM_CONF_FILE, "# Rules WAM - Protecao contra falha de sintaxe\nserver:\n");
-        } else {
-            @unlink('/var/log/wam_checkconf_err.log');
-        }
-    }
-
-    // 3. Verifica se o Unbound está ativo e escutando na porta 53
-    $is_running = false;
-    $sock_out = array();
-    exec("/usr/bin/sockstat -4 -l -p 53 2>/dev/null | grep unbound", $sock_out);
-    if (!empty($sock_out)) {
-        $is_running = true;
-    }
-
-    // 4. Se o serviço já está rodando, efetua recarga em memória com ZERO DOWNTIME (sem parar o DNS)
-    if ($is_running && file_exists('/usr/local/sbin/unbound-control') && file_exists($ub_conf)) {
-        mwexec("/usr/local/sbin/unbound-control -c {$ub_conf} reload 2>/dev/null");
-        mwexec("/usr/local/sbin/unbound-control -c {$ub_conf} flush_zone . 2>/dev/null");
-        mwexec("/usr/local/sbin/unbound-control -c {$ub_conf} flush_negative 2>/dev/null");
-        mwexec("/usr/local/sbin/unbound-control -c {$ub_conf} flush_bogus 2>/dev/null");
-        return true;
-    }
-
-    // 5. Se o serviço estiver parado, inicializa oficialmente pelo pfSense
-    if (function_exists('services_unbound_configure')) {
-        services_unbound_configure();
-    } elseif (file_exists('/usr/local/sbin/pfSsh.php')) {
-        mwexec("/usr/local/sbin/pfSsh.php playback svc restart unbound 2>/dev/null");
-    }
-
-    return true;
-}
-
-/**
- * Identifica o Hostname a partir do IP (via Mapeamento Manual, DHCP leases do pfSense, Unbound ou DNS Reverso)
- */
-function rules_wam_resolve_hostname($ip, &$cache) {
-    if (isset($cache[$ip])) return $cache[$ip];
-    $hostname = '';
-
-    global $config;
-
-    // 0. Prioridade Máxima: Mapeamento Manual no Rules WAM (custom_hosts)
-    $wam_cfg = rules_wam_get_config();
-    if (!empty($wam_cfg['custom_hosts'])) {
-        $lines = preg_split('/[\r\n]+/', $wam_cfg['custom_hosts']);
-        foreach ($lines as $line) {
-            $line = trim($line);
-            if (empty($line) || strpos($line, '#') === 0) continue;
-            if (strpos($line, '=') !== false) {
-                list($hip, $hname) = explode('=', $line, 2);
-                if (trim($hip) === $ip && !empty(trim($hname))) {
-                    $cache[$ip] = trim($hname);
-                    return $cache[$ip];
-                }
-            }
-        }
-    }
-
-    // Padrões conhecidos de equipamentos de infraestrutura (antenas, APs, switches, rádios)
-    $infra_patterns = '/(antena|antenna|ubnt|unifi|nanostation|litebeam|airmax|mikrotik|cpe|station|wlan|torre|setor|radio|enlace|ptp|pmp|ap[-_]|switch)/i';
-    $infra_fallback = '';
-
-    // 1. Leitura direta e reversa do arquivo de leases (/var/dhcpd/var/db/dhcpd.leases)
-    // O ISC-DHCP faz append a cada concessão. O final do arquivo contém a concessão mais recente enviada pelo host.
-    if (file_exists('/var/dhcpd/var/db/dhcpd.leases')) {
-        $l_data = @file_get_contents('/var/dhcpd/var/db/dhcpd.leases');
-        if (!empty($l_data) && preg_match_all('/lease\s+' . preg_quote($ip, '/') . '\s*\{([^}]+)\}/s', $l_data, $m_blocks)) {
-            for ($i = count($m_blocks[1]) - 1; $i >= 0; $i--) {
-                $block_content = $m_blocks[1][$i];
-                if (preg_match('/client-hostname\s+"([^"]+)";/', $block_content, $m_hn)) {
-                    $cand = trim($m_hn[1]);
-                    if (!empty($cand)) {
-                        if (!preg_match($infra_patterns, $cand)) {
-                            $hostname = $cand;
-                            break;
-                        } else {
-                            if (empty($infra_fallback)) $infra_fallback = $cand;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 2. Consulta tabela de concessões DHCP do pfSense (system_get_dhcpleases) em ordem reversa
-    if (empty($hostname) && function_exists('system_get_dhcpleases')) {
-        $leases = system_get_dhcpleases();
-        if (!empty($leases['lease'])) {
-            $rev_leases = array_reverse($leases['lease']);
-            foreach ($rev_leases as $l) {
-                if (isset($l['ip']) && $l['ip'] === $ip) {
-                    $cand = !empty($l['hostname']) ? trim($l['hostname']) : (!empty($l['descr']) ? trim($l['descr']) : '');
-                    if (!empty($cand)) {
-                        $is_infra = preg_match($infra_patterns, $cand);
-                        if (!$is_infra) {
-                            $hostname = $cand;
-                            break;
-                        } else {
-                            if (empty($infra_fallback)) $infra_fallback = $cand;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 3. Consulta Host Overrides no DNS Resolver (Unbound) do config.xml
-    if (empty($hostname) && !empty($config['unbound']['hosts'])) {
-        foreach ($config['unbound']['hosts'] as $h) {
-            if (isset($h['ip']) && $h['ip'] === $ip && !empty($h['host'])) {
-                $cand = $h['host'] . (!empty($h['domain']) ? '.' . $h['domain'] : '');
-                if (!preg_match($infra_patterns, $cand)) {
-                    $hostname = $cand;
-                    break;
-                }
-            }
-        }
-    }
-
-    // 4. Consulta mapeamentos estáticos de DHCP no config.xml (ignora se for antena)
-    if (empty($hostname) && !empty($config['dhcpd']) && is_array($config['dhcpd'])) {
-        foreach ($config['dhcpd'] as $if_dhcp) {
-            if (!empty($if_dhcp['staticmap']) && is_array($if_dhcp['staticmap'])) {
-                foreach ($if_dhcp['staticmap'] as $sm) {
-                    if (isset($sm['ipaddr']) && $sm['ipaddr'] === $ip) {
-                        $cand = !empty($sm['hostname']) ? $sm['hostname'] : (!empty($sm['descr']) ? $sm['descr'] : '');
-                        if (!empty($cand) && !preg_match($infra_patterns, $cand)) {
-                            $hostname = $cand;
-                            break 2;
-                        } elseif (!empty($cand) && empty($infra_fallback)) {
-                            $infra_fallback = $cand;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 6. Se só encontrou nome da antena/equipamento de rede, informa com clareza
-    if (empty($hostname)) {
-        if (!empty($infra_fallback)) {
-            $hostname = "Host {$ip} (via {$infra_fallback})";
-        } else {
-            $hostname = "Host {$ip}";
-        }
-    }
-
-    $cache[$ip] = $hostname;
-    return $cache[$ip];
-}
-
-/**
- * Identifica a categoria a que um domínio pertence
- */
-function rules_wam_get_domain_category($domain) {
-    static $cat_index = null;
-    if ($cat_index === null) {
-        $cat_index = array();
-        $map = array(
-            'adult.txt'        => 'Conteúdo Adulto',
-            'gambling.txt'     => 'Apostas & Bets',
-            'news.txt'         => 'Notícias & Portais',
-            'social-media.txt' => 'Mídias Sociais',
-            'sports.txt'       => 'Esportes & Placares',
-            'streaming.txt'    => 'Streaming & Vídeo',
-            'gaming.txt'       => 'Jogos & Games',
-            'shopping.txt'     => 'Compras & E-commerce',
-            'p2p.txt'              => 'Torrents & P2P',
-            'doh-providers.txt'    => 'Anti-Bypass DoH',
-            'vpn-fortinet.txt'     => 'VPN Fortinet / FortiGate',
-            'vpn-cisco.txt'        => 'VPN Cisco AnyConnect',
-            'vpn-paloalto.txt'     => 'VPN Palo Alto GlobalProtect',
-            'ztna-zscaler.txt'     => 'ZTNA Zscaler',
-            'ztna-netskope.txt'    => 'ZTNA Netskope',
-            'ztna-cloudflare.txt'  => 'ZTNA Cloudflare WARP',
-            'ztna-tailscale.txt'   => 'ZTNA & Mesh VPN',
-            'vpn-commercial.txt'   => 'VPN Comercial & Proxies',
-            'vpn-ztna.txt'         => 'VPN, ZTNA & Proxies',
-            'msg-whatsapp.txt'     => 'WhatsApp',
-            'msg-telegram.txt'     => 'Telegram',
-            'msg-messenger.txt'    => 'Facebook Messenger',
-            'msg-teams-skype.txt'  => 'Microsoft Teams / Skype / MSN',
-            'msg-discord.txt'      => 'Discord',
-            'msg-slack.txt'        => 'Slack',
-            'msg-zoom-meet.txt'    => 'Zoom & Google Meet',
-            'msg-others.txt'       => 'Mensageiros Instantâneos',
-            'messaging.txt'        => 'Mensageiros & Chat'
-        );
-        foreach ($map as $f => $label) {
-            $path = WAM_FEEDS_DIR . '/' . $f;
-            if (file_exists($path)) {
-                $lines = file($path, FILE_SKIP_EMPTY_LINES);
-                foreach ($lines as $l) {
-                    $l = trim($l);
-                    if (!empty($l) && $l[0] !== '#') {
-                        $cat_index[$l] = $label;
-                    }
-                }
-            }
-        }
-    }
-
-    $d = rules_wam_clean_domain($domain);
-    if (isset($cat_index[$d])) return $cat_index[$d];
-
-    // Checa domínio pai
-    $parts = explode('.', $d);
-    while (count($parts) > 1) {
-        array_shift($parts);
-        $p = implode('.', $parts);
-        if (isset($cat_index[$p])) return $cat_index[$p];
-    }
-
-    return 'Regra Personalizada / Outros';
-}
-
-/**
- * Verifica se um domínio está na lista ativa de bloqueio do Unbound
- */
-function rules_wam_is_domain_blocked($domain) {
-    static $blocked_cache = null;
-    if ($blocked_cache === null) {
-        $blocked_cache = array();
-        $candidates = array(
-            WAM_CONF_FILE,
-            '/var/unbound/conf.d/wam_blocklist.conf',
-            '/var/unbound/wam_blocklist.conf'
-        );
-        foreach ($candidates as $cfile) {
-            if (file_exists($cfile)) {
-                $lines = @file($cfile, FILE_SKIP_EMPTY_LINES);
-                if (!empty($lines)) {
-                    foreach ($lines as $line) {
-                        if (preg_match('/local-zone:\s*"([^"]+)"/i', $line, $m)) {
-                            $blocked_cache[strtolower(trim($m[1]))] = true;
-                        }
-                    }
-                }
-                if (!empty($blocked_cache)) break;
-            }
-        }
-    }
-
-    $d = strtolower(rules_wam_clean_domain($domain));
-    if (empty($d)) return false;
-    if (isset($blocked_cache[$d])) return true;
-
-    $parts = explode('.', $d);
-    while (count($parts) > 1) {
-        array_shift($parts);
-        $p = implode('.', $parts);
-        if (isset($blocked_cache[$p])) return true;
-    }
-
-    return false;
-}
-
-/**
- * Obtém a lista e status de hosts Online na rede local via tabelas ARP (IPv4) e NDP (IPv6)
- */
-function rules_wam_get_online_hosts() {
-    static $online_hosts = null;
-    if ($online_hosts !== null) {
-        return $online_hosts;
-    }
-
-    $online_hosts = array();
-
-    // 1. pfSense native system_get_arp_table()
-    if (function_exists('system_get_arp_table')) {
-        $arp_data = system_get_arp_table(false);
-        if (is_array($arp_data)) {
-            foreach ($arp_data as $entry) {
-                $ip = $entry['ip-address'] ?? ($entry['ip'] ?? '');
-                $mac = $entry['mac-address'] ?? ($entry['mac'] ?? '');
-                if (!empty($ip) && !empty($mac) && stripos($mac, 'incomplete') === false && $mac !== '(incomplete)') {
-                    $online_hosts[$ip] = array(
-                        'online' => true,
-                        'mac' => $mac,
-                        'interface' => $entry['interface'] ?? '',
-                        'status' => 'online'
-                    );
-                }
-            }
-        }
-    }
-
-    // 2. Leitura direta de /usr/sbin/arp -an (garantia máxima no FreeBSD/pfSense)
-    $raw_arp = array();
-    @exec('/usr/sbin/arp -an 2>/dev/null', $raw_arp);
-    if (empty($raw_arp)) {
-        @exec('arp -an 2>/dev/null', $raw_arp);
-    }
-    if (!empty($raw_arp)) {
-        foreach ($raw_arp as $line) {
-            // Formato FreeBSD: ? (172.24.60.10) at 00:11:22:33:44:55 on em0 expires in 1198 seconds [ethernet]
-            if (preg_match('/\(([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\)\s+at\s+([0-9a-fA-F:]{11,17}|[0-9a-fA-F]{1,2}(?::[0-9a-fA-F]{1,2}){5})/i', $line, $m)) {
-                $ip = $m[1];
-                $mac = strtolower($m[2]);
-                if (stripos($mac, 'incomplete') === false && !isset($online_hosts[$ip])) {
-                    $online_hosts[$ip] = array(
-                        'online' => true,
-                        'mac' => $mac,
-                        'interface' => '',
-                        'status' => 'online'
-                    );
-                }
-            }
-        }
-    }
-
-    // 3. Suporte a IPv6 via ndp -an
-    $raw_ndp = array();
-    @exec('/usr/sbin/ndp -an 2>/dev/null', $raw_ndp);
-    if (!empty($raw_ndp)) {
-        foreach ($raw_ndp as $line) {
-            $parts = preg_split('/\s+/', trim($line));
-            if (count($parts) >= 2) {
-                $ip6 = $parts[0];
-                $mac6 = strtolower($parts[1]);
-                if (strpos($ip6, ':') !== false && stripos($mac6, 'incomplete') === false && preg_match('/^[0-9a-f:]+$/i', $mac6)) {
-                    if (!isset($online_hosts[$ip6])) {
-                        $online_hosts[$ip6] = array(
-                            'online' => true,
-                            'mac' => $mac6,
-                            'interface' => $parts[2] ?? '',
-                            'status' => 'online'
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    // 4. Sessão web atual e loopback são sempre Online
-    $online_hosts['127.0.0.1'] = array('online' => true, 'mac' => 'loopback', 'interface' => 'lo0', 'status' => 'online');
-    $online_hosts['::1'] = array('online' => true, 'mac' => 'loopback', 'interface' => 'lo0', 'status' => 'online');
-    if (!empty($_SERVER['REMOTE_ADDR'])) {
-        $online_hosts[$_SERVER['REMOTE_ADDR']] = array('online' => true, 'mac' => 'current_session', 'interface' => 'lan', 'status' => 'online');
-    }
-
-    return $online_hosts;
-}
-
-/**
- * Retorna se um endereço IP específico está online no momento
- */
-function rules_wam_is_host_online($ip) {
-    if (empty($ip)) return false;
-    $online = rules_wam_get_online_hosts();
-    return isset($online[$ip]) && !empty($online[$ip]['online']);
-}
-
-/**
- * Retorna o MAC address conhecido do host se disponível
- */
-function rules_wam_get_host_mac($ip) {
-    if (empty($ip)) return '';
-    $online = rules_wam_get_online_hosts();
-    if (isset($online[$ip]['mac']) && $online[$ip]['mac'] !== 'loopback' && $online[$ip]['mac'] !== 'current_session') {
-        return $online[$ip]['mac'];
-    }
-    return '';
-}
-
-/**
- * Extrai os registros de tentativas de bloqueio dos logs do sistema
- * Se $limit <= 0, retorna todos os registros sem limitação
- */
-function rules_wam_get_audit_events($limit = 1000) {
-    $events = array();
-    $cache_hn = array();
-    $seen = array();
-    $limit = intval($limit);
-
-    // 1. Lê wam_audit.log direto
-    if (file_exists(WAM_AUDIT_LOG)) {
-        $lines = @file(WAM_AUDIT_LOG, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        if ($lines) {
-            for ($i = count($lines) - 1; $i >= 0; $i--) {
-                $line = trim($lines[$i]);
-                if (empty($line)) continue;
-
-                $ts = '';
-                $ip = '';
-                $dom = '';
-                $cat = '';
-                $hn = '';
-
-                if (strpos($line, '|') !== false) {
-                    $parts = explode('|', $line);
-                    if (count($parts) >= 3) {
-                        $ts = trim($parts[0]);
-                        $ip = trim($parts[1]);
-                        $dom = rules_wam_clean_domain(trim($parts[2]));
-                        $cat = isset($parts[3]) ? trim($parts[3]) : '';
-                        $hn = isset($parts[4]) ? trim($parts[4]) : '';
-                    }
-                } elseif (preg_match('/\[(.*?)\]\s+CLIENT=([^\s]+)(?:\s+HOSTNAME=([^\s]+))?\s+DOMAIN=([^\s]+)(?:\s+CATEGORY="(.*?)")?/i', $line, $am)) {
-                    $ts = trim($am[1]);
-                    $ip = trim($am[2]);
-                    $hn = !empty($am[3]) ? trim($am[3]) : '';
-                    $dom = rules_wam_clean_domain(trim($am[4]));
-                    $cat = !empty($am[5]) ? trim($am[5]) : '';
-                }
-
-                if (!empty($dom) && !empty($ip)) {
-                    $key = "$ts|$ip|$dom";
-                    if (!isset($seen[$key])) {
-                        $seen[$key] = true;
-                        $is_online = rules_wam_is_host_online($ip);
-                        $events[] = array(
-                            'timestamp' => $ts,
-                            'ip' => $ip,
-                            'hostname' => !empty($hn) ? $hn : rules_wam_resolve_hostname($ip, $cache_hn),
-                            'online' => $is_online,
-                            'status_label' => $is_online ? 'Online' : 'Offline',
-                            'domain' => $dom,
-                            'category' => !empty($cat) ? $cat : rules_wam_get_domain_category($dom)
-                        );
-                        if ($limit > 0 && count($events) >= $limit) return $events;
-                    }
-                }
-            }
-        }
-    }
-
-    // 2. Lê /var/log/resolver.log e /var/log/system.log do pfSense (consultas reais de rede de qualquer cliente)
-    $log_lines = array();
-    $log_files = array('/var/log/resolver.log', '/var/log/system.log');
-    $tail_count = ($limit > 0) ? intval($limit * 3) : 100000;
-
-    foreach ($log_files as $lfile) {
-        if (!file_exists($lfile)) continue;
-
-        // Se for circular clog (FreeBSD/pfSense)
-        if (file_exists('/usr/local/sbin/clog')) {
-            $clog_out = array();
-            @exec('/usr/local/sbin/clog -f ' . escapeshellarg($lfile) . ' 2>/dev/null | tail -n ' . $tail_count, $clog_out);
-            if (!empty($clog_out)) {
-                $log_lines = array_merge($log_lines, $clog_out);
-                continue;
-            }
-        }
-
-        // Tenta tail nativo do shell
-        $tail_out = array();
-        @exec('tail -n ' . $tail_count . ' ' . escapeshellarg($lfile) . ' 2>/dev/null', $tail_out);
-        if (!empty($tail_out)) {
-            $log_lines = array_merge($log_lines, $tail_out);
-            continue;
-        }
-
-        // Fallback PHP file()
-        $f_lines = @file($lfile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        if ($f_lines) {
-            $log_lines = array_merge($log_lines, array_slice($f_lines, -$tail_count));
-        }
-    }
-
-    if (!empty($log_lines)) {
-        // Regex robusto:
-        // - Datas ISO 8601 (2026-09-04T13:08:31... ou 2026-09-04 13:08:31)
-        // - Datas BSD clássicas (Sep  4 13:08:31)
-        // - info: ou query: com ou sem PID e porta
-        $regex = '/(?:(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:?\d{2}|Z)?)|([A-Za-z]{3}\s+\d+\s+\d{2}:\d{2}:\d{2})).*?(?:info|query):\s+(?:query\s+(?:from\s+)?)?([0-9a-fA-F.:]+)(?:@\d+|\s+\d+)?\s+([a-zA-Z0-9_.-]+)\.?/i';
-
-        for ($i = count($log_lines) - 1; $i >= 0; $i--) {
-            $line = trim($log_lines[$i]);
-            if (empty($line)) continue;
-
-            if (preg_match($regex, $line, $m)) {
-                $ts = !empty($m[1]) ? $m[1] : $m[2];
-                $ip = $m[3];
-                $raw_dom = $m[4];
-                $dom = rules_wam_clean_domain($raw_dom);
-                $lan_ip = function_exists('config_get_path') ? config_get_path('interfaces/lan/ipaddr', '') : (!empty($config['interfaces']['lan']['ipaddr']) ? $config['interfaces']['lan']['ipaddr'] : '');
-                $cfg_ip = !empty($wam_cfg['block_page_ip']) ? $wam_cfg['block_page_ip'] : '';
-                if (empty($dom) || $ip === '127.0.0.1' || $ip === '::1' || (!empty($lan_ip) && $ip === $lan_ip) || (!empty($cfg_ip) && $ip === $cfg_ip)) continue;
-
-                // Checa se o domínio acessado pertence à nossa lista de bloqueio ativa
-                if (rules_wam_is_domain_blocked($dom)) {
-                    $key = "$ts|$ip|$dom";
-                    if (!isset($seen[$key])) {
-                        $seen[$key] = true;
-                        $is_online = rules_wam_is_host_online($ip);
-                        $events[] = array(
-                            'timestamp' => $ts,
-                            'ip' => $ip,
-                            'hostname' => rules_wam_resolve_hostname($ip, $cache_hn),
-                            'online' => $is_online,
-                            'status_label' => $is_online ? 'Online' : 'Offline',
-                            'domain' => $dom,
-                            'category' => rules_wam_get_domain_category($dom)
-                        );
-                        if ($limit > 0 && count($events) >= $limit) return $events;
-                    }
-                }
-            }
-        }
-    }
-
-    return $events;
-}
-
-/**
- * Garante a existência dos certificados SSL e CA para o Banner de Bloqueio
- */
-function rules_wam_ensure_banner_certs($block_page_ip = null) {
-    if (empty($block_page_ip)) {
-        $block_page_ip = rules_wam_get_lan_ip();
-    }
-    $ca_crt = '/var/etc/rules_wam_ca.crt';
-    $ca_key = '/var/etc/rules_wam_ca.key';
-    $ssl_crt = '/var/etc/rules_wam_ssl.crt';
-    $ssl_key = '/var/etc/rules_wam_ssl.key';
-    $pub_ca = '/usr/local/www/rules_wam_ca.crt';
-
-    @mkdir('/var/etc', 0755, true);
-
-    $need_gen = (!file_exists($ssl_crt) || !file_exists($ssl_key) || @filesize($ssl_crt) === 0 || @filesize($ssl_key) === 0);
-
-    if (!$need_gen) {
-        if (!file_exists($pub_ca) && file_exists($ca_crt)) {
-            @copy($ca_crt, $pub_ca);
-            @chmod($pub_ca, 0644);
-        }
-        return false;
-    }
-
-    // 1. Gera Autoridade Certificadora (CA) se ausente
-    if (!file_exists($ca_crt) || !file_exists($ca_key) || @filesize($ca_crt) === 0) {
-        $ca_cnf = "[req]\n"
-            . "distinguished_name = req_distinguished_name\n"
-            . "prompt = no\n"
-            . "x509_extensions = v3_ca\n\n"
-            . "[req_distinguished_name]\n"
-            . "C = BR\nST = SP\nO = Seguranca Corporativa\nCN = Rules WAM Firewall CA\n\n"
-            . "[v3_ca]\n"
-            . "basicConstraints = critical, CA:TRUE\n"
-            . "keyUsage = critical, digitalSignature, cRLSign, keyCertSign\n"
-            . "subjectKeyIdentifier = hash\n"
-            . "authorityKeyIdentifier = keyid:always,issuer\n";
-        @file_put_contents('/tmp/rules_wam_ca.cnf', $ca_cnf);
-        @exec("/usr/bin/openssl req -x509 -new -newkey rsa:2048 -nodes -days 3650 -config /tmp/rules_wam_ca.cnf -keyout {$ca_key} -out {$ca_crt} 2>/dev/null");
-        @unlink('/tmp/rules_wam_ca.cnf');
-        @chmod($ca_key, 0600);
-        @chmod($ca_crt, 0644);
-    }
-
-    if (file_exists($ca_crt)) {
-        @copy($ca_crt, $pub_ca);
-        @chmod($pub_ca, 0644);
-    }
-
-    // 2. Monta configuração com SANs para o Banner
-    $san_lines = array('DNS.1 = localhost', 'IP.1 = 127.0.0.1');
-    $ip_idx = 2;
-    $added = array('localhost' => true, '127.0.0.1' => true);
-
-    if (!empty($block_page_ip) && !isset($added[$block_page_ip])) {
-        $san_lines[] = "IP.{$ip_idx} = {$block_page_ip}";
-        $added[$block_page_ip] = true;
-        $ip_idx++;
-    }
-
-    // Inclui todos os IPs de interfaces internas configuradas no pfSense no certificado SAN
-    $internal_ifaces = rules_wam_get_configured_interfaces(false);
-    foreach ($internal_ifaces as $i_data) {
-        if (!empty($i_data['ip']) && !isset($added[$i_data['ip']])) {
-            $san_lines[] = "IP.{$ip_idx} = " . $i_data['ip'];
-            $added[$i_data['ip']] = true;
-            $ip_idx++;
-        }
-    }
-
-    $idx = 2;
-    $popular = array(
-        'whatsapp.com', 'facebook.com', 'instagram.com', 'tiktok.com', 'twitter.com', 'x.com',
-        'discord.com', 'telegram.org', 'bet365.com', 'betano.com', 'blaze.com', 'sportingbet.com',
-        'xvideos.com', 'pornhub.com', 'xnxx.com', 'globo.com', 'uol.com.br'
-    );
-    foreach ($popular as $p) {
-        if (!isset($added[$p])) {
-            $san_lines[] = "DNS.{$idx} = {$p}";
-            $idx++;
-            $added[$p] = true;
-        }
-        $wild = "*.{$p}";
-        if (!isset($added[$wild])) {
-            $san_lines[] = "DNS.{$idx} = {$wild}";
-            $idx++;
-            $added[$wild] = true;
-        }
-    }
-
-    $cnf = "[req]\n"
-        . "distinguished_name = req_distinguished_name\n"
-        . "prompt = no\n"
-        . "req_extensions = v3_req\n\n"
-        . "[req_distinguished_name]\n"
-        . "C = BR\nST = SP\nO = Seguranca Corporativa\nCN = Rules WAM Block\n\n"
-        . "[v3_req]\n"
-        . "basicConstraints = critical, CA:FALSE\n"
-        . "keyUsage = critical, digitalSignature, keyEncipherment\n"
-        . "extendedKeyUsage = serverAuth\n"
-        . "subjectKeyIdentifier = hash\n"
-        . "subjectAltName = @alt_names\n\n"
-        . "[alt_names]\n"
-        . implode("\n", $san_lines) . "\n";
-
-    @file_put_contents('/tmp/rules_wam_ssl.cnf', $cnf);
-    @unlink($ssl_key);
-    @unlink($ssl_crt);
-    @exec("/usr/bin/openssl req -new -newkey rsa:2048 -nodes -keyout {$ssl_key} -out /tmp/rules_wam_ssl.csr -config /tmp/rules_wam_ssl.cnf 2>/dev/null");
-    @exec("/usr/bin/openssl x509 -req -days 3650 -in /tmp/rules_wam_ssl.csr -CA {$ca_crt} -CAkey {$ca_key} -CAcreateserial -out {$ssl_crt} -extfile /tmp/rules_wam_ssl.cnf -extensions v3_req 2>/dev/null");
-
-    if (!file_exists($ssl_crt) || @filesize($ssl_crt) === 0) {
-        @exec("/usr/bin/openssl req -x509 -new -newkey rsa:2048 -nodes -days 3650 -config /tmp/rules_wam_ssl.cnf -extensions v3_req -keyout {$ssl_key} -out {$ssl_crt} 2>/dev/null");
-    }
-
-    @unlink('/tmp/rules_wam_ssl.csr');
-    @unlink('/tmp/rules_wam_ssl.cnf');
-    @chmod($ssl_key, 0640);
-    @chmod($ssl_crt, 0644);
-
-    return true;
-}
-
-/**
- * Sincroniza o servico NGINX do Banner de Bloqueio com a porta ativa da WebGUI
- */
-function rules_wam_sync_banner_nginx() {
-    global $config;
-    require_once("config.inc");
-    init_config_arr(array('system', 'webgui'));
-
-    $sys_changed = false;
-    // Assegura parâmetros de DNS Rebind e HTTP Redirect se ausentes
-    if (!isset($config['system']['webgui']['nodnsrebindcheck'])) {
-        $config['system']['webgui']['nodnsrebindcheck'] = true;
-        $sys_changed = true;
-    }
-    if (!isset($config['system']['webgui']['disablehttpredirect'])) {
-        $config['system']['webgui']['disablehttpredirect'] = true;
-        $sys_changed = true;
-    }
-
-    // Libera porta 443 e 80 migrando WebGUI para 50443 caso esteja em conflito
-    $cur_port = !empty($config['system']['webgui']['port']) ? $config['system']['webgui']['port'] : '';
-    $cur_proto = !empty($config['system']['webgui']['protocol']) ? $config['system']['webgui']['protocol'] : 'https';
-    $port_changed = false;
-    if ($cur_port === '443' || $cur_port === '80' || (empty($cur_port) && $cur_proto === 'https') || $cur_port === '8443') {
-        $config['system']['webgui']['port'] = '50443';
-        $config['system']['webgui']['protocol'] = 'https';
-        $port_changed = true;
-        $sys_changed = true;
-    }
-
-    if ($sys_changed) {
-        write_config("Rules WAM: Portas 80 e 443 liberadas para Banner (WebGUI ajustada para 50443)");
-        if ($port_changed && file_exists('/etc/rc.restart_webgui')) {
-            // Executa em segundo plano com delay para não encerrar a sessão HTTP atual do usuário
-            if (function_exists('mwexec_bg')) {
-                @mwexec_bg('/bin/sh -c "(sleep 2 && /etc/rc.restart_webgui) >/dev/null 2>&1 &"');
-            } else {
-                @mwexec('/bin/sh -c "(sleep 2 && /etc/rc.restart_webgui) >/dev/null 2>&1 &"');
-            }
-        }
-        if (file_exists('/etc/rc.filter_configure')) {
-            @mwexec('/etc/rc.filter_configure 2>/dev/null');
-        } elseif (function_exists('filter_configure')) {
-            filter_configure();
-        }
-    }
-
-    // Assegura certificados SSL válidos para o Banner NGINX
-    $cert_generated = rules_wam_ensure_banner_certs();
-
-    $nginx_conf = '/usr/local/etc/nginx/rules_wam_ssl.conf';
-    $conf_changed = false;
-
-    // FastCGI direto para o PHP-FPM nativo do pfSense
-    // Elimina completamente 502 Bad Gateway e dependência de porta/protocolo da WebGUI
-    $conf_tpl = "worker_processes 1;\n"
-        . "pid /var/run/rules_wam_ssl.pid;\n"
-        . "error_log /var/log/rules_wam_ssl.log info;\n"
-        . "events {\n    worker_connections 256;\n}\n"
-        . "http {\n"
-        . "    access_log off;\n"
-        . "    error_log /var/log/rules_wam_ssl.log info;\n"
-        . "    default_type text/html;\n"
-        . "    types {\n"
-        . "        text/html                             html htm;\n"
-        . "        application/x-x509-ca-cert            crt;\n"
-        . "    }\n\n"
-        . "    server {\n"
-        . "        listen 80;\n"
-        . "        server_name _;\n"
-        . "        root /usr/local/www;\n\n"
-        . "        location = /rules_wam_ca.crt {\n"
-        . "            root /usr/local/www;\n"
-        . "        }\n\n"
-        . "        location / {\n"
-        . "            fastcgi_pass unix:/var/run/php-fpm.socket;\n"
-        . "            fastcgi_param SCRIPT_FILENAME /usr/local/www/rules_wam_block.php;\n"
-        . "            fastcgi_param SCRIPT_NAME /rules_wam_block.php;\n"
-        . "            fastcgi_param DOCUMENT_URI /rules_wam_block.php;\n"
-        . "            fastcgi_param DOCUMENT_ROOT /usr/local/www;\n"
-        . "            fastcgi_param QUERY_STRING domain=\$host&\$query_string;\n"
-        . "            fastcgi_param REQUEST_METHOD \$request_method;\n"
-        . "            fastcgi_param CONTENT_TYPE \$content_type;\n"
-        . "            fastcgi_param CONTENT_LENGTH \$content_length;\n"
-        . "            fastcgi_param SERVER_PROTOCOL \$server_protocol;\n"
-        . "            fastcgi_param REMOTE_ADDR \$remote_addr;\n"
-        . "            fastcgi_param REMOTE_PORT \$remote_port;\n"
-        . "            fastcgi_param SERVER_ADDR \$server_addr;\n"
-        . "            fastcgi_param SERVER_PORT \$server_port;\n"
-        . "            fastcgi_param SERVER_NAME \$host;\n"
-        . "            fastcgi_param HTTP_HOST \$host;\n"
-        . "            fastcgi_param GATEWAY_INTERFACE CGI/1.1;\n"
-        . "            fastcgi_param SERVER_SOFTWARE nginx;\n"
-        . "            fastcgi_param REDIRECT_STATUS 200;\n"
-        . "            fastcgi_buffers 16 16k;\n"
-        . "            fastcgi_buffer_size 32k;\n"
-        . "            fastcgi_read_timeout 15s;\n"
-        . "            fastcgi_send_timeout 15s;\n"
-        . "            fastcgi_connect_timeout 5s;\n"
-        . "        }\n"
-        . "    }\n\n"
-        . "    server {\n"
-        . "        listen 443 ssl;\n"
-        . "        server_name _;\n"
-        . "        ssl_certificate /var/etc/rules_wam_ssl.crt;\n"
-        . "        ssl_certificate_key /var/etc/rules_wam_ssl.key;\n"
-        . "        ssl_protocols TLSv1.2 TLSv1.3;\n"
-        . "        ssl_ciphers HIGH:!aNULL:!MD5;\n"
-        . "        root /usr/local/www;\n\n"
-        . "        location = /rules_wam_ca.crt {\n"
-        . "            root /usr/local/www;\n"
-        . "        }\n\n"
-        . "        location / {\n"
-        . "            fastcgi_pass unix:/var/run/php-fpm.socket;\n"
-        . "            fastcgi_param SCRIPT_FILENAME /usr/local/www/rules_wam_block.php;\n"
-        . "            fastcgi_param SCRIPT_NAME /rules_wam_block.php;\n"
-        . "            fastcgi_param DOCUMENT_URI /rules_wam_block.php;\n"
-        . "            fastcgi_param DOCUMENT_ROOT /usr/local/www;\n"
-        . "            fastcgi_param QUERY_STRING domain=\$host&\$query_string;\n"
-        . "            fastcgi_param REQUEST_METHOD \$request_method;\n"
-        . "            fastcgi_param CONTENT_TYPE \$content_type;\n"
-        . "            fastcgi_param CONTENT_LENGTH \$content_length;\n"
-        . "            fastcgi_param SERVER_PROTOCOL \$server_protocol;\n"
-        . "            fastcgi_param REMOTE_ADDR \$remote_addr;\n"
-        . "            fastcgi_param REMOTE_PORT \$remote_port;\n"
-        . "            fastcgi_param SERVER_ADDR \$server_addr;\n"
-        . "            fastcgi_param SERVER_PORT \$server_port;\n"
-        . "            fastcgi_param SERVER_NAME \$host;\n"
-        . "            fastcgi_param HTTP_HOST \$host;\n"
-        . "            fastcgi_param HTTPS on;\n"
-        . "            fastcgi_param GATEWAY_INTERFACE CGI/1.1;\n"
-        . "            fastcgi_param SERVER_SOFTWARE nginx;\n"
-        . "            fastcgi_param REDIRECT_STATUS 200;\n"
-        . "            fastcgi_buffers 16 16k;\n"
-        . "            fastcgi_buffer_size 32k;\n"
-        . "            fastcgi_read_timeout 15s;\n"
-        . "            fastcgi_send_timeout 15s;\n"
-        . "            fastcgi_connect_timeout 5s;\n"
-        . "        }\n"
-        . "    }\n"
-        . "}\n";
-
-    if (!file_exists($nginx_conf) || @file_get_contents($nginx_conf) !== $conf_tpl) {
-        @mkdir('/usr/local/etc/nginx', 0755, true);
-        file_put_contents($nginx_conf, $conf_tpl);
-        $conf_changed = true;
-    }
-
-    $rc_script = '/usr/local/etc/rc.d/rules_wam_ssl.sh';
-    $rc_content = "#!/bin/sh\n"
-        . "stop_banner() {\n"
-        . "    pkill -TERM -f \"rules_wam_ssl.conf\" 2>/dev/null || true\n"
-        . "    if [ -f /var/run/rules_wam_ssl.pid ]; then\n"
-        . "        PID=\$(cat /var/run/rules_wam_ssl.pid 2>/dev/null)\n"
-        . "        if [ -n \"\$PID\" ] && kill -0 \"\$PID\" 2>/dev/null; then\n"
-        . "            kill -QUIT \"\$PID\" 2>/dev/null || kill -TERM \"\$PID\" 2>/dev/null || true\n"
-        . "        fi\n"
-        . "    fi\n"
-        . "    sleep 1\n"
-        . "    for p in \$(sockstat -4 -l -p 80,443 2>/dev/null | awk 'NR>1 {print \$3}' | sort -u); do\n"
-        . "        [ -n \"\$p\" ] && kill -TERM \"\$p\" 2>/dev/null || true\n"
-        . "    done\n"
-        . "    sleep 1\n"
-        . "    for p in \$(sockstat -4 -l -p 80,443 2>/dev/null | awk 'NR>1 {print \$3}' | sort -u); do\n"
-        . "        [ -n \"\$p\" ] && kill -9 \"\$p\" 2>/dev/null || true\n"
-        . "    done\n"
-        . "    rm -f /var/run/rules_wam_ssl.pid\n"
-        . "    sleep 1\n"
-        . "}\n\n"
-        . "case \"\$1\" in\n"
-        . "    stop)\n"
-        . "        stop_banner\n"
-        . "        ;;\n"
-        . "    start|restart|*)\n"
-        . "        stop_banner\n"
-        . "        chmod 666 /var/run/php-fpm.socket 2>/dev/null || true\n"
-        . "        if [ ! -s /var/etc/rules_wam_ssl.crt ] || [ ! -s /var/etc/rules_wam_ssl.key ]; then\n"
-        . "            /usr/local/bin/php -r 'require_once(\"/usr/local/pkg/rules_wam.inc\"); rules_wam_ensure_banner_certs();' 2>/dev/null || true\n"
-        . "        fi\n"
-        . "        /usr/local/sbin/nginx -c /usr/local/etc/nginx/rules_wam_ssl.conf 2>>/var/log/rules_wam_ssl.log || true\n"
-        . "        ;;\nesac\n";
-
-    if (!file_exists($rc_script) || @file_get_contents($rc_script) !== $rc_content) {
-        @mkdir('/usr/local/etc/rc.d', 0755, true);
-        file_put_contents($rc_script, $rc_content);
-        @chmod($rc_script, 0755);
-        $conf_changed = true;
-    }
-
-    // Verifica se o NGINX do banner já está em execução
-    $is_banner_running = false;
-    if (file_exists('/var/run/rules_wam_ssl.pid')) {
-        $npid = trim(@file_get_contents('/var/run/rules_wam_ssl.pid'));
-        if (!empty($npid) && function_exists('posix_kill') && @posix_kill($npid, 0)) {
-            $is_banner_running = true;
-        }
-    }
-    if (!$is_banner_running) {
-        $p_out = array();
-        @exec("/usr/bin/pgrep -f 'rules_wam_ssl.conf'", $p_out);
-        $is_banner_running = !empty($p_out);
-    }
-
-    // Reinicia o Banner NGINX se a configuração mudou, certificados foram gerados ou serviço está parado
-    if (file_exists($rc_script) && ($conf_changed || $cert_generated || !$is_banner_running)) {
-        mwexec('/bin/sh /usr/local/etc/rc.d/rules_wam_ssl.sh restart 2>/dev/null');
-    }
-}
-?>
-EOF_INC
-echo '>> Extraindo pkg/rules_wam_hook.inc...'
-cat << 'EOF_HOOK' > $TMP_DIR/pkg/rules_wam_hook.inc
-<?php
-/*
- * rules_wam_hook.inc
- * Interceptor de requisições HTTP para exibição do Banner de Bloqueio
- */
-
-if (!empty($_SERVER['HTTP_HOST'])) {
-    $fwd_port  = $_SERVER['HTTP_X_FORWARDED_PORT'] ?? '';
-    $fwd_proto = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '';
-    $srv_port  = $_SERVER['SERVER_PORT'] ?? '';
-    $is_proxied = (!empty($_SERVER['REMOTE_ADDR']) && $_SERVER['REMOTE_ADDR'] === '127.0.0.1' && (!empty($_SERVER['HTTP_X_REAL_IP']) || !empty($fwd_proto) || !empty($fwd_port)));
-    $is_banner_port = ($srv_port == '80' || $srv_port == '443' || $fwd_port == '80' || $fwd_port == '443');
-
-    // Se a requisição veio diretamente na porta administrativa WebGUI sem proxy WAM, não interceptar
-    if (!$is_proxied && !$is_banner_port && !empty($srv_port)) {
-        return;
-    }
-
-    $req_h = strtolower(trim($_SERVER['HTTP_HOST']));
-    $req_h = preg_replace('/:\d+$/', '', $req_h); // remove porta
-
-    // Lista de identificadores locais do firewall
-    $fw_ips = array('127.0.0.1', '::1', 'localhost');
-    if (!empty($_SERVER['SERVER_ADDR'])) {
-        $fw_ips[] = $_SERVER['SERVER_ADDR'];
-    }
-
-    if (!isset($config) && file_exists('/etc/inc/config.inc')) {
-        require_once('/etc/inc/config.inc');
-    }
-
-    global $config;
-    if (!empty($config['interfaces'])) {
-        foreach ($config['interfaces'] as $if_cfg) {
-            if (!empty($if_cfg['ipaddr'])) {
-                $fw_ips[] = $if_cfg['ipaddr'];
-            }
-        }
-    }
-    if (!empty($config['system']['hostname'])) {
-        $fw_ips[] = strtolower($config['system']['hostname']);
-        if (!empty($config['system']['domain'])) {
-            $fw_ips[] = strtolower($config['system']['hostname'] . '.' . $config['system']['domain']);
-        }
-    }
-
-    $is_fw = in_array($req_h, $fw_ips) || strpos($req_h, 'pfsense') !== false;
-
-    // Se o host solicitado NÃO for o próprio firewall, é um domínio interceptado pelo Rules WAM!
-    if (!$is_fw) {
-        if (file_exists('/usr/local/www/rules_wam_block.php')) {
-            require('/usr/local/www/rules_wam_block.php');
-            exit;
-        }
-    }
-}
-
-EOF_HOOK
-echo '>> Extraindo pkg/register_menu.php...'
-cat << 'EOF_REG' > $TMP_DIR/pkg/register_menu.php
-<?php
-/*
- * register_menu.php
- * Registra o Rules WAM no config.xml e nos menus do pfSense
- */
-
-require_once("config.inc");
-require_once("pkg-utils.inc");
-
-// 1. Limpa relatórios de crash antigos
-@unlink("/tmp/PHP_errors.log");
-if (is_dir("/var/crash")) {
-    $files = glob("/var/crash/*");
-    if (is_array($files)) {
-        foreach ($files as $f) {
-            @unlink($f);
-        }
-    }
-}
-
-// 2. Registra pacote
-$packages = config_get_path('installedpackages/package', array());
-$pkg_info = array(
-    "name" => "rules_wam",
-    "version" => "1.3.0",
-    "status" => "Stable",
-    "descr" => "Rules WAM - Web Access Manager",
-    "configurationfile" => "rules_wam.xml"
-);
-
-$found_pkg = false;
-foreach ($packages as $idx => $p) {
-    if (isset($p['name']) && ($p['name'] === 'rules_wam' || $p['name'] === 'wam')) {
-        $packages[$idx] = $pkg_info;
-        $found_pkg = true;
-        break;
-    }
-}
-if (!$found_pkg) {
-    $packages[] = $pkg_info;
-}
-config_set_path('installedpackages/package', $packages);
-
-// 3. Registra menus em Services e Firewall
-$menus = config_get_path('installedpackages/menu', array());
-
-$clean_menus = array();
-if (is_array($menus)) {
-    foreach ($menus as $m) {
-        if (isset($m['name']) && ($m['name'] === 'Rules WAM' || $m['name'] === 'WAM - Bloqueio de Categorias' || (isset($m['url']) && strpos($m['url'], 'wam.xml') !== false))) {
-            continue;
-        }
-        $clean_menus[] = $m;
-    }
-}
-
-$clean_menus[] = array(
-    "name" => "Rules WAM",
-    "section" => "Services",
-    "url" => "/rules_wam.php",
-    "tooltiptext" => "Rules WAM - Bloqueio de Categorias de Sites"
-);
-
-$clean_menus[] = array(
-    "name" => "Rules WAM",
-    "section" => "Firewall",
-    "url" => "/rules_wam.php",
-    "tooltiptext" => "Rules WAM - Bloqueio de Categorias de Sites"
-);
-
-config_set_path('installedpackages/menu', $clean_menus);
-
-// 4. Configura Cron a cada 5 min
-$cron_items = config_get_path('cron/item', array());
-$cron_cmd = "/usr/local/bin/php -q /usr/local/pkg/wam_cron.php";
-$cron_found = false;
-if (is_array($cron_items)) {
-    foreach ($cron_items as $c) {
-        if (isset($c['command']) && $c['command'] === $cron_cmd) {
-            $cron_found = true;
-            break;
-        }
-    }
-}
-if (!$cron_found) {
-    $cron_items[] = array(
-        "minute" => "*/5",
-        "hour" => "*",
-        "mday" => "*",
-        "month" => "*",
-        "wday" => "*",
-        "who" => "root",
-        "command" => $cron_cmd
-    );
-    config_set_path('cron/item', $cron_items);
-}
-
-// 5. Registra o Widget no Dashboard do pfSense (se já houver sequência configurada)
-$users = config_get_path('system/user', array());
-$user_changed = false;
-if (is_array($users)) {
-    foreach ($users as $u_idx => $u) {
-        if (!empty($u['name']) && ($u['name'] === 'admin' || (!empty($u['scope']) && $u['scope'] === 'system'))) {
-            $u_seq = $u['widgets']['sequence'] ?? '';
-            if (!empty($u_seq) && strpos($u_seq, 'rules_wam') === false) {
-                $users[$u_idx]['widgets']['sequence'] = rtrim($u_seq, ',') . ',rules_wam:col2:show:0';
-                $user_changed = true;
-            }
-        }
-    }
-    if ($user_changed) {
-        config_set_path('system/user', $users);
-    }
-}
-$root_widgets = config_get_path('widgets/sequence', null);
-if (!empty($root_widgets) && strpos($root_widgets, 'rules_wam') === false) {
-    config_set_path('widgets/sequence', rtrim($root_widgets, ',') . ',rules_wam:col2:show:0');
-}
-
-// 6. Grava configuração e limpa caches
-write_config("Rules WAM menu e widget registrados");
-if (function_exists("configure_cron")) {
-    configure_cron();
-}
-
-@unlink("/tmp/config.cache");
-@unlink("/tmp/menu.cache");
-@unlink("/tmp/pkg_menu.cache");
-
-echo "=== SUCESSO: RULES WAM REGISTRADO ===\n";
-echo "Menus ativos:\n";
-foreach ($clean_menus as $m) {
-    echo " -> [" . $m['section'] . "] " . $m['name'] . " (" . $m['url'] . ")\n";
-}
-echo "Crash reports antigos limpos!\n";
-echo "=====================================\n";
-?>
-
-EOF_REG
-echo '>> Extraindo pkg/wam_cron.php...'
-cat << 'EOF_CRON' > $TMP_DIR/pkg/wam_cron.php
-<?php
-/*
- * wam_cron.php
- * Executado periodicamente pelo cron do pfSense a cada 5 minutos
- * para manter o agendamento de Rules WAM sincronizado.
- */
-
-require_once("config.inc");
-require_once("/usr/local/pkg/rules_wam.inc");
-
-global $config;
-
-$wam_cfg = array();
-if (isset($config['installedpackages']['rules_wam']['config'][0])) {
-    $wam_cfg = $config['installedpackages']['rules_wam']['config'][0];
-} elseif (isset($config['installedpackages']['wam']['config'][0])) {
-    $wam_cfg = $config['installedpackages']['wam']['config'][0];
-} else {
-    exit(0);
-}
-
-if (!isset($wam_cfg['enable']) || $wam_cfg['enable'] !== 'yes') {
-    exit(0);
-}
-
-if (!isset($wam_cfg['schedule_enable']) || $wam_cfg['schedule_enable'] !== 'yes') {
-    exit(0);
-}
-
-$should_block = rules_wam_is_in_schedule_window($wam_cfg);
-$conf_exists = file_exists(WAM_CONF_FILE);
-
-if ($should_block && !$conf_exists) {
-    log_error("[Rules WAM Cron] Entrando no horário de bloqueio comercial...");
-    rules_wam_apply_rules($wam_cfg);
-} elseif (!$should_block && $conf_exists) {
-    log_error("[Rules WAM Cron] Entrando no intervalo livre (fora de horário)...");
-    rules_wam_suspend_schedule();
-}
-?>
-
-EOF_CRON
-echo '>> Extraindo www/rules_wam.php...'
-cat << 'EOF_WAM_PHP' > $TMP_DIR/www/rules_wam.php
-<?php
-/*
- * rules_wam.php
- * Rules WAM - Web Access Manager para pfSense
- * Página Principal de Configuração de Regras e Categorias
- */
-
-require_once("guiconfig.inc");
-require_once("/usr/local/pkg/rules_wam.inc");
-
-$save_msg = null;
-
-$lan_default_ip = function_exists('rules_wam_get_lan_ip') ? rules_wam_get_lan_ip() : '192.168.1.1';
-
-// Processa salvamento do formulário
-if ($_POST && isset($_POST['save_rules_wam'])) {
-    $wam_cfg = array(
-        'enable'               => isset($_POST['enable']) ? 'yes' : 'no',
-        'block_social'         => isset($_POST['block_social']) ? 'yes' : 'no',
-        'block_adult'          => isset($_POST['block_adult']) ? 'yes' : 'no',
-        'block_news'           => isset($_POST['block_news']) ? 'yes' : 'no',
-        'block_sports'         => isset($_POST['block_sports']) ? 'yes' : 'no',
-        'block_gaming'         => isset($_POST['block_gaming']) ? 'yes' : 'no',
-        'block_streaming'      => isset($_POST['block_streaming']) ? 'yes' : 'no',
-        'block_gambling'       => isset($_POST['block_gambling']) ? 'yes' : 'no',
-        'block_shopping'       => isset($_POST['block_shopping']) ? 'yes' : 'no',
-        'block_p2p'            => isset($_POST['block_p2p']) ? 'yes' : 'no',
-        'block_doh'            => isset($_POST['block_doh']) ? 'yes' : 'no',
-        'block_dns_bypass'     => isset($_POST['block_dns_bypass']) ? 'yes' : 'no',
-        'enable_upstream_forwarding' => isset($_POST['enable_upstream_forwarding']) ? 'yes' : 'no',
-        'block_vpn'            => isset($_POST['block_vpn']) ? 'yes' : 'no',
-        'block_vpn_fortinet'   => isset($_POST['block_vpn_fortinet']) ? 'yes' : 'no',
-        'block_vpn_cisco'      => isset($_POST['block_vpn_cisco']) ? 'yes' : 'no',
-        'block_vpn_paloalto'   => isset($_POST['block_vpn_paloalto']) ? 'yes' : 'no',
-        'block_ztna_zscaler'   => isset($_POST['block_ztna_zscaler']) ? 'yes' : 'no',
-        'block_ztna_netskope'  => isset($_POST['block_ztna_netskope']) ? 'yes' : 'no',
-        'block_ztna_cloudflare'=> isset($_POST['block_ztna_cloudflare']) ? 'yes' : 'no',
-        'block_ztna_tailscale' => isset($_POST['block_ztna_tailscale']) ? 'yes' : 'no',
-        'block_vpn_commercial' => isset($_POST['block_vpn_commercial']) ? 'yes' : 'no',
-        'block_messaging'      => isset($_POST['block_messaging']) ? 'yes' : 'no',
-        'block_msg_whatsapp'   => isset($_POST['block_msg_whatsapp']) ? 'yes' : 'no',
-        'block_msg_telegram'   => isset($_POST['block_msg_telegram']) ? 'yes' : 'no',
-        'block_msg_messenger'  => isset($_POST['block_msg_messenger']) ? 'yes' : 'no',
-        'block_msg_teams_skype'=> isset($_POST['block_msg_teams_skype']) ? 'yes' : 'no',
-        'block_msg_discord'    => isset($_POST['block_msg_discord']) ? 'yes' : 'no',
-        'block_msg_slack'      => isset($_POST['block_msg_slack']) ? 'yes' : 'no',
-        'block_msg_zoom_meet'  => isset($_POST['block_msg_zoom_meet']) ? 'yes' : 'no',
-        'block_msg_others'     => isset($_POST['block_msg_others']) ? 'yes' : 'no',
-        'schedule_enable'      => isset($_POST['schedule_enable']) ? 'yes' : 'no',
-        'schedule_start'       => !empty($_POST['schedule_start']) ? trim($_POST['schedule_start']) : '08:00',
-        'schedule_end'         => !empty($_POST['schedule_end']) ? trim($_POST['schedule_end']) : '18:00',
-        'schedule_lunch_start' => !empty($_POST['schedule_lunch_start']) ? trim($_POST['schedule_lunch_start']) : '',
-        'schedule_lunch_end'   => !empty($_POST['schedule_lunch_end']) ? trim($_POST['schedule_lunch_end']) : '',
-        'schedule_weekend'     => isset($_POST['schedule_weekend']) ? 'yes' : 'no',
-        'bypass_ips'           => isset($_POST['bypass_ips']) ? trim($_POST['bypass_ips']) : '',
-        'custom_whitelist'     => isset($_POST['custom_whitelist']) ? trim($_POST['custom_whitelist']) : '',
-        'custom_blacklist'     => isset($_POST['custom_blacklist']) ? trim($_POST['custom_blacklist']) : '',
-        'custom_hosts'         => isset($_POST['custom_hosts']) ? trim($_POST['custom_hosts']) : '',
-        'block_action'         => isset($_POST['block_action']) ? trim($_POST['block_action']) : 'block_page',
-        'block_page_ip'        => !empty($_POST['block_page_ip']) ? trim($_POST['block_page_ip']) : $lan_default_ip,
-        'corp_enable'          => isset($_POST['corp_enable']) ? 'yes' : 'no',
-        'corp_ad_domain'       => isset($_POST['corp_ad_domain']) ? trim($_POST['corp_ad_domain']) : '',
-        'corp_ad_dns_ips'      => isset($_POST['corp_ad_dns_ips']) ? trim($_POST['corp_ad_dns_ips']) : '',
-        'corp_protect_netskope'=> isset($_POST['corp_protect_netskope']) ? 'yes' : 'no',
-        'corp_protect_idp'     => isset($_POST['corp_protect_idp']) ? 'yes' : 'no',
-        'corp_protect_tools'   => isset($_POST['corp_protect_tools']) ? 'yes' : 'no',
-        'corp_protect_cloudflare' => isset($_POST['corp_protect_cloudflare']) ? 'yes' : 'no',
-        'corp_protect_helpdesk'=> isset($_POST['corp_protect_helpdesk']) ? 'yes' : 'no',
-        'corp_protect_voip'    => isset($_POST['corp_protect_voip']) ? 'yes' : 'no',
-        'corp_reverse_lookup'  => isset($_POST['corp_reverse_lookup']) ? 'yes' : 'no',
-        'corp_allowed_subnets' => isset($_POST['corp_allowed_subnets']) ? trim($_POST['corp_allowed_subnets']) : "172.24.0.0/16\n192.168.0.0/16\n192.192.0.0/16\n10.0.0.0/8",
-        'initialized'          => 'yes'
-    );
-
-    // Grava no config.xml (em ambos os caminhos para compatibilidade total)
-    config_set_path('installedpackages/rules_wam/config/0', $wam_cfg);
-    config_set_path('installedpackages/wam/config/0', $wam_cfg);
-    write_config("Rules WAM: configurações salvas via WebGUI");
-
-    if ($wam_cfg['enable'] === 'yes') {
-        rules_wam_apply_rules($wam_cfg);
-        $save_msg = "Configurações salvas com sucesso! O serviço Rules WAM está ATIVO e as regras foram aplicadas no Unbound DNS.";
-    } else {
-        rules_wam_disable();
-        $save_msg = "Configurações salvas. O serviço Rules WAM foi DESABILITADO e os acessos estão liberados.";
-    }
-}
-
-// Carrega dados atuais do config.xml
-$wam_cfg = rules_wam_get_config();
-
-$pgtitle = array(gettext("Services"), gettext("Rules WAM"), gettext("Configurações de Bloqueio"));
-include("head.inc");
-
-$tab_array = array();
-$tab_array[] = array(gettext("Configurações de Bloqueio"), true, "/rules_wam.php");
-$tab_array[] = array(gettext("Status & Teste de Bloqueio"), false, "/rules_wam_status.php");
-$tab_array[] = array(gettext("Dashboard & Tentativas de Acesso"), false, "/rules_wam_dashboard.php");
-$tab_array[] = array(gettext("Banner de Bloqueio (Prévia)"), false, "/rules_wam_block.php");
-display_top_tabs($tab_array);
-?>
-
-<?php if ($save_msg): ?>
-    <div class="alert alert-success alert-dismissible" role="alert">
-        <button type="button" class="close" data-dismiss="alert"><span aria-hidden="true">&times;</span></button>
-        <i class="fa fa-check-circle"></i> <strong><?=htmlspecialchars($save_msg)?></strong>
-    </div>
-<?php endif; ?>
-
-<form action="/rules_wam.php" method="post" name="iform" id="iform" class="form-horizontal">
-    <div class="panel panel-default">
-        <div class="panel-heading">
-            <h2 class="panel-title"><?=gettext("Controle Geral")?></h2>
-        </div>
-        <div class="panel-body">
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><strong><?=gettext("Habilitar Serviço Rules WAM")?></strong></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="enable" value="yes" <?=rules_wam_is_checked($wam_cfg['enable'] ?? null) ? 'checked' : ''?> />
-                            <strong><?=gettext("Marque para ativar a filtragem de categorias via DNS (Unbound)")?></strong>
-                        </label>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="panel panel-default">
-        <div class="panel-heading">
-            <h2 class="panel-title"><?=gettext("Categorias de Bloqueio Disponíveis")?></h2>
-        </div>
-        <div class="panel-body">
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Conteúdo Adulto & Pornografia")?></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="block_adult" value="yes" <?=rules_wam_is_checked($wam_cfg['block_adult'] ?? null) ? 'checked' : ''?> />
-                            <?=gettext("Bloqueia portais adultos, pornografia, acompanhantes e cams (xvideos, xvideo, pornhub, xnxx, fatalmodel, etc. - Mais de 2.600 domínios)")?>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Mídias Sociais & Redes")?></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="block_social" value="yes" <?=rules_wam_is_checked($wam_cfg['block_social'] ?? null) ? 'checked' : ''?> />
-                            <?=gettext("Bloqueia YouTube, Instagram, Facebook, TikTok, Twitter/X, Kwai, Reddit, Discord, etc.")?>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Apostas, Bets & Cassinos")?></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="block_gambling" value="yes" <?=rules_wam_is_checked($wam_cfg['block_gambling'] ?? null) ? 'checked' : ''?> />
-                            <?=gettext("Bloqueia casas de apostas esportivas, cassinos online, tigrinho, Blaze, Betano, Bet365, etc. - Mais de 1.500 domínios")?>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Streaming & Vídeo")?></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="block_streaming" value="yes" <?=rules_wam_is_checked($wam_cfg['block_streaming'] ?? null) ? 'checked' : ''?> />
-                            <?=gettext("Bloqueia Netflix, YouTube, Twitch, Disney+, HBO Max, Globoplay, Prime Video, Spotify, etc.")?>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Jogos & Games Online")?></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="block_gaming" value="yes" <?=rules_wam_is_checked($wam_cfg['block_gaming'] ?? null) ? 'checked' : ''?> />
-                            <?=gettext("Bloqueia Steam, Epic Games, Roblox, Riot Games, Blizzard, PlayStation Network, Xbox Live, etc.")?>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Notícias & Portais de Mídia")?></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="block_news" value="yes" <?=rules_wam_is_checked($wam_cfg['block_news'] ?? null) ? 'checked' : ''?> />
-                            <?=gettext("Bloqueia portais de notícias como G1, UOL, Folha, Estadão, R7, CNN Brasil, BBC, etc.")?>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Esportes & Placares")?></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="block_sports" value="yes" <?=rules_wam_is_checked($wam_cfg['block_sports'] ?? null) ? 'checked' : ''?> />
-                            <?=gettext("Bloqueia GE, ESPN, Lance, Flashscore, SofaScore, transmissões piratas de futebol, etc.")?>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Compras & E-commerce")?></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="block_shopping" value="yes" <?=rules_wam_is_checked($wam_cfg['block_shopping'] ?? null) ? 'checked' : ''?> />
-                            <?=gettext("Bloqueia Mercado Livre, Shopee, AliExpress, Amazon BR, Magalu, Shein, etc.")?>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Torrents & P2P")?></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="block_p2p" value="yes" <?=rules_wam_is_checked($wam_cfg['block_p2p'] ?? null) ? 'checked' : ''?> />
-                            <?=gettext("Bloqueia The Pirate Bay, 1337x, YTS, trackers BitTorrent públicos, etc.")?>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Anti-Bypass DoH (DNS sobre HTTPS)")?></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="block_doh" value="yes" <?=rules_wam_is_checked($wam_cfg['block_doh'] ?? null) ? 'checked' : ''?> />
-                            <?=gettext("Impede que navegadores usem DNS sobre HTTPS (Cloudflare 1.1.1.1, Google 8.8.8.8, Quad9) para burlar os bloqueios.")?>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Anti-Bypass DNS (Porta 53)")?></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="block_dns_bypass" value="yes" <?=rules_wam_is_checked($wam_cfg['block_dns_bypass'] ?? 'no') ? 'checked' : ''?> />
-                            <strong><?=gettext("Interceptar e Redirecionar Consultas DNS Externas na Porta 53")?></strong> <span class="label label-primary"><?=gettext("Proteção contra 8.8.8.8 / 1.1.1.1 Manual")?></span><br />
-                            <span class="text-muted"><?=gettext("Cria automaticamente regra de redirecionamento NAT (Port Forward) capturando consultas enviadas a 8.8.8.8, 1.1.1.1 ou qualquer outro DNS externo na porta 53, forçando resolução pelo Unbound e aplicando os bloqueios do Rules WAM. Dispositivos na lista de Bypass IPs continuam com acesso livre.")?></span>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Forwarding Upstream (Google & Cloudflare)")?></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="enable_upstream_forwarding" value="yes" <?=rules_wam_is_checked($wam_cfg['enable_upstream_forwarding'] ?? 'no') ? 'checked' : ''?> />
-                            <strong><?=gettext("Usar Google DNS (8.8.8.8, 8.8.4.4) e Cloudflare (1.1.1.1, 1.0.0.1) como Forwarders Upstream")?></strong><br />
-                            <span class="text-muted"><?=gettext("O Unbound do pfSense bloqueia as categorias do WAM instantaneamente (0.0.0.0) na rede local e encaminha todas as consultas permitidas aos Anycast de alta performance do Google e Cloudflare, acelerando a navegação na internet.")?></span>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("VPN, ZTNA & Proxies Anônimos")?></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="block_vpn" id="block_vpn" value="yes" <?=rules_wam_is_checked($wam_cfg['block_vpn'] ?? null) ? 'checked' : ''?> onchange="document.getElementById('vpn_sub_options').style.display = this.checked ? 'block' : 'none';" />
-                            <strong><?=gettext("Ativar bloqueio de VPNs, Soluções ZTNA e Proxies")?></strong>
-                        </label>
-                    </div>
-
-                    <div id="vpn_sub_options" style="margin-top: 10px; padding: 12px 16px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; <?=(rules_wam_is_checked($wam_cfg['block_vpn'] ?? null) ? '' : 'display:none;')?>">
-                        <p style="font-size: 12px; color: #475569; margin-bottom: 10px;">
-                            <i class="fa fa-info-circle"></i> <em>Marque os fornecedores que deseja bloquear. Se a sua empresa utiliza algum deles (ex: FortiClient ou Cisco), basta <strong>desmarcar</strong> para permitir o acesso.</em>
-                        </p>
-                        <div class="row">
-                            <div class="col-sm-6">
-                                <h5 style="margin-top: 5px; font-weight: bold; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">🛡️ VPNs Corporativas &amp; Comerciais</h5>
-                                <div class="checkbox">
-                                    <label>
-                                        <input type="checkbox" name="block_vpn_fortinet" value="yes" <?=(!isset($wam_cfg['block_vpn_fortinet']) || rules_wam_is_checked($wam_cfg['block_vpn_fortinet'])) ? 'checked' : ''?> />
-                                        <strong>Fortinet / FortiGate</strong> (SSL-VPN / FortiClient)
-                                    </label>
-                                </div>
-                                <div class="checkbox">
-                                    <label>
-                                        <input type="checkbox" name="block_vpn_cisco" value="yes" <?=(!isset($wam_cfg['block_vpn_cisco']) || rules_wam_is_checked($wam_cfg['block_vpn_cisco'])) ? 'checked' : ''?> />
-                                        <strong>Cisco AnyConnect</strong> / Secure Client
-                                    </label>
-                                </div>
-                                <div class="checkbox">
-                                    <label>
-                                        <input type="checkbox" name="block_vpn_paloalto" value="yes" <?=(!isset($wam_cfg['block_vpn_paloalto']) || rules_wam_is_checked($wam_cfg['block_vpn_paloalto'])) ? 'checked' : ''?> />
-                                        <strong>Palo Alto GlobalProtect</strong> / Prisma Access
-                                    </label>
-                                </div>
-                                <div class="checkbox">
-                                    <label>
-                                        <input type="checkbox" name="block_vpn_commercial" value="yes" <?=(!isset($wam_cfg['block_vpn_commercial']) || rules_wam_is_checked($wam_cfg['block_vpn_commercial'])) ? 'checked' : ''?> />
-                                        <strong>VPNs Comerciais &amp; Proxies Web</strong> (NordVPN, ExpressVPN, Tor, etc.)
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-sm-6">
-                                <h5 style="margin-top: 5px; font-weight: bold; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">☁️ Provedores ZTNA &amp; Mesh Tunnels</h5>
-                                <div class="checkbox">
-                                    <label>
-                                        <input type="checkbox" name="block_ztna_zscaler" value="yes" <?=(!isset($wam_cfg['block_ztna_zscaler']) || rules_wam_is_checked($wam_cfg['block_ztna_zscaler'])) ? 'checked' : ''?> />
-                                        <strong>Zscaler</strong> (ZPA / ZIA Cloud)
-                                    </label>
-                                </div>
-                                <div class="checkbox">
-                                    <label>
-                                        <input type="checkbox" name="block_ztna_netskope" value="yes" <?=(!isset($wam_cfg['block_ztna_netskope']) || rules_wam_is_checked($wam_cfg['block_ztna_netskope'])) ? 'checked' : ''?> />
-                                        <strong>Netskope</strong> (Security Cloud &amp; Private Access)
-                                    </label>
-                                </div>
-                                <div class="checkbox">
-                                    <label>
-                                        <input type="checkbox" name="block_ztna_cloudflare" value="yes" <?=(!isset($wam_cfg['block_ztna_cloudflare']) || rules_wam_is_checked($wam_cfg['block_ztna_cloudflare'])) ? 'checked' : ''?> />
-                                        <strong>Cloudflare WARP</strong> &amp; Zero Trust
-                                    </label>
-                                </div>
-                                <div class="checkbox">
-                                    <label>
-                                        <input type="checkbox" name="block_ztna_tailscale" value="yes" <?=(!isset($wam_cfg['block_ztna_tailscale']) || rules_wam_is_checked($wam_cfg['block_ztna_tailscale'])) ? 'checked' : ''?> />
-                                        <strong>Tailscale, ZeroTier &amp; Tunnels</strong> (Ngrok, Twingate, Hamachi)
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Mensageiros & Comunicação")?></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="block_messaging" id="block_messaging" value="yes" <?=rules_wam_is_checked($wam_cfg['block_messaging'] ?? null) ? 'checked' : ''?> onchange="document.getElementById('msg_sub_options').style.display = this.checked ? 'block' : 'none';" />
-                            <strong><?=gettext("Ativar bloqueio de Mensageiros Instantâneos & Ferramentas de Comunicação")?></strong>
-                        </label>
-                    </div>
-
-                    <div id="msg_sub_options" style="margin-top: 10px; padding: 12px 16px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; <?=(rules_wam_is_checked($wam_cfg['block_messaging'] ?? null) ? '' : 'display:none;')?>">
-                        <p style="font-size: 12px; color: #475569; margin-bottom: 10px;">
-                            <i class="fa fa-info-circle"></i> <em>Marque as ferramentas de comunicação que deseja bloquear. Se sua empresa utiliza alguma delas para trabalho (ex: Microsoft Teams, Slack ou WhatsApp), basta <strong>desmarcar</strong> para manter liberado.</em>
-                        </p>
-                        <div class="row">
-                            <div class="col-sm-6">
-                                <h5 style="margin-top: 5px; font-weight: bold; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">💬 Mensageiros Mais Populares</h5>
-                                <div class="checkbox">
-                                    <label>
-                                        <input type="checkbox" name="block_msg_whatsapp" value="yes" <?=(!isset($wam_cfg['block_msg_whatsapp']) || rules_wam_is_checked($wam_cfg['block_msg_whatsapp'])) ? 'checked' : ''?> />
-                                        <strong>WhatsApp</strong> (WhatsApp Web, apps desktop/móvel e chamadas)
-                                    </label>
-                                </div>
-                                <div class="checkbox">
-                                    <label>
-                                        <input type="checkbox" name="block_msg_telegram" value="yes" <?=(!isset($wam_cfg['block_msg_telegram']) || rules_wam_is_checked($wam_cfg['block_msg_telegram'])) ? 'checked' : ''?> />
-                                        <strong>Telegram</strong> (Web, Desktop, app e t.me)
-                                    </label>
-                                </div>
-                                <div class="checkbox">
-                                    <label>
-                                        <input type="checkbox" name="block_msg_messenger" value="yes" <?=(!isset($wam_cfg['block_msg_messenger']) || rules_wam_is_checked($wam_cfg['block_msg_messenger'])) ? 'checked' : ''?> />
-                                        <strong>Facebook Messenger</strong> (messenger.com, m.me)
-                                    </label>
-                                </div>
-                                <div class="checkbox">
-                                    <label>
-                                        <input type="checkbox" name="block_msg_teams_skype" value="yes" <?=(!isset($wam_cfg['block_msg_teams_skype']) || rules_wam_is_checked($wam_cfg['block_msg_teams_skype'])) ? 'checked' : ''?> />
-                                        <strong>Microsoft Teams &amp; Skype / MSN</strong> (teams.microsoft.com, skype.com)
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-sm-6">
-                                <h5 style="margin-top: 5px; font-weight: bold; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">👥 Comunicação Corporativa &amp; Outros</h5>
-                                <div class="checkbox">
-                                    <label>
-                                        <input type="checkbox" name="block_msg_discord" value="yes" <?=(!isset($wam_cfg['block_msg_discord']) || rules_wam_is_checked($wam_cfg['block_msg_discord'])) ? 'checked' : ''?> />
-                                        <strong>Discord</strong> (discord.com, discord.gg)
-                                    </label>
-                                </div>
-                                <div class="checkbox">
-                                    <label>
-                                        <input type="checkbox" name="block_msg_slack" value="yes" <?=(!isset($wam_cfg['block_msg_slack']) || rules_wam_is_checked($wam_cfg['block_msg_slack'])) ? 'checked' : ''?> />
-                                        <strong>Slack</strong> (slack.com, canais e mensagens)
-                                    </label>
-                                </div>
-                                <div class="checkbox">
-                                    <label>
-                                        <input type="checkbox" name="block_msg_zoom_meet" value="yes" <?=(!isset($wam_cfg['block_msg_zoom_meet']) || rules_wam_is_checked($wam_cfg['block_msg_zoom_meet'])) ? 'checked' : ''?> />
-                                        <strong>Zoom Meetings</strong> (zoom.us - Google Meet liberado)
-                                    </label>
-                                </div>
-                                <div class="checkbox">
-                                    <label>
-                                        <input type="checkbox" name="block_msg_others" value="yes" <?=(!isset($wam_cfg['block_msg_others']) || rules_wam_is_checked($wam_cfg['block_msg_others'])) ? 'checked' : ''?> />
-                                        <strong>Outros Mensageiros</strong> (Signal, WeChat, Viber, LINE, Omegle, etc.)
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="panel panel-info">
-        <div class="panel-heading">
-            <h2 class="panel-title"><i class="fa fa-sitemap"></i> <?=gettext("Integração Corporativa: Active Directory, NPS (RADIUS) & Netskope")?></h2>
-        </div>
-        <div class="panel-body">
-            <p class="text-muted" style="margin-bottom: 20px;">
-                <?=gettext("Configure este painel quando a unidade possuir conexão VPN IPsec com a Matriz e utilizar serviços centrais como Active Directory e NPS RADIUS, e/ou gerenciar navegação via Netskope Security Cloud.")?>
-            </p>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><strong><?=gettext("Habilitar Split-DNS Corporativo")?></strong></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="corp_enable" value="yes" <?=rules_wam_is_checked($wam_cfg['corp_enable'] ?? null) ? 'checked' : ''?> />
-                            <strong><?=gettext("Encaminhar consultas do AD e NPS RADIUS para a Matriz via IPsec (Domain Overrides)")?></strong>
-                        </label>
-                    </div>
-                    <span class="help-block"><?=gettext("Evita que consultas locais ao domínio corporativo caiam em filtros e assegura autenticação e resolução ininterruptas.")?></span>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Domínio(s) do Active Directory")?></label>
-                <div class="col-sm-6">
-                    <input type="text" name="corp_ad_domain" class="form-control" value="<?=htmlspecialchars($wam_cfg['corp_ad_domain'] ?? '')?>" placeholder="Ex: madeiramadeira.local, corp.empresa.com.br" />
-                    <span class="help-block"><?=gettext("Nome do domínio interno da empresa (se houver mais de um, separe por vírgula).")?></span>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("IPs dos Servidores DNS da Matriz")?></label>
-                <div class="col-sm-6">
-                    <input type="text" name="corp_ad_dns_ips" class="form-control" value="<?=htmlspecialchars($wam_cfg['corp_ad_dns_ips'] ?? '')?>" placeholder="Ex: 10.0.0.10, 10.0.0.11" />
-                    <span class="help-block"><?=gettext("Endereços IP dos controladores de domínio (AD/DNS) e servidores NPS RADIUS alcançáveis através da VPN IPsec.")?></span>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Zonas DNS Reversas")?></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="corp_reverse_lookup" value="yes" <?=(!isset($wam_cfg['corp_reverse_lookup']) || rules_wam_is_checked($wam_cfg['corp_reverse_lookup'])) ? 'checked' : ''?> />
-                            <?=gettext("Encaminhar também as zonas reversas (in-addr.arpa) das sub-redes dos servidores para a Matriz")?>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Redes Corporativas Autorizadas no DNS (CIDR)")?></label>
-                <div class="col-sm-6">
-                    <textarea name="corp_allowed_subnets" class="form-control" rows="4" placeholder="172.24.0.0/16&#10;192.168.0.0/16&#10;192.192.0.0/16&#10;10.0.0.0/8"><?=htmlspecialchars($wam_cfg['corp_allowed_subnets'] ?? "172.24.0.0/16\n192.168.0.0/16\n192.192.0.0/16\n10.0.0.0/8")?></textarea>
-                    <span class="help-block"><?=gettext("Super-redes corporativas que terão permissão automática para resolver DNS no Unbound em todas as 18 unidades (incluindo sub-redes roteadas via Switch L3). Separe por linha.")?></span>
-                </div>
-            </div>
-
-            <hr style="border-top: 1px dashed #ddd; margin: 15px 0;" />
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><strong><?=gettext("Proteção Netskope Cloud")?></strong></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="corp_protect_netskope" value="yes" <?=(!isset($wam_cfg['corp_protect_netskope']) || rules_wam_is_checked($wam_cfg['corp_protect_netskope'])) ? 'checked' : ''?> />
-                            <strong><?=gettext("Auto-Whitelist para Netskope Security Cloud (ZTNA, SWG & NPA)")?></strong>
-                        </label>
-                    </div>
-                    <span class="help-block"><?=gettext("Garante que os domínios da Netskope (goskope.com, netskope.com, gateway, etc.) fiquem permanentemente liberados, evitando que o agente Netskope perca conexão.")?></span>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Provedores de Identidade (IdP)")?></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="corp_protect_idp" value="yes" <?=(!isset($wam_cfg['corp_protect_idp']) || rules_wam_is_checked($wam_cfg['corp_protect_idp'])) ? 'checked' : ''?> />
-                            <?=gettext("Proteger Provedores de Identidade em Nuvem (Microsoft 365 / Entra ID, Okta, Google)")?>
-                        </label>
-                    </div>
-                    <span class="help-block"><?=gettext("Assegura que a autenticação SSO e MFA dos portais em nuvem da Netskope funcione sem bloqueios no DNS.")?></span>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><strong><?=gettext("Ferramentas de TI & Downloads")?></strong></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="corp_protect_tools" value="yes" <?=(!isset($wam_cfg['corp_protect_tools']) || rules_wam_is_checked($wam_cfg['corp_protect_tools'])) ? 'checked' : ''?> />
-                            <strong><?=gettext("Liberar Downloads de Ferramentas de TI e Administração (PuTTY, WinSCP, 7-Zip, Notepad++, Git, GitHub, etc.)")?></strong>
-                        </label>
-                    </div>
-                    <span class="help-block"><?=gettext("Garante que os sites oficiais de download e espelhos de softwares essenciais nunca sejam bloqueados por nenhuma categoria.")?></span>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><strong><?=gettext("Infraestrutura Cloudflare")?></strong></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="corp_protect_cloudflare" value="yes" <?=(!isset($wam_cfg['corp_protect_cloudflare']) || rules_wam_is_checked($wam_cfg['corp_protect_cloudflare'])) ? 'checked' : ''?> />
-                            <strong><?=gettext("Liberar Infraestrutura Pública Cloudflare (CDN cdnjs, Captchas Turnstile, APIs públicas)")?></strong>
-                        </label>
-                    </div>
-                    <span class="help-block"><?=gettext("Mantém liberadas as CDNs e serviços de validação de captcha da Cloudflare para que páginas da internet e links de download carreguem sem erros.")?></span>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><strong><?=gettext("Helpdesk & Suporte Remoto")?></strong></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="corp_protect_helpdesk" value="yes" <?=(!isset($wam_cfg['corp_protect_helpdesk']) || rules_wam_is_checked($wam_cfg['corp_protect_helpdesk'])) ? 'checked' : ''?> />
-                            <strong><?=gettext("Liberar Helpdesk & Suporte Remoto (Zendesk, GLPI, ScreenConnect / ConnectWise)")?></strong>
-                        </label>
-                    </div>
-                    <span class="help-block"><?=gettext("Protege plataformas de chamados, suporte ao cliente, ITSM e conexões de assistência remota ScreenConnect, impedindo qualquer bloqueio acidental.")?></span>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><strong><?=gettext("Telefonia IP & Protocolo SIP")?></strong></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="corp_protect_voip" value="yes" <?=(!isset($wam_cfg['corp_protect_voip']) || rules_wam_is_checked($wam_cfg['corp_protect_voip'])) ? 'checked' : ''?> />
-                            <strong><?=gettext("Liberar Telefonia IP, Protocolo SIP & Aparelhos SIP Phone (3CX, Zoiper, Linphone, Yealink, Grandstream, Twilio, etc.)")?></strong>
-                        </label>
-                    </div>
-                    <span class="help-block"><?=gettext("Garante comunicação de voz ininterrupta: registro SIP, servidores STUN, troncos PABX e provisionamento de telefones IP corporativos.")?></span>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="panel panel-default">
-        <div class="panel-heading">
-            <h2 class="panel-title"><?=gettext("Agendamento por Horário de Trabalho")?></h2>
-        </div>
-        <div class="panel-body">
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Ativar Agendamento")?></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="schedule_enable" value="yes" <?=rules_wam_is_checked($wam_cfg['schedule_enable'] ?? null) ? 'checked' : ''?> />
-                            <?=gettext("Bloquear somente durante o expediente de trabalho (fora do horário e no almoço os acessos são liberados)")?>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Horário de Início / Fim")?></label>
-                <div class="col-sm-4">
-                    <input type="time" name="schedule_start" class="form-control" value="<?=htmlspecialchars($wam_cfg['schedule_start'] ?? '08:00')?>" />
-                    <span class="help-block"><?=gettext("Início do expediente (padrão: 08:00)")?></span>
-                </div>
-                <div class="col-sm-4">
-                    <input type="time" name="schedule_end" class="form-control" value="<?=htmlspecialchars($wam_cfg['schedule_end'] ?? '18:00')?>" />
-                    <span class="help-block"><?=gettext("Fim do expediente (padrão: 18:00)")?></span>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Pausa de Almoço (Liberado)")?></label>
-                <div class="col-sm-4">
-                    <input type="time" name="schedule_lunch_start" class="form-control" value="<?=htmlspecialchars($wam_cfg['schedule_lunch_start'] ?? '12:00')?>" />
-                    <span class="help-block"><?=gettext("Início do almoço (deixe em branco para não pausar)")?></span>
-                </div>
-                <div class="col-sm-4">
-                    <input type="time" name="schedule_lunch_end" class="form-control" value="<?=htmlspecialchars($wam_cfg['schedule_lunch_end'] ?? '13:00')?>" />
-                    <span class="help-block"><?=gettext("Fim do almoço")?></span>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Finais de Semana")?></label>
-                <div class="col-sm-9">
-                    <div class="checkbox">
-                        <label>
-                            <input type="checkbox" name="schedule_weekend" value="yes" <?=rules_wam_is_checked($wam_cfg['schedule_weekend'] ?? null) ? 'checked' : ''?> />
-                            <?=gettext("Manter bloqueio ativo também aos Sábados e Domingos")?>
-                        </label>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="panel panel-default">
-        <div class="panel-heading">
-            <h2 class="panel-title"><?=gettext("Ação do Bloqueio & Banner na Tela do Host")?></h2>
-        </div>
-        <div class="panel-body">
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Comportamento do Bloqueio")?></label>
-                <div class="col-sm-9">
-                    <select name="block_action" class="form-control" style="max-width: 480px;">
-                        <option value="block_page" <?=($wam_cfg['block_action'] ?? 'block_page') === 'block_page' ? 'selected' : ''?>>
-                            <?=gettext("Exibir Banner de Bloqueio da Empresa (Porta 80 HTTP e 443 HTTPS)")?>
-                        </option>
-                        <option value="always_null" <?=($wam_cfg['block_action'] ?? '') === 'always_null' ? 'selected' : ''?>>
-                            <?=gettext("Retornar 0.0.0.0 (Silencioso - Sem Banner)")?>
-                        </option>
-                    </select>
-                    <span class="help-block">
-                        <?=gettext("No modo <strong>Banner</strong>, o firewall intercepta a porta 80 (HTTP sem certificado) e 443 (HTTPS com suporte a CA) e exibe a página institucional com as políticas da empresa.")?><br/>
-                        <?=gettext("No modo <strong>Silencioso (0.0.0.0)</strong>, a conexão é recusada imediatamente pelo navegador.")?>
-                        <br/>
-                        <a href="/rules_wam_block.php" target="_blank" class="btn btn-default btn-xs" style="margin-top: 5px;">
-                            <i class="fa fa-eye"></i> <strong><?=gettext("Visualizar Modelo do Banner na Tela")?></strong>
-                        </a>
-                    </span>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("IP do Firewall para o Banner")?></label>
-                <div class="col-sm-5">
-                    <div class="input-group">
-                        <input type="text" id="block_page_ip" name="block_page_ip" class="form-control" value="<?=htmlspecialchars($wam_cfg['block_page_ip'] ?? $lan_default_ip)?>" placeholder="Ex: <?=$lan_default_ip?>" />
-                        <div class="input-group-btn">
-                            <button type="button" class="btn btn-default" onclick="document.getElementById('block_page_ip').value='<?=$lan_default_ip?>';" title="<?=gettext("Restaurar IP padrão detectado")?>">
-                                <i class="fa fa-undo"></i> <?=gettext("Padrão")?>
-                            </button>
-                        </div>
-                    </div>
-                    <span class="help-block"><?=gettext("Endereço IP da interface interna do pfSense onde o banner institucional é respondido para as estações bloqueadas.")?></span>
-                </div>
-            </div>
-
-            <?php
-            $detected_internal_ifaces = function_exists('rules_wam_get_configured_interfaces') ? rules_wam_get_configured_interfaces(false) : array();
-            if (!empty($detected_internal_ifaces)):
-            ?>
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Interfaces Internas Detectadas")?></label>
-                <div class="col-sm-9">
-                    <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px;">
-                        <?php foreach ($detected_internal_ifaces as $d_k => $d_if): ?>
-                            <div style="background-color: #f7f9fa; border: 1px solid #d5d9df; border-radius: 4px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 8px; font-size: 12px;">
-                                <i class="fa fa-sitemap text-primary"></i>
-                                <div>
-                                    <strong style="color: #333;"><?=htmlspecialchars($d_if['descr'])?></strong>
-                                    <?php if (strcasecmp($d_if['descr'], $d_if['logical_id']) !== 0): ?>
-                                        <small class="text-muted">(<?=htmlspecialchars($d_if['logical_id'])?><?=!empty($d_if['real_if']) ? ' / ' . htmlspecialchars($d_if['real_if']) : ''?>)</small>
-                                    <?php elseif (!empty($d_if['real_if'])): ?>
-                                        <small class="text-muted">(<?=htmlspecialchars($d_if['real_if'])?>)</small>
-                                    <?php endif; ?>
-                                    <br/>
-                                    <code style="font-size: 11px;"><?=!empty($d_if['ip']) ? htmlspecialchars($d_if['ip']) : gettext('Sem IPv4 estático')?></code>
-                                </div>
-                                <?php if (!empty($d_if['ip'])): ?>
-                                    <button type="button" class="btn btn-xs btn-default" onclick="document.getElementById('block_page_ip').value='<?=htmlspecialchars($d_if['ip'])?>';" title="<?=gettext("Definir como IP do Banner de Bloqueio")?>">
-                                        <i class="fa fa-check"></i> <?=gettext("Usar IP")?>
-                                    </button>
-                                <?php endif; ?>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                    <span class="help-block" style="margin-top: 6px;">
-                        <?=gettext("Interfaces ativas no pfSense com seus nomes amigáveis oficiais. O firewall responde o banner HTTP/HTTPS em todas as interfaces internas.")?>
-                    </span>
-                </div>
-            </div>
-            <?php endif; ?>
-        </div>
-    </div>
-
-    <div class="panel panel-default">
-        <div class="panel-heading">
-            <h2 class="panel-title"><?=gettext("Exceções & Personalização")?></h2>
-        </div>
-        <div class="panel-body">
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("IPs Isentos (Bypass IPs)")?></label>
-                <div class="col-sm-9">
-                    <textarea name="bypass_ips" rows="3" class="form-control" placeholder="172.24.60.20&#10;172.24.60.25"><?=htmlspecialchars($wam_cfg['bypass_ips'] ?? '')?></textarea>
-                    <span class="help-block"><?=gettext("IPs locais que NUNCA sofrem bloqueio (Diretoria, TI, etc.). Um IP por linha ou separado por vírgula.")?></span>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Lista Branca (Whitelist)")?></label>
-                <div class="col-sm-9">
-                    <textarea name="custom_whitelist" rows="3" class="form-control" placeholder="linkedin.com&#10;globoesporte.globo.com"><?=htmlspecialchars($wam_cfg['custom_whitelist'] ?? '')?></textarea>
-                    <span class="help-block"><?=gettext("Domínios que devem ser sempre permitidos, mesmo que pertençam a uma categoria bloqueada.")?></span>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Lista Negra Adicional (Blacklist)")?></label>
-                <div class="col-sm-9">
-                    <textarea name="custom_blacklist" rows="3" class="form-control" placeholder="site-indesejado.com&#10;outro-site.com"><?=htmlspecialchars($wam_cfg['custom_blacklist'] ?? '')?></textarea>
-                    <span class="help-block"><?=gettext("Domínios adicionais manuais que você deseja bloquear agora.")?></span>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="col-sm-3 control-label"><?=gettext("Mapeamento de Nomes de Hosts / Computadores")?></label>
-                <div class="col-sm-9">
-                    <textarea name="custom_hosts" rows="4" class="form-control" placeholder="172.24.60.118 = Computador Principal&#10;172.24.60.119 = Notebook TI"><?=htmlspecialchars($wam_cfg['custom_hosts'] ?? '')?></textarea>
-                    <span class="help-block">
-                        <?=gettext("Defina ou corrija o nome dos computadores na rede (um por linha no formato <code>IP = Nome</code>).")?><br/>
-                        <?=gettext("Ideal para hosts conectados através de antenas, switches gerenciáveis, pontos de acesso (APs) ou com IPs fixos.")?>
-                    </span>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="form-group">
-        <div class="col-sm-9 col-sm-offset-3">
-            <input type="hidden" name="save_rules_wam" value="1" />
-            <button type="submit" class="btn btn-primary btn-lg"><i class="fa fa-save"></i> <?=gettext("Salvar e Aplicar Regras")?></button>
-        </div>
-    </div>
-</form>
-
-<?php include("foot.inc"); ?>
-
-EOF_WAM_PHP
-echo '>> Extraindo www/rules_wam_status.php...'
-cat << 'EOF_STATUS' > $TMP_DIR/www/rules_wam_status.php
-<?php
-/*
- * rules_wam_status.php
- * Rules WAM - Web Access Manager para pfSense
- * Página de Status, Diagnóstico e Monitoramento de Categorias
- */
-
-require_once("guiconfig.inc");
-require_once("/usr/local/pkg/rules_wam.inc");
-
-$pgtitle = array(gettext("Services"), gettext("Rules WAM"), gettext("Status & Teste de Bloqueio"));
-include("head.inc");
-
-$tab_array = array();
-$tab_array[] = array(gettext("Configurações de Bloqueio"), false, "/rules_wam.php");
-$tab_array[] = array(gettext("Status & Teste de Bloqueio"), true, "/rules_wam_status.php");
-$tab_array[] = array(gettext("Dashboard & Tentativas de Acesso"), false, "/rules_wam_dashboard.php");
-$tab_array[] = array(gettext("Banner de Bloqueio (Prévia)"), false, "/rules_wam_block.php");
-display_top_tabs($tab_array);
-
-// Teste de domínio solicitado
-$test_domain = isset($_POST['test_domain']) ? trim($_POST['test_domain']) : '';
-$test_result = null;
-
-if (!empty($test_domain)) {
-    $clean_test = rules_wam_clean_domain($test_domain);
-    
-    // 1. Verifica se o domínio está listado no arquivo de bloqueio ativo
-    $is_in_blocklist = false;
-    if (file_exists(WAM_CONF_FILE)) {
-        $conf_data = @file_get_contents(WAM_CONF_FILE);
-        if ($conf_data) {
-            if (preg_match('/local-zone:\s*"' . preg_quote($clean_test, '/') . '"/i', $conf_data)) {
-                $is_in_blocklist = true;
-            } else {
-                $parts = explode('.', $clean_test);
-                while (count($parts) > 1) {
-                    array_shift($parts);
-                    $parent = implode('.', $parts);
-                    if (preg_match('/local-zone:\s*"' . preg_quote($parent, '/') . '"/i', $conf_data)) {
-                        $is_in_blocklist = true;
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    // 2. Consulta diretamente o Unbound local na porta 53 via drill
-    $drill_ip = null;
-    $drill_out = array();
-    if (file_exists('/usr/bin/drill')) {
-        @exec("/usr/bin/drill @127.0.0.1 -p 53 " . escapeshellarg($clean_test) . " A 2>&1", $drill_out);
-        foreach ($drill_out as $dline) {
-            if (preg_match('/\b0\.0\.0\.0\b/', $dline)) {
-                $drill_ip = '0.0.0.0';
-                break;
-            } elseif (preg_match('/IN\s+A\s+(\d+\.\d+\.\d+\.\d+)/', $dline, $m)) {
-                $drill_ip = $m[1];
-            }
-        }
-    }
-
-    $wam_cfg = rules_wam_get_config();
-    $lan_ip = function_exists('rules_wam_get_lan_ip') ? rules_wam_get_lan_ip() : '192.168.1.1';
-    $block_page_ip = !empty($wam_cfg['block_page_ip']) ? $wam_cfg['block_page_ip'] : $lan_ip;
-
-    $is_drill_blocked = ($drill_ip === '0.0.0.0' || (!empty($block_page_ip) && $drill_ip === $block_page_ip) || $drill_ip === '127.0.0.1');
-
-    if ($is_in_blocklist || $is_drill_blocked) {
-        $test_result = array(
-            'status' => 'BLOCKED',
-            'domain' => $clean_test,
-            'ip' => ($drill_ip ? $drill_ip : '0.0.0.0') . ' (Interceptado pelo Rules WAM / Unbound)',
-            'msg' => 'Domínio BLOQUEADO pelo Rules WAM!'
-        );
-
-        // Registra o teste na auditoria
-        $client_ip = !empty($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '127.0.0.1';
-        $cat = rules_wam_get_domain_category($clean_test);
-        $entry = date('M d H:i:s') . '|' . $client_ip . '|' . $clean_test . '|' . $cat . "\n";
-        @file_put_contents(WAM_AUDIT_LOG, $entry, FILE_APPEND);
-    } else {
-        $test_result = array(
-            'status' => 'ALLOWED',
-            'domain' => $clean_test,
-            'ip' => $drill_ip ? $drill_ip : 'Resolvido normalmente',
-            'msg' => 'Domínio não está nas categorias ativas de bloqueio (acesso liberado).'
-        );
-    }
-}
-
-// Carrega status
-$status_file = WAM_STATUS_FILE;
-$status_data = array(
-    'enabled' => false,
-    'schedule_active' => false,
-    'is_blocking' => false,
-    'updated_at' => '-',
-    'total_blocked' => 0,
-    'categories' => array(),
-    'whitelist_count' => 0,
-    'bypass_ips_count' => 0
-);
-
-if (file_exists($status_file)) {
-    $raw = @file_get_contents($status_file);
-    $parsed = json_decode($raw, true);
-    if (is_array($parsed)) {
-        $status_data = array_merge($status_data, $parsed);
-    }
-}
-
-// Verificação em tempo real direto no config.xml e Unbound
-$wam_cfg = rules_wam_get_config();
-if (rules_wam_is_checked($wam_cfg['enable'] ?? null)) {
-    $status_data['enabled'] = true;
-    if (file_exists(WAM_CONF_FILE)) {
-        $status_data['is_blocking'] = true;
-        if ($status_data['total_blocked'] <= 0) {
-            $lines = file(WAM_CONF_FILE);
-            $cnt = 0;
-            foreach ($lines as $l) {
-                if (strpos($l, 'local-zone:') !== false) $cnt++;
-            }
-            $status_data['total_blocked'] = $cnt;
-        }
-    }
-}
-
-// Mapeamento de categorias e contagem local
-$categories_info = array(
-    'block_adult'     => array('name' => 'Conteúdo Adulto & Pornografia', 'file' => 'adult.txt'),
-    'block_gambling'  => array('name' => 'Apostas, Bets & Cassinos',     'file' => 'gambling.txt'),
-    'block_news'      => array('name' => 'Notícias & Portais de Mídia',   'file' => 'news.txt'),
-    'block_social'    => array('name' => 'Mídias Sociais & Redes',       'file' => 'social-media.txt'),
-    'block_sports'    => array('name' => 'Esportes & Placares',          'file' => 'sports.txt'),
-    'block_gaming'    => array('name' => 'Jogos & Games Online',         'file' => 'gaming.txt'),
-    'block_streaming' => array('name' => 'Streaming & Vídeo',            'file' => 'streaming.txt'),
-    'block_shopping'  => array('name' => 'Compras & E-commerce',         'file' => 'shopping.txt'),
-    'block_p2p'       => array('name' => 'Torrents & P2P',               'file' => 'p2p.txt'),
-    'block_doh'       => array('name' => 'Anti-Bypass DoH (DNS Seguro)', 'file' => 'doh-providers.txt'),
-    'block_vpn'       => array('name' => 'VPN, ZTNA & Proxies',          'file' => 'vpn-ztna.txt'),
-    'block_messaging' => array('name' => 'Mensageiros & Chat Instantâneo', 'file' => 'messaging.txt'),
-);
-?>
-
-<div class="alert alert-success" style="margin-bottom: 20px;">
-    <h4><i class="fa fa-database fa-lg"></i> <strong>BANCO DE DADOS DE LISTAS 100% INSTALADO E ATIVO</strong></h4>
-    <p>Todas as listas de categorias (mais de <strong>4.700 domínios consolidados</strong>) já estão gravadas no seu pfSense e prontas para uso offline imediato. <strong>Não é necessário efetuar nenhum download adicional.</strong></p>
-</div>
-
-<div class="panel panel-default">
-    <div class="panel-heading">
-        <h2 class="panel-title"><?=gettext("Visão Geral do Serviço Rules WAM")?></h2>
-    </div>
-    <div class="panel-body">
-        <dl class="dl-horizontal">
-            <dt><?=gettext("Estado do Serviço")?></dt>
-            <dd>
-                <?php if ($status_data['enabled'] && $status_data['is_blocking']): ?>
-                    <span class="label label-success" style="font-size: 13px; padding: 4px 10px;"><i class="fa fa-shield"></i> <?=gettext("ATIVO - BLOQUEANDO AGORA")?></span>
-                <?php elseif ($status_data['enabled'] && !$status_data['is_blocking']): ?>
-                    <span class="label label-info" style="font-size: 13px; padding: 4px 10px;"><i class="fa fa-clock-o"></i> <?=gettext("ATIVO - HORÁRIO PAUSADO (ACESSO LIBERADO)")?></span>
-                <?php else: ?>
-                    <span class="label label-danger" style="font-size: 13px; padding: 4px 10px;"><i class="fa fa-times-circle"></i> <?=gettext("DESABILITADO")?></span>
-                <?php endif; ?>
-            </dd>
-
-            <dt><?=gettext("Total de Regras Ativas")?></dt>
-            <dd><strong style="font-size: 15px; color: #3c763d;"><?=number_format($status_data['total_blocked'])?></strong> <?=gettext("domínios e subdomínios bloqueados no Unbound")?></dd>
-
-            <dt><?=gettext("Última Aplicação")?></dt>
-            <dd><?=htmlspecialchars($status_data['updated_at'])?></dd>
-
-            <dt><?=gettext("Agendamento")?></dt>
-            <dd>
-                <?php if (!empty($status_data['schedule_active'])): ?>
-                    <span class="label label-primary"><i class="fa fa-calendar"></i> <?=gettext("Horário Comercial Ativo")?></span>
-                <?php else: ?>
-                    <em><?=gettext("Bloqueio contínuo (24 horas)")?></em>
-                <?php endif; ?>
-            </dd>
-
-            <dt><?=gettext("IPs Isentos (Bypass)")?></dt>
-            <dd><?=intval($status_data['bypass_ips_count'])?> <?=gettext("dispositivo(s) com acesso livre")?></dd>
-
-            <dt><?=gettext("Whitelist")?></dt>
-            <dd><?=intval($status_data['whitelist_count'])?> <?=gettext("domínio(s) liberados")?></dd>
-
-            <dt><?=gettext("Anti-Bypass DNS")?></dt>
-            <dd>
-                <?php if (rules_wam_is_checked($wam_cfg['block_dns_bypass'] ?? null)): ?>
-                    <span class="label label-success"><i class="fa fa-lock"></i> <?=gettext("Ativo (Interceptando 8.8.8.8 / 1.1.1.1 na Porta 53)")?></span>
-                <?php else: ?>
-                    <span class="label label-default"><?=gettext("Desativado")?></span>
-                <?php endif; ?>
-            </dd>
-
-            <dt><?=gettext("Forwarding Upstream")?></dt>
-            <dd>
-                <?php if (rules_wam_is_checked($wam_cfg['enable_upstream_forwarding'] ?? null)): ?>
-                    <span class="label label-info"><i class="fa fa-bolt"></i> <?=gettext("Ativo (Google 8.8.8.8 & Cloudflare 1.1.1.1)")?></span>
-                <?php else: ?>
-                    <em><?=gettext("Padrão do pfSense (Resolução Raiz / General DNS)")?></em>
-                <?php endif; ?>
-            </dd>
-        </dl>
-    </div>
-</div>
-
-<div class="panel panel-default">
-    <div class="panel-heading">
-        <h2 class="panel-title"><?=gettext("Status das Categorias no Sistema (Banco de Regras Local)")?></h2>
-    </div>
-    <div class="table-responsive">
-        <table class="table table-striped table-hover table-condensed">
-            <thead>
-                <tr>
-                    <th><?=gettext("Categoria")?></th>
-                    <th><?=gettext("Status no pfSense")?></th>
-                    <th><?=gettext("Qtd. Domínios no Banco")?></th>
-                    <th><?=gettext("Aplicação na Rede")?></th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($categories_info as $ckey => $cdata): 
-                    $fpath = WAM_FEEDS_DIR . '/' . $cdata['file'];
-                    $lines_cnt = 0;
-                    if (file_exists($fpath)) {
-                        $lines = file($fpath, FILE_SKIP_EMPTY_LINES);
-                        foreach ($lines as $l) {
-                            $l = trim($l);
-                            if (!empty($l) && $l[0] !== '#') $lines_cnt++;
-                        }
-                    }
-                    $is_cat_active = rules_wam_is_checked($wam_cfg[$ckey] ?? null);
-                ?>
-                <tr>
-                    <td><strong><?=htmlspecialchars($cdata['name'])?></strong></td>
-                    <td><span class="text-success"><i class="fa fa-check-circle"></i> <?=gettext("Instalado e Pronto")?></span></td>
-                    <td><span class="badge" style="background-color: #337ab7;"><?=number_format($lines_cnt)?> domínios</span></td>
-                    <td>
-                        <?php if ($status_data['enabled'] && $is_cat_active): ?>
-                            <span class="label label-success"><i class="fa fa-shield"></i> <?=gettext("Bloqueando")?></span>
-                        <?php else: ?>
-                            <span class="label label-default"><?=gettext("Desmarcado")?></span>
-                        <?php endif; ?>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<div class="panel panel-default">
-    <div class="panel-heading">
-        <h2 class="panel-title"><?=gettext("Testador de Bloqueio em Tempo Real")?></h2>
-    </div>
-    <div class="panel-body">
-        <p><?=gettext("Digite um domínio ou URL para testar se o pfSense está bloqueando a resolução DNS para os clientes da rede:")?></p>
-        <form action="/rules_wam_status.php" method="post" class="form-inline">
-            <div class="form-group">
-                <input type="text" name="test_domain" class="form-control" style="min-width: 320px;" placeholder="Ex: g1globo.com, xvideo.com, youtube.com, betano.com" value="<?=htmlspecialchars($test_domain)?>" required />
-            </div>
-            <button type="submit" class="btn btn-primary"><i class="fa fa-search"></i> <?=gettext("Testar Bloqueio")?></button>
-        </form>
-
-        <?php if ($test_result): ?>
-            <div style="margin-top: 15px;">
-                <?php if ($test_result['status'] === 'BLOCKED'): ?>
-                    <div class="alert alert-success">
-                        <h4><i class="fa fa-shield"></i> <strong>BLOQUEADO COM SUCESSO!</strong></h4>
-                        <p>O domínio <strong><?=htmlspecialchars($test_result['domain'])?></strong> está bloqueado pelo Rules WAM. Resposta DNS: <code><?=htmlspecialchars($test_result['ip'])?></code>.</p>
-                    </div>
-                <?php else: ?>
-                    <div class="alert alert-warning">
-                        <h4><i class="fa fa-check-circle"></i> <strong>PERMITIDO / NÃO BLOQUEADO</strong></h4>
-                        <p>O domínio <strong><?=htmlspecialchars($test_result['domain'])?></strong> não está ativo na lista de bloqueio. Status: <code><?=htmlspecialchars($test_result['ip'])?></code>.</p>
-                    </div>
-                <?php endif; ?>
-            </div>
-        <?php endif; ?>
-    </div>
-</div>
-
-<?php include("foot.inc"); ?>
-
-EOF_STATUS
-echo '>> Extraindo www/rules_wam_dashboard.php...'
-cat << 'EOF_DASH' > $TMP_DIR/www/rules_wam_dashboard.php
-<?php
-/*
- * rules_wam_dashboard.php
- * Rules WAM - Web Access Manager para pfSense
- * Painel de Auditoria, Tentativas de Acesso e Exportação (CSV/JSON)
- */
-
-require_once("guiconfig.inc");
-require_once("/usr/local/pkg/rules_wam.inc");
-
-// 1. Exportação CSV de Registros de Bloqueio (Excel) - Sem limites (Todos, Online ou Offline)
-if (isset($_GET['export']) && ($_GET['export'] === 'csv' || $_GET['export'] === 'csv_all')) {
-    @ini_set('memory_limit', '512M');
-    @set_time_limit(300);
-
-    $status_filter = isset($_GET['status']) ? strtolower(trim($_GET['status'])) : 'all';
-    if (!in_array($status_filter, array('all', 'online', 'offline'), true)) {
-        $status_filter = 'all';
-    }
-    // 0 = sem limites, extrai 100% dos eventos registrados
-    $events = rules_wam_get_audit_events(0);
-
-    if ($status_filter === 'online') {
-        $events = array_values(array_filter($events, function($ev) {
-            return !empty($ev['online']);
-        }));
-        $filename = "relatorio_bloqueios_online_rules_wam_" . date('Y-m-d_His') . ".csv";
-    } elseif ($status_filter === 'offline') {
-        $events = array_values(array_filter($events, function($ev) {
-            return empty($ev['online']);
-        }));
-        $filename = "relatorio_bloqueios_offline_rules_wam_" . date('Y-m-d_His') . ".csv";
-    } else {
-        $filename = "relatorio_bloqueios_todos_online_offline_rules_wam_" . date('Y-m-d_His') . ".csv";
-    }
-
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    header('Pragma: no-cache');
-    header('Expires: 0');
-
-    // BOM UTF-8 para o Excel abrir com acentuação correta
-    echo "\xEF\xBB\xBF";
-
-    $output = fopen('php://output', 'w');
-    fputcsv($output, array('Data e Hora', 'Endereco IP', 'Hostname', 'Status na Rede', 'Interface pfSense', 'Dominio Bloqueado', 'Categoria', 'Acao Realizada'), ';');
-
-    foreach ($events as $ev) {
-        $status_txt = !empty($ev['online']) ? 'Online' : 'Offline';
-        $ev_if = function_exists('rules_wam_find_interface_for_ip') ? rules_wam_find_interface_for_ip($ev['ip']) : null;
-        $if_name = !empty($ev_if['descr']) ? $ev_if['descr'] : (!empty($ev_if['logical_id']) ? $ev_if['logical_id'] : 'Local');
-        if (!empty($ev_if['key']) && $ev_if['key'] === 'wan') {
-            if (empty($if_name) || (!empty($ev_if['real_if']) && strcasecmp($if_name, $ev_if['real_if']) === 0)) {
-                $if_name = 'WAN';
-            }
-        }
-        fputcsv($output, array(
-            $ev['timestamp'],
-            $ev['ip'],
-            $ev['hostname'],
-            $status_txt,
-            $if_name,
-            $ev['domain'],
-            $ev['category'],
-            'BLOQUEADO (0.0.0.0)'
-        ), ';');
-    }
-
-    fclose($output);
-    exit;
-}
-
-// 2. Exportação CSV do Resumo de Dispositivos (Online e Offline)
-if (isset($_GET['export']) && $_GET['export'] === 'csv_devices') {
-    @ini_set('memory_limit', '512M');
-    @set_time_limit(300);
-
-    $status_filter = isset($_GET['status']) ? strtolower(trim($_GET['status'])) : 'all';
-    if (!in_array($status_filter, array('all', 'online', 'offline'), true)) {
-        $status_filter = 'all';
-    }
-    $events = rules_wam_get_audit_events(0);
-
-    $devices = array();
-    foreach ($events as $ev) {
-        $ip = $ev['ip'];
-        $dom = $ev['domain'];
-        $cat = $ev['category'];
-        $is_online = !empty($ev['online']);
-
-        if (!isset($devices[$ip])) {
-            $devices[$ip] = array(
-                'ip' => $ip,
-                'hostname' => $ev['hostname'],
-                'online' => $is_online,
-                'status_label' => $is_online ? 'Online' : 'Offline',
-                'mac' => rules_wam_get_host_mac($ip),
-                'count' => 0,
-                'domains' => array(),
-                'categories' => array(),
-                'last_time' => $ev['timestamp'],
-                'last_domain' => $dom
-            );
-        }
-        $devices[$ip]['count']++;
-        $devices[$ip]['domains'][$dom] = ($devices[$ip]['domains'][$dom] ?? 0) + 1;
-        $devices[$ip]['categories'][$cat] = ($devices[$ip]['categories'][$cat] ?? 0) + 1;
-        $devices[$ip]['online'] = $is_online;
-        $devices[$ip]['status_label'] = $is_online ? 'Online' : 'Offline';
-    }
-
-    uasort($devices, function($a, $b) {
-        return $b['count'] <=> $a['count'];
-    });
-
-    if ($status_filter === 'online') {
-        $devices = array_filter($devices, function($dev) { return !empty($dev['online']); });
-        $filename = "relatorio_dispositivos_online_rules_wam_" . date('Y-m-d_His') . ".csv";
-    } elseif ($status_filter === 'offline') {
-        $devices = array_filter($devices, function($dev) { return empty($dev['online']); });
-        $filename = "relatorio_dispositivos_offline_rules_wam_" . date('Y-m-d_His') . ".csv";
-    } else {
-        $filename = "relatorio_dispositivos_online_offline_rules_wam_" . date('Y-m-d_His') . ".csv";
-    }
-
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    header('Pragma: no-cache');
-    header('Expires: 0');
-
-    echo "\xEF\xBB\xBF";
-    $output = fopen('php://output', 'w');
-    fputcsv($output, array('Endereco IP', 'Hostname', 'Status na Rede', 'Interface pfSense', 'MAC Address', 'Total de Tentativas', 'Categoria Mais Frequente', 'Ultimo Dominio Barrado', 'Data Ultima Tentativa'), ';');
-
-    foreach ($devices as $dev) {
-        arsort($dev['categories']);
-        $top_c = key($dev['categories']);
-        $dev_if = function_exists('rules_wam_find_interface_for_ip') ? rules_wam_find_interface_for_ip($dev['ip']) : null;
-        $if_name = !empty($dev_if['descr']) ? $dev_if['descr'] : (!empty($dev_if['logical_id']) ? $dev_if['logical_id'] : 'Local');
-        if (!empty($dev_if['key']) && $dev_if['key'] === 'wan') {
-            if (empty($if_name) || (!empty($dev_if['real_if']) && strcasecmp($if_name, $dev_if['real_if']) === 0)) {
-                $if_name = 'WAN';
-            }
-        }
-        fputcsv($output, array(
-            $dev['ip'],
-            $dev['hostname'],
-            $dev['status_label'],
-            $if_name,
-            !empty($dev['mac']) ? $dev['mac'] : 'N/A',
-            $dev['count'],
-            $top_c,
-            $dev['last_domain'],
-            $dev['last_time']
-        ), ';');
-    }
-
-    fclose($output);
-    exit;
-}
-
-// 3. Exportação JSON (Todos os Registros com Status)
-if (isset($_GET['export']) && $_GET['export'] === 'json') {
-    @ini_set('memory_limit', '512M');
-    @set_time_limit(300);
-
-    $status_filter = isset($_GET['status']) ? strtolower(trim($_GET['status'])) : 'all';
-    if (!in_array($status_filter, array('all', 'online', 'offline'), true)) {
-        $status_filter = 'all';
-    }
-    $events = rules_wam_get_audit_events(0);
-
-    if ($status_filter === 'online') {
-        $events = array_values(array_filter($events, function($ev) { return !empty($ev['online']); }));
-    } elseif ($status_filter === 'offline') {
-        $events = array_values(array_filter($events, function($ev) { return empty($ev['online']); }));
-    }
-
-    $online_cnt = 0;
-    $offline_cnt = 0;
-    foreach ($events as $ev) {
-        if (!empty($ev['online'])) $online_cnt++; else $offline_cnt++;
-    }
-
-    $filename = "relatorio_bloqueios_rules_wam_" . date('Y-m-d_His') . ".json";
-
-    header('Content-Type: application/json; charset=utf-8');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    echo json_encode(array(
-        'generated_at' => date('Y-m-d H:i:s'),
-        'filter' => $status_filter,
-        'total_events' => count($events),
-        'online_events' => $online_cnt,
-        'offline_events' => $offline_cnt,
-        'events' => $events
-    ), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-// 3. Simulação de Teste Direto na Dashboard
-$alert_msg = null;
-if (isset($_POST['simulate_test_domain'])) {
-    $s_dom = rules_wam_clean_domain($_POST['simulate_test_domain'] ?? '');
-    if (!empty($s_dom)) {
-        $client_ip = !empty($_POST['simulate_ip']) ? trim($_POST['simulate_ip']) : (!empty($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '127.0.0.1');
-        $cat = rules_wam_get_domain_category($s_dom);
-        $entry = date('M d H:i:s') . '|' . $client_ip . '|' . $s_dom . '|' . $cat . "\n";
-        @file_put_contents(WAM_AUDIT_LOG, $entry, FILE_APPEND);
-        $alert_msg = "Tentativa de acesso a '{$s_dom}' registrada no log para o IP {$client_ip}!";
-    }
-}
-
-// 4. Limpeza de Logs
-if (isset($_POST['clear_audit_logs'])) {
-    if (file_exists(WAM_AUDIT_LOG)) {
-        @file_put_contents(WAM_AUDIT_LOG, '');
-    }
-    $alert_msg = "Histórico de auditoria do Rules WAM foi limpo com sucesso!";
-}
-
-$pgtitle = array(gettext("Services"), gettext("Rules WAM"), gettext("Dashboard & Auditoria"));
-include("head.inc");
-
-$tab_array = array();
-$tab_array[] = array(gettext("Configurações de Bloqueio"), false, "/rules_wam.php");
-$tab_array[] = array(gettext("Status & Teste de Bloqueio"), false, "/rules_wam_status.php");
-$tab_array[] = array(gettext("Dashboard & Tentativas de Acesso"), true, "/rules_wam_dashboard.php");
-$tab_array[] = array(gettext("Banner de Bloqueio (Prévia)"), false, "/rules_wam_block.php");
-display_top_tabs($tab_array);
-
-// Carrega eventos auditados recentes para visualização na tela
-$all_events = rules_wam_get_audit_events(2000);
-
-// Informações do Host Atual conectado à WebGUI
-$current_client_ip = !empty($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '127.0.0.1';
-$cache_hn = array();
-$current_client_hostname = rules_wam_resolve_hostname($current_client_ip, $cache_hn);
-$wam_cfg = rules_wam_get_config();
-
-$is_current_in_bypass = false;
-if (!empty($wam_cfg['bypass_ips'])) {
-    $raw_ips = preg_split('/[\r\n,;]+/', $wam_cfg['bypass_ips']);
-    foreach ($raw_ips as $rip) {
-        $rip = trim($rip);
-        if ($rip === $current_client_ip || strpos($rip, $current_client_ip) !== false) {
-            $is_current_in_bypass = true;
-            break;
-        }
-    }
-}
-
-// Agrupamento geral por IP/Dispositivo
-$by_device = array();
-$by_domain = array();
-
-foreach ($all_events as $ev) {
-    $ip = $ev['ip'];
-    $dom = $ev['domain'];
-    $cat = $ev['category'];
-    $is_online = !empty($ev['online']);
-
-    if (!isset($by_device[$ip])) {
-        $by_device[$ip] = array(
-            'ip' => $ip,
-            'hostname' => $ev['hostname'],
-            'online' => $is_online,
-            'status_label' => $is_online ? 'Online' : 'Offline',
-            'mac' => rules_wam_get_host_mac($ip),
-            'count' => 0,
-            'domains' => array(),
-            'categories' => array(),
-            'last_time' => $ev['timestamp'],
-            'last_domain' => $dom
-        );
-    }
-    $by_device[$ip]['count']++;
-    $by_device[$ip]['domains'][$dom] = ($by_device[$ip]['domains'][$dom] ?? 0) + 1;
-    $by_device[$ip]['categories'][$cat] = ($by_device[$ip]['categories'][$cat] ?? 0) + 1;
-    $by_device[$ip]['online'] = $is_online;
-    $by_device[$ip]['status_label'] = $is_online ? 'Online' : 'Offline';
-
-    if (!isset($by_domain[$dom])) {
-        $by_domain[$dom] = array(
-            'domain' => $dom,
-            'category' => $cat,
-            'count' => 0,
-            'last_time' => $ev['timestamp']
-        );
-    }
-    $by_domain[$dom]['count']++;
-}
-
-// Ordena dispositivos por mais tentativas (Top Offender)
-uasort($by_device, function($a, $b) {
-    return $b['count'] <=> $a['count'];
-});
-
-// Ordena domínios mais tentados
-uasort($by_domain, function($a, $b) {
-    return $b['count'] <=> $a['count'];
-});
-
-// Estatísticas globais
-$total_blocks = count($all_events);
-$total_devices = count($by_device);
-
-$count_online_devices = 0;
-$count_offline_devices = 0;
-foreach ($by_device as $dev) {
-    if (!empty($dev['online'])) $count_online_devices++; else $count_offline_devices++;
-}
-
-$count_online_events = 0;
-$count_offline_events = 0;
-foreach ($all_events as $ev) {
-    if (!empty($ev['online'])) $count_online_events++; else $count_offline_events++;
-}
-
-$top_domain_item = !empty($by_domain) ? reset($by_domain) : null;
-$top_device_item = !empty($by_device) ? reset($by_device) : null;
-
-$current_host_stats = $by_device[$current_client_ip] ?? null;
-$current_host_blocks = $current_host_stats ? $current_host_stats['count'] : 0;
-
-// Filtro selecionado na interface
-$status_filter = isset($_GET['status']) ? strtolower(trim($_GET['status'])) : 'all';
-if (!in_array($status_filter, array('all', 'online', 'offline'), true)) {
-    $status_filter = 'all';
-}
-
-if ($status_filter === 'online') {
-    $display_events = array_values(array_filter($all_events, function($ev) { return !empty($ev['online']); }));
-    $display_devices = array_filter($by_device, function($dev) { return !empty($dev['online']); });
-} elseif ($status_filter === 'offline') {
-    $display_events = array_values(array_filter($all_events, function($ev) { return empty($ev['online']); }));
-    $display_devices = array_filter($by_device, function($dev) { return empty($dev['online']); });
-} else {
-    $display_events = $all_events;
-    $display_devices = $by_device;
-}
-?>
-
-<?php if ($alert_msg): ?>
-    <div class="alert alert-success alert-dismissible" role="alert">
-        <button type="button" class="close" data-dismiss="alert"><span aria-hidden="true">&times;</span></button>
-        <i class="fa fa-check-circle"></i> <strong><?=htmlspecialchars($alert_msg)?></strong>
-    </div>
-<?php endif; ?>
-
-<!-- Barra de Ações e Exportação Completa -->
-<div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-        <!-- Grupo de Exportação CSV Geral (Sem Limites) -->
-        <div class="btn-group">
-            <a href="/rules_wam_dashboard.php?export=csv&status=all" class="btn btn-success" title="<?=gettext("Exporta todos os registros (online e offline) em CSV/Excel sem limite de linhas")?>">
-                <i class="fa fa-file-excel-o"></i> <strong><?=gettext("Exportar Todos os Registros (CSV)")?></strong>
-            </a>
-            <button type="button" class="btn btn-success dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                <span class="caret"></span>
-                <span class="sr-only">Opções de Exportação</span>
-            </button>
-            <ul class="dropdown-menu">
-                <li>
-                    <a href="/rules_wam_dashboard.php?export=csv&status=all">
-                        <i class="fa fa-database text-primary"></i> <strong><?=gettext("Todos os Registros (Online & Offline)")?></strong>
-                    </a>
-                </li>
-                <li>
-                    <a href="/rules_wam_dashboard.php?export=csv&status=online">
-                        <i class="fa fa-circle text-success"></i> <?=gettext("Apenas Registros de Hosts Online (CSV)")?>
-                    </a>
-                </li>
-                <li>
-                    <a href="/rules_wam_dashboard.php?export=csv&status=offline">
-                        <i class="fa fa-circle-o text-muted"></i> <?=gettext("Apenas Registros de Hosts Offline (CSV)")?>
-                    </a>
-                </li>
-                <li role="separator" class="divider"></li>
-                <li>
-                    <a href="/rules_wam_dashboard.php?export=csv_devices">
-                        <i class="fa fa-desktop text-info"></i> <?=gettext("Exportar Lista de Dispositivos (Online & Offline)")?>
-                    </a>
-                </li>
-                <li>
-                    <a href="/rules_wam_dashboard.php?export=json">
-                        <i class="fa fa-code text-warning"></i> <?=gettext("Exportar Todos os Registros (JSON)")?>
-                    </a>
-                </li>
-            </ul>
-        </div>
-
-        <a href="/rules_wam_dashboard.php?export=csv_devices" class="btn btn-primary" title="<?=gettext("Exporta resumo consolidado de dispositivos e seu status na rede")?>">
-            <i class="fa fa-desktop"></i> <?=gettext("Exportar Dispositivos (CSV)")?>
-        </a>
-
-        <a href="/rules_wam_block.php" target="_blank" class="btn btn-warning">
-            <i class="fa fa-shield"></i> <?=gettext("Ver Banner de Bloqueio")?>
-        </a>
-        <a href="/rules_wam_dashboard.php" class="btn btn-info">
-            <i class="fa fa-refresh"></i> <?=gettext("Atualizar")?>
-        </a>
-    </div>
-
-    <div>
-        <form action="/rules_wam_dashboard.php" method="post" style="display: inline;" onsubmit="return confirm('Deseja realmente limpar o histórico de tentativas gravado?');">
-            <input type="hidden" name="clear_audit_logs" value="1" />
-            <button type="submit" class="btn btn-danger btn-sm">
-                <i class="fa fa-trash"></i> <?=gettext("Limpar Histórico")?>
-            </button>
-        </form>
-    </div>
-</div>
-
-<!-- Informações do Host Atual Conectado -->
-<div class="panel panel-default" style="border-left: 5px solid #337ab7; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-    <div class="panel-body" style="padding: 15px 20px;">
-        <div class="row" style="display: flex; align-items: center; flex-wrap: wrap; gap: 15px 0;">
-            <div class="col-sm-4">
-                <h4 style="margin: 0 0 5px 0; color: #337ab7; font-size: 15px;">
-                    <i class="fa fa-laptop"></i> <strong><?=gettext("Seu Host Atual (Sessão Conectada)")?></strong>
-                </h4>
-                <div style="font-size: 14px; margin-top: 4px;">
-                    <strong>IP:</strong> <span class="label label-primary" style="font-size: 13px;"><?=htmlspecialchars($current_client_ip)?></span>
-                    &nbsp;&nbsp;
-                    <strong>Host:</strong> <code style="font-size: 13px;"><?=htmlspecialchars($current_client_hostname)?></code>
-                    &nbsp;&nbsp;
-                    <span class="label label-success" style="font-size: 11px;"><i class="fa fa-circle"></i> Online</span>
-                </div>
-            </div>
-
-            <div class="col-sm-4 text-center">
-                <span class="text-muted" style="font-size: 12px; text-transform: uppercase; font-weight: 600; display: block; margin-bottom: 4px;">
-                    <?=gettext("Status de Filtragem")?>
-                </span>
-                <?php if ($is_current_in_bypass): ?>
-                    <span class="label label-warning" style="font-size: 13px; padding: 5px 10px;">
-                        <i class="fa fa-unlock"></i> <?=gettext("Isento de Bloqueios (Bypass IP Ativo)")?>
-                    </span>
-                <?php else: ?>
-                    <span class="label label-success" style="font-size: 13px; padding: 5px 10px;">
-                        <i class="fa fa-shield"></i> <?=gettext("Proteção Ativa (Sujeito às Regras)")?>
-                    </span>
-                <?php endif; ?>
-            </div>
-
-            <div class="col-sm-4 text-right">
-                <span class="text-muted" style="font-size: 12px; text-transform: uppercase; font-weight: 600; display: block; margin-bottom: 4px;">
-                    <?=gettext("Tentativas Registradas Deste Host")?>
-                </span>
-                <span class="badge" style="font-size: 14px; background-color: <?=$current_host_blocks > 0 ? '#d9534f' : '#5cb85c'?>; padding: 5px 10px;">
-                    <?=number_format($current_host_blocks)?> <?=gettext("bloqueios")?>
-                </span>
-                <?php if ($current_host_stats): ?>
-                    <div style="font-size: 11.5px; color: #777; margin-top: 3px;">
-                        <?=gettext("Último:")?> <strong class="text-danger"><?=htmlspecialchars($current_host_stats['last_domain'])?></strong> (<?=htmlspecialchars($current_host_stats['last_time'])?>)
-                    </div>
-                <?php endif; ?>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- KPIs / Cartões no Topo -->
-<div class="row">
-    <div class="col-sm-3">
-        <div class="panel panel-danger text-center" style="margin-bottom: 20px;">
-            <div class="panel-heading" style="padding: 10px;">
-                <h4 style="margin: 0; font-size: 14px;"><i class="fa fa-shield"></i> <?=gettext("TENTATIVAS BLOQUEADAS")?></h4>
-            </div>
-            <div class="panel-body" style="padding: 15px;">
-                <span style="font-size: 32px; font-weight: bold; color: #a94442;"><?=number_format($total_blocks)?></span>
-                <div style="font-size: 12px; margin-top: 5px;">
-                    <span class="text-success" style="font-weight: 600;"><i class="fa fa-circle"></i> <?=$count_online_events?> Online</span>
-                    &nbsp;|&nbsp;
-                    <span class="text-muted" style="font-weight: 600;"><i class="fa fa-circle-o"></i> <?=$count_offline_events?> Offline</span>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-sm-3">
-        <div class="panel panel-primary text-center" style="margin-bottom: 20px;">
-            <div class="panel-heading" style="padding: 10px;">
-                <h4 style="margin: 0; font-size: 14px;"><i class="fa fa-desktop"></i> <?=gettext("MÁQUINAS / DISPOSITIVOS")?></h4>
-            </div>
-            <div class="panel-body" style="padding: 15px;">
-                <span style="font-size: 32px; font-weight: bold; color: #337ab7;"><?=number_format($total_devices)?></span>
-                <div style="font-size: 12px; margin-top: 5px;">
-                    <span class="text-success" style="font-weight: 600;"><i class="fa fa-circle"></i> <?=$count_online_devices?> Online</span>
-                    &nbsp;|&nbsp;
-                    <span class="text-muted" style="font-weight: 600;"><i class="fa fa-circle-o"></i> <?=$count_offline_devices?> Offline</span>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-sm-3">
-        <div class="panel panel-warning text-center" style="margin-bottom: 20px;">
-            <div class="panel-heading" style="padding: 10px;">
-                <h4 style="margin: 0; font-size: 14px;"><i class="fa fa-globe"></i> <?=gettext("TOP SITE BLOQUEADO")?></h4>
-            </div>
-            <div class="panel-body" style="padding: 15px;">
-                <span style="font-size: 18px; font-weight: bold; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    <?=$top_domain_item ? htmlspecialchars($top_domain_item['domain']) : 'Nenhum'?>
-                </span>
-                <p class="text-muted" style="margin: 0;">
-                    <?=$top_domain_item ? number_format($top_domain_item['count']) . ' tentativas' : 'Aguardando tráfego'?>
-                </p>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-sm-3">
-        <div class="panel panel-info text-center" style="margin-bottom: 20px;">
-            <div class="panel-heading" style="padding: 10px;">
-                <h4 style="margin: 0; font-size: 14px;"><i class="fa fa-user"></i> <?=gettext("TOP DISPOSITIVO INFRATOR")?></h4>
-            </div>
-            <div class="panel-body" style="padding: 15px;">
-                <span style="font-size: 18px; font-weight: bold; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    <?=$top_device_item ? htmlspecialchars($top_device_item['hostname']) : 'Nenhum'?>
-                </span>
-                <p class="text-muted" style="margin: 0;">
-                    <?=$top_device_item ? htmlspecialchars($top_device_item['ip']) . ' (' . $top_device_item['count'] . 'x)' : 'Sem bloqueios'?>
-                </p>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Barra de Simulação Rápida / Teste -->
-<div class="panel panel-default" style="margin-bottom: 20px;">
-    <div class="panel-body" style="padding: 12px;">
-        <form action="/rules_wam_dashboard.php" method="post" class="form-inline" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <span style="font-weight: bold;"><i class="fa fa-crosshairs"></i> <?=gettext("Simular/Testar Registro de Tentativa:")?></span>
-            <input type="text" name="simulate_ip" class="form-control" style="width: 150px;" placeholder="IP (ex: 172.24.60.111)" value="<?=htmlspecialchars($current_client_ip)?>" title="IP do host a registrar" />
-            <input type="text" name="simulate_test_domain" class="form-control" style="min-width: 250px;" placeholder="Domínio (ex: betano.com, xvideo.com)" required />
-            <button type="submit" class="btn btn-warning"><i class="fa fa-bolt"></i> <?=gettext("Registrar Tentativa Agora")?></button>
-            <span class="text-muted" style="font-size: 12px;"><?=gettext("(Grava imediatamente no log com o IP informado e atualiza a auditoria)")?></span>
-        </form>
-    </div>
-</div>
-
-<!-- Filtro de Visualização: Todos / Online / Offline -->
-<div style="margin-bottom: 15px;">
-    <ul class="nav nav-pills" style="font-weight: bold;">
-        <li role="presentation" class="<?=$status_filter === 'all' ? 'active' : ''?>">
-            <a href="/rules_wam_dashboard.php?status=all"><i class="fa fa-list"></i> <?=gettext("Todos os Registros")?> <span class="badge"><?=$total_blocks?></span></a>
-        </li>
-        <li role="presentation" class="<?=$status_filter === 'online' ? 'active' : ''?>">
-            <a href="/rules_wam_dashboard.php?status=online" style="<?=$status_filter !== 'online' ? 'color: #3c763d;' : ''?>"><i class="fa fa-circle text-success"></i> <?=gettext("Apenas Hosts Online")?> <span class="badge"><?=$count_online_events?></span></a>
-        </li>
-        <li role="presentation" class="<?=$status_filter === 'offline' ? 'active' : ''?>">
-            <a href="/rules_wam_dashboard.php?status=offline" style="<?=$status_filter !== 'offline' ? 'color: #777;' : ''?>"><i class="fa fa-circle-o text-muted"></i> <?=gettext("Apenas Hosts Offline")?> <span class="badge"><?=$count_offline_events?></span></a>
-        </li>
-    </ul>
-</div>
-
-<!-- Tabela 1: Resumo Agrupado por Dispositivo -->
-<div class="panel panel-default">
-    <div class="panel-heading" style="display: flex; justify-content: space-between; align-items: center;">
-        <h2 class="panel-title"><i class="fa fa-users"></i> <?=gettext("Tentativas de Acesso por Dispositivo (Auditoria por IP, Hostname & Presença na Rede)")?></h2>
-        <div>
-            <a href="/rules_wam_dashboard.php?export=csv_devices&amp;status=<?=htmlspecialchars($status_filter, ENT_QUOTES, 'UTF-8')?>" class="btn btn-default btn-xs" title="<?=gettext("Exportar lista de dispositivos para CSV")?>">
-                <i class="fa fa-download"></i> <?=gettext("Exportar Dispositivos (CSV)")?>
-            </a>
-        </div>
-    </div>
-    <div class="table-responsive">
-        <table class="table table-striped table-hover table-condensed">
-            <thead>
-                <tr>
-                    <th style="width: 110px;"><?=gettext("Status na Rede")?></th>
-                    <th><?=gettext("Endereço IP")?></th>
-                    <th><?=gettext("Interface / Rede")?></th>
-                    <th><?=gettext("Hostname / Nome da Máquina")?></th>
-                    <th><?=gettext("MAC Address")?></th>
-                    <th class="text-center"><?=gettext("Total de Tentativas")?></th>
-                    <th><?=gettext("Categoria Mais Tentada")?></th>
-                    <th><?=gettext("Último Domínio Barrado")?></th>
-                    <th><?=gettext("Última Tentativa")?></th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (empty($display_devices)): ?>
-                    <tr>
-                        <td colspan="9" class="text-center text-muted" style="padding: 30px;">
-                            <i class="fa fa-info-circle fa-2x"></i><br />
-                            <?=gettext("Nenhum dispositivo encontrado para o filtro selecionado.")?>
-                        </td>
-                    </tr>
-                <?php else: ?>
-                    <?php foreach ($display_devices as $dev): 
-                        arsort($dev['categories']);
-                        $top_cat = key($dev['categories']);
-                        $is_me = ($dev['ip'] === $current_client_ip);
-                        $is_on = !empty($dev['online']);
-                        $dev_if = function_exists('rules_wam_find_interface_for_ip') ? rules_wam_find_interface_for_ip($dev['ip']) : null;
-                        $dev_if_name = !empty($dev_if['descr']) ? $dev_if['descr'] : (!empty($dev_if['logical_id']) ? $dev_if['logical_id'] : 'Rede Local');
-                        if (!empty($dev_if['key']) && $dev_if['key'] === 'wan') {
-                            if (empty($dev_if_name) || (!empty($dev_if['real_if']) && strcasecmp($dev_if_name, $dev_if['real_if']) === 0)) {
-                                $dev_if_name = 'WAN';
-                            }
-                        }
-                    ?>
-                    <tr <?=$is_me ? 'class="info" style="background-color: #eef7fe;"' : ''?>>
-                        <td>
-                            <?php if ($is_on): ?>
-                                <span class="label label-success" style="font-size: 11px; padding: 4px 7px;"><i class="fa fa-circle"></i> Online</span>
-                            <?php else: ?>
-                                <span class="label label-default" style="font-size: 11px; padding: 4px 7px; color: #666;"><i class="fa fa-circle-o"></i> Offline</span>
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <code><?=htmlspecialchars($dev['ip'])?></code>
-                            <?php if ($is_me): ?>
-                                <span class="label label-primary" style="margin-left: 5px;"><i class="fa fa-user"></i> <?=gettext("Seu Host")?></span>
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <span class="label label-primary" style="font-size: 11px;" title="<?=!empty($dev_if['real_if']) ? htmlspecialchars($dev_if['logical_id'] . ' / ' . $dev_if['real_if']) : ''?>">
-                                <i class="fa fa-sitemap"></i> <?=htmlspecialchars($dev_if_name)?>
-                            </span>
-                        </td>
-                        <td><strong><i class="fa fa-laptop"></i> <?=htmlspecialchars($dev['hostname'])?></strong></td>
-                        <td><code style="font-size: 11px;"><?=!empty($dev['mac']) ? htmlspecialchars($dev['mac']) : '—'?></code></td>
-                        <td class="text-center">
-                            <span class="badge" style="background-color: #d9534f; font-size: 13px;">
-                                <?=number_format($dev['count'])?> vezes
-                            </span>
-                        </td>
-                        <td><span class="label label-warning"><?=htmlspecialchars($top_cat)?></span></td>
-                        <td><code><?=htmlspecialchars($dev['last_domain'])?></code></td>
-                        <td><i class="fa fa-clock-o text-muted"></i> <?=htmlspecialchars($dev['last_time'])?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<!-- Tabela 2: Registro Detalhado dos Últimos Bloqueios -->
-<div class="panel panel-default">
-    <div class="panel-heading" style="display: flex; justify-content: space-between; align-items: center;">
-        <h2 class="panel-title"><i class="fa fa-list"></i> <?=gettext("Registro Detalhado dos Últimos Bloqueios (Tempo Real)")?></h2>
-        <div>
-            <a href="/rules_wam_dashboard.php?export=csv&amp;status=<?=htmlspecialchars($status_filter, ENT_QUOTES, 'UTF-8')?>" class="btn btn-default btn-xs" title="<?=gettext("Exportar registros para CSV")?>">
-                <i class="fa fa-download"></i> <?=gettext("Exportar Registros (CSV)")?>
-            </a>
-        </div>
-    </div>
-    <div class="table-responsive">
-        <table class="table table-striped table-hover table-condensed">
-            <thead>
-                <tr>
-                    <th><?=gettext("Data / Hora")?></th>
-                    <th><?=gettext("Endereço IP")?></th>
-                    <th><?=gettext("Interface")?></th>
-                    <th><?=gettext("Hostname")?></th>
-                    <th style="width: 100px;"><?=gettext("Status")?></th>
-                    <th><?=gettext("Domínio Bloqueado")?></th>
-                    <th><?=gettext("Categoria")?></th>
-                    <th><?=gettext("Ação do Firewall")?></th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (empty($display_events)): ?>
-                    <tr>
-                        <td colspan="8" class="text-center text-muted" style="padding: 20px;">
-                            <?=gettext("Nenhum registro encontrado para o filtro selecionado.")?>
-                        </td>
-                    </tr>
-                <?php else: ?>
-                    <?php 
-                    $slice = array_slice($display_events, 0, 150);
-                    foreach ($slice as $ev): 
-                        $is_me = ($ev['ip'] === $current_client_ip);
-                        $is_on = !empty($ev['online']);
-                        $ev_if = function_exists('rules_wam_find_interface_for_ip') ? rules_wam_find_interface_for_ip($ev['ip']) : null;
-                        $ev_if_name = !empty($ev_if['descr']) ? $ev_if['descr'] : (!empty($ev_if['logical_id']) ? $ev_if['logical_id'] : 'Local');
-                        if (!empty($ev_if['key']) && $ev_if['key'] === 'wan') {
-                            if (empty($ev_if_name) || (!empty($ev_if['real_if']) && strcasecmp($ev_if_name, $ev_if['real_if']) === 0)) {
-                                $ev_if_name = 'WAN';
-                            }
-                        }
-                    ?>
-                    <tr <?=$is_me ? 'style="background-color: #eef7fe;"' : ''?>>
-                        <td><i class="fa fa-clock-o text-muted"></i> <?=htmlspecialchars($ev['timestamp'])?></td>
-                        <td>
-                            <code><?=htmlspecialchars($ev['ip'])?></code>
-                            <?php if ($is_me): ?>
-                                <span class="label label-info" style="font-size: 10px; margin-left: 3px;"><?=gettext("Você")?></span>
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <span class="label label-default" style="font-size: 10px;" title="<?=!empty($ev_if['real_if']) ? htmlspecialchars($ev_if['logical_id'] . ' / ' . $ev_if['real_if']) : ''?>">
-                                <?=htmlspecialchars($ev_if_name)?>
-                            </span>
-                        </td>
-                        <td><strong><?=htmlspecialchars($ev['hostname'])?></strong></td>
-                        <td>
-                            <?php if ($is_on): ?>
-                                <span class="label label-success" style="font-size: 10px;"><i class="fa fa-circle"></i> Online</span>
-                            <?php else: ?>
-                                <span class="label label-default" style="font-size: 10px; color: #666;"><i class="fa fa-circle-o"></i> Offline</span>
-                            <?php endif; ?>
-                        </td>
-                        <td><strong class="text-danger"><?=htmlspecialchars($ev['domain'])?></strong></td>
-                        <td><span class="label label-default"><?=htmlspecialchars($ev['category'])?></span></td>
-                        <td><span class="label label-danger"><i class="fa fa-ban"></i> <?=gettext("BLOQUEADO")?></span></td>
-                    </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<?php include("foot.inc"); ?>
-
-EOF_DASH
-echo '>> Extraindo www/rules_wam_block.php...'
-cat << 'EOF_BLOCK' > $TMP_DIR/www/rules_wam_block.php
-<?php
-/*
- * rules_wam_block.php
- * Rules WAM - Web Access Manager para pfSense
- * Banner / Tela de Bloqueio Corporativa para Hosts Interceptados
- */
-
-if (file_exists("/usr/local/pkg/rules_wam.inc")) {
-    require_once("/usr/local/pkg/rules_wam.inc");
-} elseif (file_exists(dirname(__DIR__) . "/pkg/rules_wam.inc")) {
-    require_once(dirname(__DIR__) . "/pkg/rules_wam.inc");
-}
-
-$client_ip = !empty($_SERVER['HTTP_X_REAL_IP']) ? $_SERVER['HTTP_X_REAL_IP'] : (!empty($_SERVER['HTTP_X_FORWARDED_FOR']) ? explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])[0] : (!empty($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '127.0.0.1'));
-$client_ip = trim($client_ip);
-$cache_hn = array();
-$client_host = function_exists('rules_wam_resolve_hostname') ? rules_wam_resolve_hostname($client_ip, $cache_hn) : 'Host ' . $client_ip;
-
-// Identifica o domínio solicitado
-$req_host = !empty($_GET['domain']) ? trim($_GET['domain']) : (!empty($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : 'website-bloqueado.com');
-$req_host = preg_replace('/:\d+$/', '', $req_host); // remove porta se houver
-$req_host = function_exists('rules_wam_clean_domain') ? rules_wam_clean_domain($req_host) : preg_replace('/[^a-zA-Z0-9\.\-_]/', '', $req_host);
-if (empty($req_host) || $req_host === '127.0.0.1' || $req_host === 'localhost' || filter_var($req_host, FILTER_VALIDATE_IP)) {
-    $req_host = 'website-bloqueado.com';
-}
-
-// Categoria do domínio
-$category = function_exists('rules_wam_get_domain_category') ? rules_wam_get_domain_category($req_host) : 'Política de Segurança Corporativa';
-if ($category === 'Regra Personalizada / Outros' || $category === 'Política de Segurança Corporativa') {
-    if (strpos($req_host, 'xvideo') !== false || strpos($req_host, 'porn') !== false) {
-        $category = 'Conteúdo Adulto & Pornografia';
-    } elseif (strpos($req_host, 'betano') !== false || strpos($req_host, 'bet365') !== false || strpos($req_host, 'blaze') !== false || strpos($req_host, 'bet') !== false) {
-        $category = 'Apostas & Bets';
-    }
-}
-
-// Data e Hora
-$block_time = date('d/m/Y - H:i:s');
-
-// Registra auditoria da interceptação quando exibido a um host
-$wam_cfg = function_exists('rules_wam_get_config') ? rules_wam_get_config() : array();
-$lan_ip = function_exists('config_get_path') ? config_get_path('interfaces/lan/ipaddr', '') : (!empty($config['interfaces']['lan']['ipaddr']) ? $config['interfaces']['lan']['ipaddr'] : '');
-$block_page_ip = !empty($wam_cfg['block_page_ip']) ? $wam_cfg['block_page_ip'] : $lan_ip;
-$server_addr = $_SERVER['SERVER_ADDR'] ?? '';
-
-$is_fw_direct = empty($_GET['domain']) && (!empty($_SERVER['HTTP_HOST']) && (
-    (!empty($block_page_ip) && strpos($_SERVER['HTTP_HOST'], $block_page_ip) !== false) ||
-    (!empty($server_addr) && strpos($_SERVER['HTTP_HOST'], $server_addr) !== false) ||
-    strpos($_SERVER['HTTP_HOST'], 'pfsense') !== false
-));
-
-if (!empty($req_host) && $req_host !== 'website-bloqueado.com' && !$is_fw_direct) {
-    $audit_line = sprintf(
-        "%s|%s|%s|%s|%s\n",
-        date('Y-m-d H:i:s'),
-        $client_ip,
-        $req_host,
-        $category,
-        $client_host
-    );
-    @file_put_contents('/var/log/wam_audit.log', $audit_line, FILE_APPEND | LOCK_EX);
-}
-?>
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Acesso Bloqueado - Política de Segurança Corporativa</title>
-    <style>
-        :root {
-            --primary-red: #c9302c;
-            --dark-red: #901b17;
-            --bg-page: #f0f2f5;
-            --card-bg: #ffffff;
-            --text-dark: #2c3e50;
-            --text-muted: #667085;
-            --border-color: #e4e7ec;
-            --amber-warn: #f59e0b;
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
-            color: var(--text-dark);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-
-        .block-card {
-            background: var(--card-bg);
-            max-width: 720px;
-            width: 100%;
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
-            overflow: hidden;
-            border: 1px solid var(--border-color);
-        }
-
-        .card-header {
-            background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
-            color: #ffffff;
-            padding: 28px 32px;
-            text-align: center;
-            position: relative;
-        }
-
-        .card-header .badge-top {
-            display: inline-block;
-            background: rgba(255, 255, 255, 0.2);
-            backdrop-filter: blur(4px);
-            padding: 4px 14px;
-            border-radius: 20px;
-            font-size: 11px;
-            letter-spacing: 1px;
-            font-weight: 700;
-            text-transform: uppercase;
-            margin-bottom: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-
-        .shield-icon {
-            width: 64px;
-            height: 64px;
-            margin: 0 auto 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(255, 255, 255, 0.15);
-            border-radius: 50%;
-            border: 2px solid rgba(255, 255, 255, 0.4);
-        }
-
-        .shield-icon svg {
-            width: 36px;
-            height: 36px;
-            fill: #ffffff;
-        }
-
-        .card-header h1 {
-            font-size: 24px;
-            font-weight: 800;
-            margin-bottom: 6px;
-            letter-spacing: -0.5px;
-        }
-
-        .card-header p {
-            font-size: 14px;
-            color: rgba(255, 255, 255, 0.9);
-            max-width: 500px;
-            margin: 0 auto;
-        }
-
-        .card-body {
-            padding: 30px 32px;
-        }
-
-        .policy-alert-box {
-            background-color: #fef2f2;
-            border-left: 4px solid var(--primary-red);
-            padding: 16px;
-            border-radius: 6px;
-            margin-bottom: 24px;
-        }
-
-        .policy-alert-box h3 {
-            color: var(--dark-red);
-            font-size: 15px;
-            font-weight: 700;
-            margin-bottom: 8px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .policy-alert-box p {
-            font-size: 13.5px;
-            color: #7f1d1d;
-            line-height: 1.5;
-        }
-
-        .policy-categories {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 10px;
-            margin-top: 14px;
-        }
-
-        .cat-item {
-            background: #ffffff;
-            border: 1px solid #fecaca;
-            border-radius: 6px;
-            padding: 10px 14px;
-            font-size: 12.5px;
-            color: #991b1b;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .cat-item.active-violation {
-            background: #fef2f2;
-            border: 2px solid #dc2626;
-            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15);
-        }
-
-        .cat-badge-violation {
-            background: #dc2626;
-            color: #ffffff;
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 4px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-left: auto;
-            white-space: nowrap;
-        }
-
-        .cat-item span.icon {
-            font-size: 18px;
-        }
-
-        /* Detalhes Técnicos */
-        .tech-details {
-            background-color: #f8fafc;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 18px;
-            margin-bottom: 24px;
-        }
-
-        .tech-details h4 {
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            color: var(--text-muted);
-            margin-bottom: 12px;
-            font-weight: 700;
-        }
-
-        .details-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            font-size: 13px;
-        }
-
-        @media (max-width: 540px) {
-            .details-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        .detail-row {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .detail-row .label {
-            font-size: 11px;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            font-weight: 600;
-            margin-bottom: 3px;
-        }
-
-        .detail-row .value {
-            font-weight: 700;
-            color: var(--text-dark);
-            word-break: break-all;
-        }
-
-        .detail-row .value.blocked-domain {
-            color: var(--primary-red);
-            font-family: Consolas, "Courier New", monospace;
-            font-size: 14px;
-        }
-
-        .legal-notice {
-            font-size: 12px;
-            color: var(--text-muted);
-            line-height: 1.6;
-            text-align: center;
-            margin-bottom: 24px;
-            padding: 0 10px;
-        }
-
-        .card-footer {
-            background-color: #f8fafc;
-            border-top: 1px solid var(--border-color);
-            padding: 18px 32px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 12px;
-        }
-
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 9px 18px;
-            border-radius: 6px;
-            font-size: 13px;
-            font-weight: 600;
-            text-decoration: none;
-            cursor: pointer;
-            border: 1px solid transparent;
-            transition: all 0.2s;
-        }
-
-        .btn-primary {
-            background-color: #2563eb;
-            color: #ffffff;
-        }
-
-        .btn-primary:hover {
-            background-color: #1d4ed8;
-        }
-
-        .btn-secondary {
-            background-color: #ffffff;
-            color: var(--text-dark);
-            border-color: var(--border-color);
-        }
-
-        .btn-secondary:hover {
-            background-color: #f1f5f9;
-        }
-
-        .footer-brand {
-            font-size: 12px;
-            color: var(--text-muted);
-        }
-    </style>
-</head>
-<body>
-
-<div class="block-card">
-    <div class="card-header">
-        <div class="badge-top">🛡️ Segurança Corporativa & Auditoria de Rede</div>
-        <div class="shield-icon">
-            <svg viewBox="0 0 24 24">
-                <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-1 6h2v6h-2V7zm1 10.25c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25 1.25.56 1.25 1.25-.56 1.25-1.25 1.25z"/>
-            </svg>
-        </div>
-        <h1>ACESSO BLOQUEADO</h1>
-        <p>A navegação para este destino foi restrita em conformidade com as Políticas de Segurança da Informação da instituição.</p>
-    </div>
-
-    <div class="card-body">
-        <div class="policy-alert-box">
-            <h3>
-                <span>⚠️</span> Violação de Política de Acesso à Internet
-            </h3>
-            <p>
-                Os recursos de rede e conectividade desta instituição são destinados estritamente às atividades profissionais e corporativas. 
-                De acordo com as normas de conformidade e segurança, é expressamente <strong>proibido</strong> o acesso a páginas que contenham:
-            </p>
-
-            <?php
-            $all_policy_cats = array(
-                'Notícias & Portais'    => array('icon' => '📰', 'title' => 'Notícias & Portais', 'desc' => 'Portais jornalísticos, tabloides, colunas e notícias externas'),
-                'Conteúdo Adulto'       => array('icon' => '🔞', 'title' => 'Conteúdo Adulto', 'desc' => 'Pornografia, acompanhantes, cams e nudez explícita'),
-                'Apostas & Bets'        => array('icon' => '🎲', 'title' => 'Apostas & Bets', 'desc' => 'Jogos de azar, cassinos online, rifas e apostas esportivas'),
-                'Jogos & Games'         => array('icon' => '🎮', 'title' => 'Jogos Online', 'desc' => 'Plataformas de jogos, games em rede e entretenimento lúdico'),
-                'Mídias Sociais'        => array('icon' => '📱', 'title' => 'Mídias Sociais', 'desc' => 'Redes sociais, vídeos curtos, mensageria e feeds de interação'),
-                'Streaming & Vídeo'     => array('icon' => '🎬', 'title' => 'Streaming & Vídeo', 'desc' => 'Plataformas de filmes, séries, vídeos sob demanda e IPTV'),
-                'Compras & E-commerce'  => array('icon' => '🛍️', 'title' => 'Compras & E-commerce', 'desc' => 'Lojas virtuais, marketplaces e sites de leilão'),
-                'Esportes & Placares'   => array('icon' => '⚽', 'title' => 'Esportes & Placares', 'desc' => 'Portais esportivos, transmissões de jogos e resultados'),
-                'Torrents & P2P'        => array('icon' => '⚡', 'title' => 'Pirataria & Torrents', 'desc' => 'Compartilhamento P2P, downloads de mídias e cracks'),
-                'Anti-Bypass DoH'       => array('icon' => '🛡️', 'title' => 'Anti-Bypass DoH', 'desc' => 'Servidores de DNS sobre HTTPS e proxies de evasão'),
-                'VPN, ZTNA & Proxies'   => array('icon' => '🔒', 'title' => 'VPN, ZTNA & Proxies', 'desc' => 'Serviços de VPN comercial, túneis ZTNA, mesh VPNs e proxies anônimos'),
-            );
-
-            $ordered_cats = array();
-            foreach ($all_policy_cats as $cat_k => $cat_info) {
-                $matches_cat = (
-                    stripos($category, $cat_k) !== false ||
-                    stripos($cat_k, $category) !== false ||
-                    (stripos($cat_k, 'VPN') !== false && (stripos($category, 'VPN') !== false || stripos($category, 'ZTNA') !== false))
-                );
-                if ($matches_cat) {
-                    $ordered_cats = array($cat_k => $cat_info) + $ordered_cats;
-                } else {
-                    $ordered_cats[$cat_k] = $cat_info;
-                }
-            }
-            ?>
-            <div class="policy-categories">
-                <?php 
-                $count = 0;
-                foreach ($ordered_cats as $cat_k => $cat_info): 
-                    $is_match = (
-                        stripos($category, $cat_k) !== false ||
-                        stripos($cat_k, $category) !== false ||
-                        (stripos($cat_k, 'VPN') !== false && (stripos($category, 'VPN') !== false || stripos($category, 'ZTNA') !== false))
-                    );
-                    if ($count >= 6 && !$is_match) continue;
-                    $count++;
-                ?>
-                    <div class="cat-item <?=$is_match ? 'active-violation' : ''?>">
-                        <span class="icon"><?=$cat_info['icon']?></span>
-                        <div><strong><?=htmlspecialchars($cat_info['title'])?>:</strong> <?=htmlspecialchars($cat_info['desc'])?></div>
-                        <?php if ($is_match): ?>
-                            <span class="cat-badge-violation">Regra Ativa</span>
-                        <?php endif; ?>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        </div>
-
-        <div class="tech-details">
-            <h4>📋 Detalhes do Registro de Interceptação</h4>
-            <div class="details-grid">
-                <div class="detail-row">
-                    <span class="label">Domínio Solicitado</span>
-                    <span class="value blocked-domain"><?=htmlspecialchars($req_host)?></span>
-                </div>
-                <div class="detail-row">
-                    <span class="label">Categoria Classificada</span>
-                    <span class="value" style="color: #b91c1c;"><?=htmlspecialchars($category)?></span>
-                </div>
-                <div class="detail-row">
-                    <span class="label">Seu Host / Computador</span>
-                    <span class="value"><?=htmlspecialchars($client_host)?></span>
-                </div>
-                <div class="detail-row">
-                    <span class="label">Endereço IP de Origem</span>
-                    <span class="value"><code><?=htmlspecialchars($client_ip)?></code></span>
-                </div>
-                <div class="detail-row">
-                    <span class="label">Data e Hora da Tentativa</span>
-                    <span class="value"><?=htmlspecialchars($block_time)?></span>
-                </div>
-                <div class="detail-row">
-                    <span class="label">Ação Executada</span>
-                    <span class="value" style="color: #c9302c;">Conexão Bloqueada & Registrada</span>
-                </div>
-            </div>
-        </div>
-
-        <div class="legal-notice">
-            Todas as requisições de rede são monitoradas e auditadas centralizadamente pelo firewall corporativo.<br/>
-            Caso acredite que este bloqueio seja incorreto ou necessite de autorização para fins de trabalho, contate o <strong>Departamento de TI</strong> informando os dados acima.
-        </div>
-    </div>
-
-    <div class="card-footer">
-        <div class="footer-brand">
-            <strong>Rules WAM</strong> &bull; Sistema de Proteção Web pfSense
-            <?php if (file_exists('/usr/local/www/rules_wam_ca.crt')): ?>
-                &bull; <a href="/rules_wam_ca.crt" style="color: #64748b; text-decoration: underline; font-size: 11px;" download title="Instalar certificado nos computadores para eliminar avisos no HTTPS">Baixar Certificado CA</a>
-            <?php endif; ?>
-        </div>
-        <div>
-            <button onclick="window.history.back();" class="btn btn-secondary">
-                &larr; Voltar à página anterior
-            </button>
-            <a href="mailto:suporte@empresa.com.br?subject=Solicitacao%20de%20Liberacao%20de%20Acesso%20-%20<?=rawurlencode($req_host)?>&body=Ola%20Suporte%20TI,%0A%0ASolicito%20revisao%20do%20bloqueio%20do%20dominio:%20<?=rawurlencode($req_host)?>%0AHost:%20<?=rawurlencode($client_host)?>%20(IP:%20<?=rawurlencode($client_ip)?>)%0ACategoria:%20<?=rawurlencode($category)?>%0A%0AJustificativa:%20" class="btn btn-primary">
-                ✉️ Contatar Suporte TI
-            </a>
-        </div>
-    </div>
-</div>
-
-</body>
-</html>
-
-EOF_BLOCK
-echo '>> Extraindo widgets/include/rules_wam.inc...'
-cat << 'EOF_WIDGET_INC' > $TMP_DIR/widgets/include/rules_wam.inc
-<?php
-/*
- * rules_wam.inc
- * Rules WAM - Web Access Manager para pfSense
- * Arquivo de inclusão e registro do Widget no Dashboard
- */
-
-$rules_wam_title = gettext("Rules WAM - Web Access Manager");
-$rules_wam_title_link = "rules_wam.php";
-$rules_wam_allow_multiple_widget_copies = false;
-?>
-
-EOF_WIDGET_INC
-echo '>> Extraindo widgets/widgets/rules_wam.widget.php...'
-cat << 'EOF_WIDGET_PHP' > $TMP_DIR/widgets/widgets/rules_wam.widget.php
-<?php
-/*
- * rules_wam.widget.php
- * Rules WAM - Web Access Manager para pfSense
- * Dashboard Widget: Status do Serviço, Categorias Ativas e Resumo Macro de Hosts por Rede
- */
-
-require_once("guiconfig.inc");
-require_once("pfsense-utils.inc");
-require_once("functions.inc");
-require_once("interfaces.inc");
-if (file_exists("/usr/local/pkg/rules_wam.inc")) {
-    require_once("/usr/local/pkg/rules_wam.inc");
-}
-
-if (empty($widgetkey)) {
-    $widgetkey = isset($_REQUEST['widgetkey']) ? htmlspecialchars($_REQUEST['widgetkey']) : 'rules_wam-0';
-}
-
-$wam_cfg = function_exists('rules_wam_get_config') ? rules_wam_get_config() : array();
-$is_enabled = function_exists('rules_wam_is_checked') ? rules_wam_is_checked($wam_cfg['enable'] ?? null) : false;
-
-// 1. Status Geral e Unbound
-$status_file = defined('WAM_STATUS_FILE') ? WAM_STATUS_FILE : '/var/log/wam_status.json';
-$status_data = array(
-    'enabled' => $is_enabled,
-    'schedule_active' => false,
-    'is_blocking' => false,
-    'updated_at' => '-',
-    'total_blocked' => 0,
-    'categories' => array(),
-    'whitelist_count' => 0,
-    'bypass_ips_count' => 0
-);
-if (file_exists($status_file)) {
-    $raw_st = @file_get_contents($status_file);
-    $parsed_st = json_decode($raw_st, true);
-    if (is_array($parsed_st)) {
-        $status_data = array_merge($status_data, $parsed_st);
-    }
-}
-
-// Unbound running check
-$unbound_running = false;
-if (function_exists('is_service_running')) {
-    $unbound_running = is_service_running('unbound');
-} else {
-    $unbound_pid = @file_get_contents('/var/run/unbound.pid');
-    $unbound_running = (!empty($unbound_pid) && function_exists('posix_kill') && @posix_kill(trim($unbound_pid), 0));
-}
-
-// NGINX SSL Banner running check
-$nginx_banner_running = false;
-if (file_exists('/var/run/rules_wam_ssl.pid')) {
-    $npid = trim(@file_get_contents('/var/run/rules_wam_ssl.pid'));
-    $nginx_banner_running = (!empty($npid) && function_exists('posix_kill') && @posix_kill($npid, 0));
-} else {
-    $n_out = array();
-    @exec("/usr/bin/pgrep -f 'rules_wam_ssl.conf'", $n_out);
-    $nginx_banner_running = !empty($n_out);
-}
-
-// Schedule check
-$schedule_enabled = function_exists('rules_wam_is_checked') ? rules_wam_is_checked($wam_cfg['schedule_enable'] ?? null) : false;
-$in_schedule = true;
-if ($is_enabled && $schedule_enabled && function_exists('rules_wam_is_in_schedule_window')) {
-    $in_schedule = rules_wam_is_in_schedule_window($wam_cfg);
-}
-
-// Block action
-$block_action = !empty($wam_cfg['block_action']) ? $wam_cfg['block_action'] : 'block_page';
-
-// Contagem real de domínios bloqueados
-$total_blocked_domains = $status_data['total_blocked'] ?? 0;
-$conf_file = defined('WAM_CONF_FILE') ? WAM_CONF_FILE : '/var/unbound/wam_blocklist.conf';
-if ($is_enabled && file_exists($conf_file)) {
-    if ($total_blocked_domains <= 0) {
-        $conf_lines = @file($conf_file);
-        if (is_array($conf_lines)) {
-            $c_cnt = 0;
-            foreach ($conf_lines as $cline) {
-                if (strpos($cline, 'local-zone:') !== false) $c_cnt++;
-            }
-            $total_blocked_domains = $c_cnt;
-        }
-    }
-}
-
-// 2. Mapeamento das 12 Categorias
-$categories_def = array(
-    'block_adult'     => array('name' => 'Adulto',         'full' => 'Conteúdo Adulto & Pornografia', 'icon' => 'fa-ban',           'color' => '#d9534f'),
-    'block_gambling'  => array('name' => 'Apostas/Bets',   'full' => 'Apostas, Bets & Cassinos',     'icon' => 'fa-money',         'color' => '#f0ad4e'),
-    'block_streaming' => array('name' => 'Streaming',      'full' => 'Streaming de Vídeo & Música',  'icon' => 'fa-play-circle',   'color' => '#5bc0de'),
-    'block_social'    => array('name' => 'Redes Sociais',  'full' => 'Mídias Sociais & Redes',       'icon' => 'fa-share-alt',     'color' => '#337ab7'),
-    'block_messaging' => array('name' => 'Mensageiros',    'full' => 'WhatsApp, Teams, Telegram',    'icon' => 'fa-comments',      'color' => '#5cb85c'),
-    'block_gaming'    => array('name' => 'Jogos Online',   'full' => 'Jogos & Plataformas Games',    'icon' => 'fa-gamepad',       'color' => '#8e44ad'),
-    'block_vpn'       => array('name' => 'VPN / Proxies',  'full' => 'VPN, ZTNA & Proxies',          'icon' => 'fa-user-secret',   'color' => '#e83e8c'),
-    'block_shopping'  => array('name' => 'Compras',        'full' => 'E-commerce & Compras',         'icon' => 'fa-shopping-cart', 'color' => '#fd7e14'),
-    'block_p2p'       => array('name' => 'Torrents / P2P', 'full' => 'Torrents & Redes P2P',         'icon' => 'fa-download',      'color' => '#20c997'),
-    'block_news'      => array('name' => 'Notícias',       'full' => 'Notícias & Portais de Mídia',  'icon' => 'fa-newspaper-o',   'color' => '#17a2b8'),
-    'block_sports'    => array('name' => 'Esportes',       'full' => 'Esportes & Placares ao Vivo',  'icon' => 'fa-trophy',        'color' => '#28a745'),
-    'block_doh'       => array('name' => 'Anti-DoH',       'full' => 'Anti-Bypass DNS-over-HTTPS',   'icon' => 'fa-shield',        'color' => '#6c757d')
-);
-
-$active_categories = array();
-foreach ($categories_def as $cat_key => $cat_info) {
-    if (function_exists('rules_wam_is_checked') && rules_wam_is_checked($wam_cfg[$cat_key] ?? null)) {
-        $active_categories[$cat_key] = $cat_info;
-    }
-}
-
-// 3. Mapeamento e Agrupamento Macro por Rede (Descoberta Direta e Abrangente no pfSense)
-global $config;
-$network_summary = array();
-
-// Função auxiliar para converter qualquer formato de máscara (CIDR, decimal com pontos ou hex) em número CIDR
-$to_cidr = function($val) {
-    if (empty($val)) return 24;
-    $val_str = trim((string)$val);
-    if (is_numeric($val_str) && (int)$val_str >= 1 && (int)$val_str <= 32) {
-        return (int)$val_str;
-    }
-    if (stripos($val_str, '0x') === 0) {
-        $val_str = long2ip(hexdec($val_str));
-    }
-    if (filter_var($val_str, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-        return substr_count(decbin(ip2long($val_str)), '1');
-    }
-    return 24;
-};
-
-// 3.1 Obtém interfaces usando rules_wam_get_configured_interfaces() (incluindo WAN)
-$all_configured_ifaces = function_exists('rules_wam_get_configured_interfaces') ? rules_wam_get_configured_interfaces(true) : array();
-
-// Fallback robusto caso rules_wam.inc ainda não tenha a função carregada
-if (empty($all_configured_ifaces)) {
-    $pfsense_interfaces = function_exists('config_get_path') ? config_get_path('interfaces', array()) : (!empty($config['interfaces']) ? $config['interfaces'] : array());
-    $ifdescrs = array();
-    if (function_exists('get_configured_interface_with_descr')) {
-        $ifdescrs = get_configured_interface_with_descr(false);
-    }
-    foreach ($pfsense_interfaces as $if_key => $if_cfg) {
-        $is_if_enabled = true;
-        if (function_exists('interface_is_enabled')) {
-            $is_if_enabled = interface_is_enabled($if_key);
-        } else {
-            $is_if_enabled = ($if_key === 'lan' || $if_key === 'wan' || isset($if_cfg['enable']));
-        }
-        if (!$is_if_enabled) continue;
-
-        $descr_configured = '';
-        if (!empty($if_cfg['descr'])) {
-            $descr_configured = trim($if_cfg['descr']);
-        } elseif (function_exists('convert_friendly_interface_to_friendly_descr')) {
-            $descr_configured = trim(convert_friendly_interface_to_friendly_descr($if_key));
-        } elseif (!empty($ifdescrs[$if_key])) {
-            $descr_configured = trim($ifdescrs[$if_key]);
-        } else {
-            $descr_configured = strtoupper($if_key);
-        }
-
-        $real_if = !empty($if_cfg['if']) ? $if_cfg['if'] : '';
-        if (empty($real_if) && function_exists('get_real_interface')) {
-            $real_if = get_real_interface($if_key);
-        }
-        if (empty($real_if) && function_exists('convert_friendly_interface_to_real_interface_name')) {
-            $real_if = convert_friendly_interface_to_real_interface_name($if_key);
-        }
-
-        // Garante que a WAN seja sempre identificada como WAN
-        if ($if_key === 'wan' && (empty($descr_configured) || (!empty($real_if) && strcasecmp($descr_configured, $real_if) === 0))) {
-            $descr_configured = 'WAN';
-        }
-        if ($if_key === 'lan' && (empty($descr_configured) || (!empty($real_if) && strcasecmp($descr_configured, $real_if) === 0))) {
-            $descr_configured = 'LAN';
-        }
-
-        $if_ip = '';
-        $if_subnet = 24;
-        if (function_exists('get_interface_ip')) {
-            $g_ip = get_interface_ip($if_key);
-            if (!empty($g_ip) && filter_var($g_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-                $if_ip = $g_ip;
-            }
-        }
-        if (empty($if_ip) && function_exists('get_interface_info')) {
-            $ifinfo = get_interface_info($if_key);
-            if (!empty($ifinfo['ipaddr']) && filter_var($ifinfo['ipaddr'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-                $if_ip = $ifinfo['ipaddr'];
-            }
-            if (!empty($ifinfo['subnet'])) {
-                $if_subnet = $to_cidr($ifinfo['subnet']);
-            }
-            if (empty($real_if) && !empty($ifinfo['if'])) {
-                $real_if = $ifinfo['if'];
-            }
-        }
-        if (empty($if_ip) && !empty($if_cfg['ipaddr']) && filter_var($if_cfg['ipaddr'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-            $if_ip = $if_cfg['ipaddr'];
-            if (!empty($if_cfg['subnet'])) $if_subnet = $to_cidr($if_cfg['subnet']);
-        }
-
-        $has_valid_ip = (!empty($if_ip) && filter_var($if_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4));
-        $cidr = '';
-        $net_long = 0;
-        $long_mask = 0;
-        if ($has_valid_ip) {
-            $long_ip = ip2long($if_ip);
-            $long_mask = -1 << (32 - $if_subnet);
-            $net_long = $long_ip & $long_mask;
-            $cidr = long2ip($net_long) . '/' . $if_subnet;
-        } else {
-            $cidr = strtoupper($if_key) . ' (Sem IP)';
-        }
-
-        $all_configured_ifaces[$if_key] = array(
-            'key' => $if_key,
-            'logical_id' => strtoupper($if_key),
-            'descr' => $descr_configured,
-            'name' => $descr_configured,
-            'real_if' => !empty($real_if) ? $real_if : $if_key,
-            'ip' => $if_ip,
-            'subnet' => $if_subnet,
-            'cidr' => $cidr,
-            'net_long' => $net_long,
-            'mask_long' => $long_mask,
-            'has_ip' => $has_valid_ip,
-            'is_internal' => ($if_key !== 'wan')
-        );
-    }
-}
-
-// 3.2 Constrói o array $network_summary com o nome exato configurado no pfSense
-foreach ($all_configured_ifaces as $if_key => $if_data) {
-    $real_dev = !empty($if_data['real_if']) ? $if_data['real_if'] : $if_key;
-    $if_descr = !empty($if_data['descr']) ? $if_data['descr'] : strtoupper($if_key);
-    if ($if_key === 'wan' && (empty($if_descr) || strcasecmp($if_descr, $real_dev) === 0)) {
-        $if_descr = 'WAN';
-    }
-    if ($if_key === 'lan' && (empty($if_descr) || strcasecmp($if_descr, $real_dev) === 0)) {
-        $if_descr = 'LAN';
-    }
-    $network_summary[$if_key] = array(
-        'if_key' => $if_key,
-        'logical_id' => ($if_key === 'wan') ? 'WAN' : ($if_data['logical_id'] ?? strtoupper($if_key)),
-        'descr' => $if_descr,
-        'name' => $if_descr,
-        'real_if' => $real_dev,
-        'ip' => $if_data['ip'] ?? '',
-        'cidr' => $if_data['cidr'] ?? '',
-        'has_ip' => !empty($if_data['has_ip']),
-        'net_long' => $if_data['net_long'] ?? 0,
-        'mask_long' => $if_data['mask_long'] ?? 0,
-        'online_hosts' => array(),
-        'blocked_hosts' => array(),
-        'block_count' => 0,
-        'bypass_hosts' => array()
-    );
-}
-
-// 3.3 Adiciona Servidores OpenVPN configurados no pfSense
-$ovpn_servers = array();
-if (function_exists('config_get_path')) {
-    $ovpn_servers = config_get_path('openvpn/openvpn-server', array());
-} elseif (!empty($config['openvpn']['openvpn-server']) && is_array($config['openvpn']['openvpn-server'])) {
-    $ovpn_servers = $config['openvpn']['openvpn-server'];
-}
-if (!empty($ovpn_servers) && is_array($ovpn_servers)) {
-    foreach ($ovpn_servers as $ovpn) {
-        if (!empty($ovpn['tunnel_network']) && strpos($ovpn['tunnel_network'], '/') !== false) {
-            $ovpn_cidr = trim($ovpn['tunnel_network']);
-            list($o_net, $o_sub) = explode('/', $ovpn_cidr, 2);
-            $o_sub_int = (int)$o_sub;
-            if ($o_sub_int >= 8 && $o_sub_int <= 32 && filter_var($o_net, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-                $o_net_long = ip2long($o_net) & (-1 << (32 - $o_sub_int));
-                $norm_cidr = long2ip($o_net_long) . '/' . $o_sub_int;
-                $ovpn_id = !empty($ovpn['vpnid']) ? $ovpn['vpnid'] : '1';
-                $ovpn_key = 'ovpn_' . $ovpn_id;
-                $ovpn_descr = !empty($ovpn['description']) ? $ovpn['description'] : 'Acesso Remoto (VPN)';
-                $ovpn_dev = 'ovpns' . $ovpn_id;
-                $network_summary[$ovpn_key] = array(
-                    'if_key' => 'openvpn',
-                    'logical_id' => 'OPENVPN',
-                    'descr' => $ovpn_descr,
-                    'name' => $ovpn_descr,
-                    'real_if' => $ovpn_dev,
-                    'ip' => long2ip($o_net_long + 1),
-                    'cidr' => $norm_cidr,
-                    'has_ip' => true,
-                    'net_long' => $o_net_long,
-                    'mask_long' => -1 << (32 - $o_sub_int),
-                    'online_hosts' => array(),
-                    'blocked_hosts' => array(),
-                    'block_count' => 0,
-                    'bypass_hosts' => array()
-                );
-            }
-        }
-    }
-}
-
-// 3.4 Fallback para ifconfig do FreeBSD cruzando interfaces ativas
-$raw_if = array();
-@exec("/sbin/ifconfig -a 2>/dev/null", $raw_if);
-if (!empty($raw_if)) {
-    $cur_dev = '';
-    foreach ($raw_if as $line) {
-        if (preg_match('/^([a-zA-Z0-9_\.\-]+):/i', $line, $dm)) {
-            $cur_dev = $dm[1];
-        }
-        if (preg_match('/inet\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\s+netmask\s+(0x[0-9a-fA-F]+|[0-9\.]+)/i', $line, $im)) {
-            $s_ip = $im[1];
-            $s_mask_raw = $im[2];
-            if ($s_ip === '127.0.0.1' || $cur_dev === 'lo0' || strpos($cur_dev, 'pflog') === 0) continue;
-
-            $s_sub = $to_cidr($s_mask_raw);
-            $s_long_ip = ip2long($s_ip);
-            $s_long_mask = -1 << (32 - $s_sub);
-            $s_net_long = $s_long_ip & $s_long_mask;
-            $s_cidr = long2ip($s_net_long) . '/' . $s_sub;
-
-            // Tenta casar com interface existente por real_if ou if_key
-            $found_match = false;
-            foreach ($network_summary as $nk => &$nentry) {
-                if (strcasecmp($nentry['real_if'], $cur_dev) === 0 || strcasecmp($nentry['if_key'], $cur_dev) === 0) {
-                    if (empty($nentry['ip'])) {
-                        $nentry['ip'] = $s_ip;
-                        $nentry['has_ip'] = true;
-                        $nentry['net_long'] = $s_net_long;
-                        $nentry['mask_long'] = $s_long_mask;
-                        $nentry['cidr'] = $s_cidr;
-                    }
-                    $found_match = true;
-                    break;
-                }
-            }
-            unset($nentry);
-
-            if (!$found_match) {
-                // Tenta resolver se $cur_dev corresponde a uma interface oficial do pfSense (ex: vtnet1 -> wan -> WAN)
-                $friendly_name = '';
-                if (function_exists('convert_real_interface_to_friendly_interface_name')) {
-                    $friendly_name = convert_real_interface_to_friendly_interface_name($cur_dev);
-                } elseif (function_exists('get_friendly_interface')) {
-                    $friendly_name = get_friendly_interface($cur_dev);
-                }
-                if (!empty($friendly_name)) {
-                    $friendly_key = strtolower($friendly_name);
-                    if (isset($network_summary[$friendly_key])) {
-                        if (empty($network_summary[$friendly_key]['ip'])) {
-                            $network_summary[$friendly_key]['ip'] = $s_ip;
-                            $network_summary[$friendly_key]['has_ip'] = true;
-                            $network_summary[$friendly_key]['net_long'] = $s_net_long;
-                            $network_summary[$friendly_key]['mask_long'] = $s_long_mask;
-                            $network_summary[$friendly_key]['cidr'] = $s_cidr;
-                        }
-                        continue;
-                    }
-                    $friendly_descr = '';
-                    if (function_exists('convert_friendly_interface_to_friendly_descr')) {
-                        $friendly_descr = convert_friendly_interface_to_friendly_descr($friendly_name);
-                    }
-                    if (empty($friendly_descr) || strcasecmp($friendly_descr, $cur_dev) === 0) {
-                        $friendly_descr = strtoupper($friendly_name);
-                    }
-                    $network_summary[$friendly_key] = array(
-                        'if_key' => $friendly_key,
-                        'logical_id' => strtoupper($friendly_key),
-                        'descr' => $friendly_descr,
-                        'name' => $friendly_descr,
-                        'real_if' => $cur_dev,
-                        'ip' => $s_ip,
-                        'cidr' => $s_cidr,
-                        'has_ip' => true,
-                        'net_long' => $s_net_long,
-                        'mask_long' => $s_long_mask,
-                        'online_hosts' => array(),
-                        'blocked_hosts' => array(),
-                        'block_count' => 0,
-                        'bypass_hosts' => array()
-                    );
-                    continue;
-                }
-
-                $network_summary[$cur_dev] = array(
-                    'if_key' => $cur_dev,
-                    'logical_id' => strtoupper($cur_dev),
-                    'descr' => strtoupper($cur_dev),
-                    'name' => strtoupper($cur_dev),
-                    'real_if' => $cur_dev,
-                    'ip' => $s_ip,
-                    'cidr' => $s_cidr,
-                    'has_ip' => true,
-                    'net_long' => $s_net_long,
-                    'mask_long' => $s_long_mask,
-                    'online_hosts' => array(),
-                    'blocked_hosts' => array(),
-                    'block_count' => 0,
-                    'bypass_hosts' => array()
-                );
-            }
-        }
-    }
-}
-
-// 3.5 Ordenação: LAN primeiro, depois OPTs, depois WAN, depois VPNs, depois Remoto
-if (!empty($network_summary)) {
-    uksort($network_summary, function($a, $b) use ($network_summary) {
-        $order_type = function($entry) {
-            $k = strtolower((string)($entry['if_key'] ?? ''));
-            if ($k === 'lan') return 1;
-            if (strpos($k, 'opt') === 0) return 2;
-            if ($k === 'wan') return 3;
-            if (strpos($k, 'openvpn') === 0 || strpos($k, 'ovpn') === 0) return 4;
-            if (strpos($k, 'ipsec') === 0) return 5;
-            if ($k === 'remote') return 99;
-            return 10;
-        };
-        $val_a = $order_type($network_summary[$a] ?? array());
-        $val_b = $order_type($network_summary[$b] ?? array());
-        if ($val_a !== $val_b) return $val_a - $val_b;
-        return strcmp((string)$a, (string)$b);
-    });
-}
-
-// 3.6 Classifica IP em interface existente ou cria entrada remota
-$assign_ip_to_network = function($ip, &$net_summary) {
-    if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) return null;
-    if ($ip === '127.0.0.1') return null;
-
-    $ipl = ip2long($ip);
-    foreach ($net_summary as $if_key => &$net) {
-        if (!empty($net['has_ip']) && !empty($net['mask_long'])) {
-            if (($ipl & $net['mask_long']) === $net['net_long']) {
-                return $if_key;
-            }
-        }
-    }
-    unset($net);
-
-    $remote_net_long = $ipl & (-1 << (32 - 24));
-    $remote_cidr = long2ip($remote_net_long) . '/24';
-    $remote_key = 'remote_' . md5($remote_cidr);
-    if (!isset($net_summary[$remote_key])) {
-        $net_summary[$remote_key] = array(
-            'if_key' => 'remote',
-            'logical_id' => 'REMOTO',
-            'descr' => 'Rede Remota / VPN Externa',
-            'name' => 'Rede Remota / VPN Externa',
-            'real_if' => 'remoto',
-            'ip' => '',
-            'cidr' => $remote_cidr,
-            'has_ip' => true,
-            'net_long' => $remote_net_long,
-            'mask_long' => -1 << (32 - 24),
-            'online_hosts' => array(),
-            'blocked_hosts' => array(),
-            'block_count' => 0,
-            'bypass_hosts' => array()
-        );
-    }
-    return $remote_key;
-};
-
-// 3.7 Hosts Online
-$online_hosts = function_exists('rules_wam_get_online_hosts') ? rules_wam_get_online_hosts() : array();
-$total_online_all = array();
-if (is_array($online_hosts)) {
-    foreach ($online_hosts as $o_ip => $o_info) {
-        $net_k = $assign_ip_to_network($o_ip, $network_summary);
-        if ($net_k !== null && isset($network_summary[$net_k])) {
-            $network_summary[$net_k]['online_hosts'][$o_ip] = true;
-            $total_online_all[$o_ip] = true;
-        }
-    }
-}
-
-// 3.8 Tentativas de Bloqueio nos Logs
-$audit_file = defined('WAM_AUDIT_LOG') ? WAM_AUDIT_LOG : '/var/log/wam_audit.log';
-$total_blocked_hosts_all = array();
-$total_block_events_all = 0;
-
-if (file_exists($audit_file)) {
-    $audit_lines = @file($audit_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    if ($audit_lines) {
-        $max_lines = 5000;
-        $total_lines = count($audit_lines);
-        $start_idx = max(0, $total_lines - $max_lines);
-
-        for ($i = $start_idx; $i < $total_lines; $i++) {
-            $line = trim($audit_lines[$i]);
-            if (empty($line)) continue;
-
-            $a_ip = '';
-            if (strpos($line, '|') !== false) {
-                $parts = explode('|', $line);
-                if (count($parts) >= 2) {
-                    $a_ip = trim($parts[1]);
-                }
-            } elseif (preg_match('/CLIENT=([^\s]+)/i', $line, $cm)) {
-                $a_ip = trim($cm[1]);
-            }
-
-            if (!empty($a_ip)) {
-                $net_k = $assign_ip_to_network($a_ip, $network_summary);
-                if ($net_k !== null && isset($network_summary[$net_k])) {
-                    $network_summary[$net_k]['blocked_hosts'][$a_ip] = true;
-                    $network_summary[$net_k]['block_count']++;
-                    $total_blocked_hosts_all[$a_ip] = true;
-                    $total_block_events_all++;
-                }
-            }
-        }
-    }
-}
-
-// 3.9 Bypass IPs
-$total_bypass_all = array();
-if (!empty($wam_cfg['bypass_ips'])) {
-    $raw_bypass = preg_split('/[\r\n,;]+/', $wam_cfg['bypass_ips']);
-    foreach ($raw_bypass as $b_ip) {
-        $b_ip = trim($b_ip);
-        if (!empty($b_ip) && filter_var($b_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-            $net_k = $assign_ip_to_network($b_ip, $network_summary);
-            if ($net_k !== null && isset($network_summary[$net_k])) {
-                $network_summary[$net_k]['bypass_hosts'][$b_ip] = true;
-                $total_bypass_all[$b_ip] = true;
-            }
-        }
-    }
-}
-
-// Se for requisição direta AJAX de atualização rápida do widget
-$is_ajax = isset($_GET['ajax']) && $_GET['ajax'] === 'rules_wam';
-if ($is_ajax) {
-    ob_clean();
-}
-?>
-
-<div id="rules_wam_widget_container" style="font-family: inherit;">
-
-    <!-- 1. Linha de Status dos Serviços -->
-    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #e5e5e5;">
-        <div style="display: flex; flex-wrap: wrap; gap: 5px; align-items: center;">
-            <?php if (!$is_enabled): ?>
-                <span class="label label-danger" style="font-size: 11px; padding: 4px 7px;" title="<?=gettext('Filtragem do Rules WAM está desligada')?>">
-                    <i class="fa fa-ban"></i> <?=gettext('Desativado')?>
-                </span>
-            <?php elseif ($schedule_enabled && !$in_schedule): ?>
-                <span class="label label-warning" style="font-size: 11px; padding: 4px 7px;" title="<?=gettext('Filtro pausado temporariamente pelo agendador de horário comercial / almoço')?>">
-                    <i class="fa fa-clock-o"></i> <?=gettext('Pausado (Horário)')?>
-                </span>
-            <?php else: ?>
-                <span class="label label-success" style="font-size: 11px; padding: 4px 7px;" title="<?=gettext('Rules WAM está ativo e filtrando domínios em tempo real')?>">
-                    <i class="fa fa-shield"></i> <?=gettext('Ativo & Filtrando')?>
-                </span>
-            <?php endif; ?>
-
-            <span class="label <?=$unbound_running ? 'label-success' : 'label-danger'?>" style="font-size: 11px; padding: 4px 7px;" title="<?=gettext('Status do Unbound DNS Resolver')?>">
-                <i class="fa fa-server"></i> DNS: <?=$unbound_running ? gettext('Online') : gettext('Parado')?>
-            </span>
-
-            <?php if ($is_enabled && $block_action === 'block_page'): ?>
-                <span class="label <?=$nginx_banner_running ? 'label-info' : 'label-warning'?>" style="font-size: 11px; padding: 4px 7px;" title="<?=gettext('Instância NGINX nas portas 80 e 443 para banner institucional')?>">
-                    <i class="fa fa-desktop"></i> Banner: <?=$nginx_banner_running ? '80/443 OK' : gettext('Alerta')?>
-                </span>
-            <?php elseif ($is_enabled): ?>
-                <span class="label label-default" style="font-size: 11px; padding: 4px 7px;" title="<?=gettext('Respostas DNS retornam 0.0.0.0 sem exibição de tela de bloqueio')?>">
-                    <i class="fa fa-volume-off"></i> <?=gettext('Modo Silencioso')?>
-                </span>
-            <?php endif; ?>
-        </div>
-
-        <div style="display: flex; align-items: center; gap: 6px;">
-            <span class="badge" style="background-color: #337ab7; font-size: 11px; padding: 4px 8px;" title="<?=gettext('Total de domínios configurados para bloqueio imediato no Unbound')?>">
-                <i class="fa fa-database"></i> <?=number_format($total_blocked_domains, 0, ',', '.')?> <?=gettext('domínios')?>
-            </span>
-            <button type="button" class="btn btn-xs btn-default" onclick="rules_wam_widget_refresh();" title="<?=gettext('Atualizar dados do widget agora')?>" style="padding: 2px 7px;">
-                <i class="fa fa-refresh" id="rules_wam_refresh_icon"></i>
-            </button>
-        </div>
-    </div>
-
-    <!-- 2. Categorias Sendo Bloqueadas -->
-    <div style="background-color: #f9f9f9; border: 1px solid #e1e4e8; border-radius: 4px; padding: 8px 10px; margin-bottom: 12px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <span style="font-weight: 600; font-size: 11px; text-transform: uppercase; color: #444;">
-                <i class="fa fa-tags text-primary"></i> <?=gettext('Categorias Bloqueadas')?> (<?=count($active_categories)?> de <?=count($categories_def)?>)
-            </span>
-            <small><a href="/rules_wam.php" style="font-size: 11px; font-weight: bold;"><?=gettext('Gerenciar Regras')?> &raquo;</a></small>
-        </div>
-
-        <div style="display: flex; flex-wrap: wrap; gap: 4px;">
-            <?php if (empty($active_categories)): ?>
-                <span class="text-muted" style="font-size: 11px; font-style: italic;">
-                    <i class="fa fa-info-circle"></i> <?=gettext('Nenhuma categoria de bloqueio está ativada no momento.')?>
-                </span>
-            <?php else: ?>
-                <?php foreach ($active_categories as $cat_k => $cat_v): ?>
-                    <span class="label" style="background-color: <?=$cat_v['color']?>; font-size: 10px; font-weight: normal; padding: 3px 6px; display: inline-flex; align-items: center; gap: 3px;" title="<?=$cat_v['full']?>">
-                        <i class="fa <?=$cat_v['icon']?>"></i> <?=$cat_v['name']?>
-                    </span>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        </div>
-    </div>
-
-    <!-- 3. Resumo Macro dos Hosts por Rede -->
-    <div style="margin-bottom: 10px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <span style="font-weight: 600; font-size: 11px; text-transform: uppercase; color: #444;">
-                <i class="fa fa-sitemap text-primary"></i> <?=gettext('Resumo Macro dos Hosts por Rede')?>
-            </span>
-            <small><a href="/rules_wam_dashboard.php" style="font-size: 11px; font-weight: bold;"><?=gettext('Auditoria de Acesso')?> &raquo;</a></small>
-        </div>
-
-        <div class="table-responsive" style="margin-bottom: 0;">
-            <table class="table table-striped table-condensed table-hover" style="font-size: 11px; margin-bottom: 0; border: 1px solid #ddd;">
-                <thead>
-                    <tr class="active" style="border-bottom: 2px solid #ddd;">
-                        <th style="vertical-align: middle;"><?=gettext('Rede / Interface')?></th>
-                        <th class="text-center" style="vertical-align: middle;"><?=gettext('Sub-rede')?></th>
-                        <th class="text-center" style="vertical-align: middle;" title="<?=gettext('Dispositivos ativos detectados na tabela ARP / Rede')?>">
-                            <i class="fa fa-circle text-success"></i> <?=gettext('Online')?>
-                        </th>
-                        <th class="text-center" style="vertical-align: middle;" title="<?=gettext('Hosts distintos que registraram tentativas de acesso bloqueadas')?>">
-                            <i class="fa fa-exclamation-triangle text-danger"></i> <?=gettext('Barrados')?>
-                        </th>
-                        <th class="text-center" style="vertical-align: middle;" title="<?=gettext('Total acumulado de requisições de sites bloqueados')?>">
-                            <i class="fa fa-ban text-danger"></i> <?=gettext('Tentativas')?>
-                        </th>
-                        <th class="text-center" style="vertical-align: middle;" title="<?=gettext('Dispositivos com isenção de filtro (Bypass IP)')?>">
-                            <i class="fa fa-unlock text-primary"></i> <?=gettext('Bypass')?>
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($network_summary)): ?>
-                        <tr>
-                            <td colspan="6" class="text-center text-muted" style="font-style: italic; padding: 12px;">
-                                <i class="fa fa-info-circle"></i> <?=gettext('Nenhuma interface de rede IPv4 ativa detectada no momento.')?>
-                            </td>
-                        </tr>
-                    <?php else: ?>
-                        <?php foreach ($network_summary as $net): ?>
-                            <tr>
-                                <td style="vertical-align: middle;">
-                                    <?php if ($net['if_key'] === 'wan'): ?>
-                                        <i class="fa fa-globe text-primary" title="<?=gettext('Interface WAN (Internet)')?>"></i>
-                                    <?php elseif ($net['if_key'] === 'lan'): ?>
-                                        <i class="fa fa-sitemap text-success" title="<?=gettext('Interface LAN (Rede Local)')?>"></i>
-                                    <?php elseif ($net['if_key'] === 'openvpn'): ?>
-                                        <i class="fa fa-shield text-warning" title="<?=gettext('Servidor OpenVPN')?>"></i>
-                                    <?php elseif ($net['if_key'] === 'remote'): ?>
-                                        <i class="fa fa-laptop text-muted" title="<?=gettext('Rede Remota / VPN Externa')?>"></i>
-                                    <?php else: ?>
-                                        <i class="fa fa-exchange text-info" title="<?=gettext('Interface Adicional / VLAN')?>"></i>
-                                    <?php endif; ?>
-                                    &nbsp;<strong><?=htmlspecialchars($net['name'])?></strong>
-                                    <?php
-                                    $port_details = array();
-                                    if (!empty($net['logical_id']) && strcasecmp($net['logical_id'], $net['name']) !== 0) {
-                                        $port_details[] = $net['logical_id'];
-                                    }
-                                    if (!empty($net['real_if']) && $net['real_if'] !== 'remoto' && strcasecmp($net['real_if'], $net['name']) !== 0 && (!isset($port_details[0]) || strcasecmp($net['real_if'], $port_details[0]) !== 0)) {
-                                        $port_details[] = $net['real_if'];
-                                    }
-                                    if (!empty($port_details)):
-                                    ?>
-                                        <small class="text-muted" style="font-size: 10px;">(<?=htmlspecialchars(implode(' / ', $port_details))?>)</small>
-                                    <?php endif; ?>
-                                </td>
-                                <td class="text-center" style="vertical-align: middle;">
-                                    <?php if (!empty($net['has_ip'])): ?>
-                                        <code style="font-size: 10px;" title="<?=!empty($net['ip']) ? 'IP: ' . htmlspecialchars($net['ip']) : ''?>"><?=htmlspecialchars($net['cidr'])?></code>
-                                    <?php else: ?>
-                                        <span class="label label-default" style="font-size: 9px;"><?=gettext('Sem IPv4 / DHCP')?></span>
-                                    <?php endif; ?>
-                                </td>
-                                <td class="text-center" style="vertical-align: middle;">
-                                    <?php $on_c = count($net['online_hosts']); ?>
-                                    <span class="badge" style="background-color: <?=$on_c > 0 ? '#5cb85c' : '#bbb'?>; font-size: 10px; font-weight: bold;">
-                                        <?=$on_c?>
-                                    </span>
-                                </td>
-                                <td class="text-center" style="vertical-align: middle;">
-                                    <?php $blk_c = count($net['blocked_hosts']); ?>
-                                    <span class="badge" style="background-color: <?=$blk_c > 0 ? '#d9534f' : '#bbb'?>; font-size: 10px; font-weight: bold;">
-                                        <?=$blk_c?>
-                                    </span>
-                                </td>
-                                <td class="text-center" style="vertical-align: middle;">
-                                    <?php if ($net['block_count'] > 0): ?>
-                                        <span class="label label-danger" style="font-size: 10px; font-weight: bold;">
-                                            <?=number_format($net['block_count'], 0, ',', '.')?>
-                                        </span>
-                                    <?php else: ?>
-                                        <span class="text-muted" style="font-size: 10px;">0</span>
-                                    <?php endif; ?>
-                                </td>
-                                <td class="text-center" style="vertical-align: middle;">
-                                    <?php $byp_c = count($net['bypass_hosts']); ?>
-                                    <?php if ($byp_c > 0): ?>
-                                        <span class="badge" style="background-color: #337ab7; font-size: 10px; font-weight: bold;">
-                                            <?=$byp_c?>
-                                        </span>
-                                    <?php else: ?>
-                                        <span class="text-muted" style="font-size: 10px;">-</span>
-                                    <?php endif; ?>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-                <tfoot>
-                    <tr class="info" style="font-weight: bold; border-top: 2px solid #ddd;">
-                        <td style="vertical-align: middle;"><?=gettext('Total Consolidado')?></td>
-                        <td class="text-center" style="vertical-align: middle; font-size: 10px;">
-                            <?=count($network_summary)?> <?=gettext('redes')?>
-                        </td>
-                        <td class="text-center" style="vertical-align: middle;">
-                            <span class="badge" style="background-color: #449d44; font-size: 10px; font-weight: bold;">
-                                <?=count($total_online_all)?>
-                            </span>
-                        </td>
-                        <td class="text-center" style="vertical-align: middle;">
-                            <span class="badge" style="background-color: #c9302c; font-size: 10px; font-weight: bold;">
-                                <?=count($total_blocked_hosts_all)?>
-                            </span>
-                        </td>
-                        <td class="text-center" style="vertical-align: middle;">
-                            <span class="label label-danger" style="font-size: 10px; font-weight: bold;">
-                                <?=number_format($total_block_events_all, 0, ',', '.')?>
-                            </span>
-                        </td>
-                        <td class="text-center" style="vertical-align: middle;">
-                            <span class="badge" style="background-color: #286090; font-size: 10px; font-weight: bold;">
-                                <?=count($total_bypass_all)?>
-                            </span>
-                        </td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-    </div>
-
-    <!-- 4. Rodapé e Atalhos Rápidos -->
-    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; border-top: 1px solid #e5e5e5; padding-top: 8px; font-size: 11px;">
-        <div style="display: flex; align-items: center; gap: 4px;">
-            <i class="fa fa-lock text-muted"></i>
-            <span class="text-muted"><?=gettext('Anti-Bypass DNS (Porta 53):')?></span>
-            <strong>
-                <?=function_exists('rules_wam_is_checked') && rules_wam_is_checked($wam_cfg['block_dns_bypass'] ?? null) 
-                    ? '<span class="text-success"><i class="fa fa-check"></i> ' . gettext('Ativo') . '</span>' 
-                    : '<span class="text-muted">' . gettext('Desativado') . '</span>'?>
-            </strong>
-        </div>
-
-        <div style="display: flex; gap: 4px;">
-            <a href="/rules_wam.php" class="btn btn-xs btn-default" title="<?=gettext('Configurações de Bloqueio, Horários e Bypass')?>">
-                <i class="fa fa-cog"></i> <?=gettext('Configurações')?>
-            </a>
-            <a href="/rules_wam_status.php" class="btn btn-xs btn-default" title="<?=gettext('Testar domínios e diagnosticar Unbound')?>">
-                <i class="fa fa-heartbeat"></i> <?=gettext('Status')?>
-            </a>
-            <a href="/rules_wam_dashboard.php" class="btn btn-xs btn-primary" title="<?=gettext('Ver tentativas detalhadas e exportar relatórios CSV/JSON')?>">
-                <i class="fa fa-bar-chart"></i> <?=gettext('Auditoria')?>
-            </a>
-        </div>
-    </div>
-
-</div>
-
-<?php
-if ($is_ajax) {
-    exit;
-}
-?>
-
-<script type="text/javascript">
-//<![CDATA[
-function rules_wam_widget_refresh() {
-    var icon = document.getElementById('rules_wam_refresh_icon');
-    if (icon) {
-        icon.className = 'fa fa-refresh fa-spin';
-    }
-
-    if (typeof $ !== 'undefined') {
-        $.ajax({
-            url: '/widgets/widgets/rules_wam.widget.php?ajax=rules_wam&widgetkey=<?=urlencode($widgetkey)?>',
-            type: 'GET',
-            cache: false,
-            success: function(response) {
-                var container = $('#rules_wam_widget_container');
-                if (container.length && response) {
-                    container.replaceWith(response);
-                }
-            },
-            complete: function() {
-                var iconDone = document.getElementById('rules_wam_refresh_icon');
-                if (iconDone) {
-                    iconDone.className = 'fa fa-refresh';
-                }
-            }
-        });
-    }
-}
-
-// Auto-atualização periódica a cada 60 segundos
-if (typeof rules_wam_auto_timer !== 'undefined') {
-    clearInterval(rules_wam_auto_timer);
-}
-var rules_wam_auto_timer = setInterval(function() {
-    if (document.getElementById('rules_wam_widget_container')) {
-        rules_wam_widget_refresh();
-    } else {
-        clearInterval(rules_wam_auto_timer);
-    }
-}, 60000);
-//]]>
-</script>
-
-EOF_WIDGET_PHP
-echo '>> Extraindo feeds/adult.txt...'
-cat << 'EOF_FEED_adult.txt' > $TMP_DIR/feeds/adult.txt
-# ==========================================
-# Rules WAM Feed - Conteúdo Adulto & Pornografia
-# Total de dominios consolidados: 2632
-# ==========================================
-
-0----q.tumblr.com
-0--liamariejohnson--0.nedrobin.net
-0-0-adult-superstore.com
-0-0.asia
-0-0wearingglassesnakedmen.tumblr.com
-0-12kids.com
-0-1avsex.com
-0-1sex.com
-0-200.com
-0-800-go-fuck-yourself.tumblr.com
-0-adultfriendfinder.com
-0-baise-amateur.com
-0-decadent-0.tumblr.com
-0-dix.com
-0-livechatlady.com
-0-porno.dk
-0-porno.net
-0-s.de
-0-salope-rousse.com
-0-sex.dk
-0-sex.nl
-0-shop.com
-0-syxela.tumblr.com
-0-transsexuel-bresilien.com
-0-z.com
-0.0.04.free.fr
-0.011.free.fr
-0.123.free.fr
-0.123videos.free.fr
-0.22.free.fr
-0.9.free.fr
-0.b.free.fr
-0.idolzhaowei.00to.com
-0.webcam.free.fr
-00-44.com
-00-44.net
-00-gay.com
-000------------sexo--amadoras.kit.net
-000--------sexogratis.kit.net
-000-475-843.tumblr.com
-000-coralinne-xxx-sara-calixto.tumblr.com
-000-sex-you-tube.blogspot.com
-000-sex.com
-000-xxx.tumblr.com
-000.top-100.pl
-000.toplista.pl
-0000.1.free.fr
-00000.la
-000001.skynetblogs.be
-00000nwebcamnow.com
-00001.sbs
-0000114.com
-0000120.xyz
-0000121.xyz
-0000125.xyz
-0000180.fortunecity.ws
-00003.sbs
-00004.sbs
-00005.sbs
-0000526.com
-00006.sbs
-00007.sbs
-00008.sbs
-000097.xyz
-0000dd.com.cn
-0000xxx.com
-000111casino.com
-0001888.com
-0001casino.com
-0001p.com
-0001xhamster.com
-0001xxx.com
-000222casino.com
-0002xxx.com
-000385.xyz
-0003xx.com
-0003xxx.com
-0004xxx.com
-0005.us
-00069maninstockings.over-blog.com
-0006xxx.com
-0007pk.com
-0007xxx.com
-0008xxx.com
-0009xxx.com
-000babes.com
-000boy.free.fr
-000dom.revenuedirect.com
-000dvd.com
-000gay.free.fr
-000girl.tumblr.com
-000girls.de
-000hdusexe.free.fr
-000iblogchix.blogspot.com
-000modelle.com
-000panties.com
-000porn.com
-000pussy69pornxxxporno.com
-000relationships.com
-000sex.net
-000sex.nl
-000sexe.com
-000tang.top
-000xxx.net
-001-adult-toys-n-sex-dolls.com
-001-homevideo.startspot.nl
-001.startspot.nl
-00101001.com
-0011cartoons.com
-0011cn.cfd
-001260.xyz
-001270.xyz
-0012xxx.com
-0013langford.tumblr.com
-0013xxx.com
-0014xxx.com
-0015xxx.com
-0017173.com
-0017x.com
-0017xxx.com
-0018.startbewijs.nl
-0018xxx.com
-001adult.homestead.com
-001am.com
-001ask.com
-001av.cc
-001dh.top
-001dzs.com
-001gamesextou.com
-001hc.com
-001hfw.com
-001jennifer.tumblr.com
-001jpw.com
-001londonescorts.com
-001mh.cc
-001mine.com
-001porn.blogspot.com
-001ritasex.blogspot.com
-001seks.com
-001sex.com
-001sexoverzicht.startplezier.nl
-001sucai.com
-001tube8.com
-001webcamsextv.startplezier.nl
-001winsextou.com
-001wst.com
-001xia.com
-001xnxxdesitape.com
-001xx.com
-001xxx.com
-001zmr.com
-00213744.tumblr.com
-002560.xyz
-0029a.com
-002sex.com
-003.top-100.pl
-003022.xyz
-003107.xyz
-003114.xyz
-003416.xyz
-003689.com
-003755.xyz
-003kf.com
-003oo.com
-003qq.com
-003sex.com
-003xx.com
-0045678.com
-00481.com
-0048av.com
-004hu.com
-004sex.com
-004sexamateurs.startplezier.nl
-0055betsextou.com
-005as.com
-005n.com
-005qs.com
-005sex.com
-005xf.com
-0064av.com
-0066888.cfd
-0066betsextou.com
-0068jbt.com
-006969.free.fr
-0069sexshop.com.ar
-006mi.com
-006xxx.vip
-006yun.com
-007-is-here.tumblr.com
-007-kent-escorts.com
-007-vibrators.com
-007111.xyz
-007112.xyz
-007616.xyz
-007936.com
-007adulthosting.com
-007adulthosting.net
-007adultsextoys.com
-007amateurs.com
-007annuaire.com
-007arcadegames.com
-007b.info
-007betmen.atw.hu
-007bondage.com
-007celeb.com
-007cghl.com
-007ch.com
-007chigua.com
-007chigua3.com
-007coupleil.tumblr.com
-007cozza77.tumblr.com
-007dating.com
-007escorts.co.uk
-007footfetish.com
-007gamesextou.com
-007gayboys.com
-007girl.com
-007girls.k9.pl
-007gk.com
-007heaven.com
-007hertfordshire-escorts.com
-007hl.com
-007hotwife.tumblr.com
-007kongbao.com
-007koreangirls.com
-007lingerie.com
-007mba.com
-007milf.com
-007moms.com
-007org.com
-007pf.com
-007porn.com
-007pornvideos.com
-007pussy-live-sex.startspot.nl
-007sexe.com
-007sexshop.com.ar
-007sexshop.com.br
-007sexspy.com
-007sexy.com
-007sexybunny.tumblr.com
-007shemales.com
-007stevenkent.tumblr.com
-007story.com
-007teen.com
-007teens.free.fr
-007teens.hypermart.net
-007xf.com
-007xxxadultvideos.com
-0080.com.tw
-0084.top
-0085256969.blogspot.com
-0086nmg.com
-0087.net.cn
-008boy.com
-008xxxx.com
-0094av.com
-0099av.com
-009arcade.com
-009jj.com
-009qs.com
-009sc.com
-009sh.com
-00ac.com
-00alejandro00.blogspot.com
-00artoferotica.com
-00barbied0ll.blogspot.com
-00buck.com
-00c1.com
-00cnc.com
-00ee.cc
-00eexxx.com
-00escorts.com
-00extreme.com
-00girls.com
-00h10.com
-00hahh.com
-00ii.cc
-00itiswhatitis00.tumblr.com
-00kk0.com
-00l.com
-00nakedasianmales.tumblr.com
-00o3.com
-00porn.com
-00qers-forever.tumblr.com
-00redskins.tumblr.com
-00sandra00.free.fr
-00sex.net
-00sexe.free.fr
-00sexte.cjb.net
-00sexxx.com
-00sg.top
-00t.xyz
-00tori.tumblr.com
-00w.top
-00webcams.com
-00webcamsex.com
-00xvideos.com
-00xvideos.net
-00xxx.com
-00xxx00.blogspot.com
-00xxxxx.com
-01-18ansanal.blogspot.com
-01-49.com
-01-800-vagina.tumblr.com
-01-sex-amateur.info
-01-stars.com
-01-xxx.com
-010-01.com
-010-1234-5678.tumblr.com
-01000101.tumblr.com
-010100110100010101010011.tumblr.com
-0101betsextou.com
-0101footworld.com
-010206upi.blogspot.com
-010401040104.tumblr.com
-01068.hk
-01081464567.com
-01082026yigitgayenur.com
-010aizy.com
-010jj.com
-010mybj.com
-010online.com
-010qhc.com
-010sex.startplezier.nl
-010xintai.com
-010xnxx.com
-01118202889.tumblr.com
-011220.xyz
-011810.com
-011adult.com
-011papa.com
-011phonesex.com
-011pvd.com
-012301230.blogspot.com
-01234.over-blog.fr
-0123famosas.com
-0123sex.nl
-0123sexxxx.ontoplist.com
-012ee.com
-012sex.com
-01312if1.cn
-0137-telefonsex.de
-0137.net
-0137telefonsex.de
-013a.com
-013jj.com
-013sao.com
-013ww.com
-0141yo.com
-0141yo.net
-01443.hk
-015980.com
-015eku9w.sbs
-016bb.com
-016sex.com
-017.free.fr
-017xxx.com
-018.us
-0180-telefonsex.com
-0180-telefonsex.net
-01800.blogspot.com
-018583.com
-018china.com
-018wm.com
-0190-livesex.com
-0190-telefonsex-girls.de
-0190-telefonsex.de
-0190-telefonsexworld.de
-0190.bt8.de
-0190.ds8.de
-0190bizarr.de
-0190cam.de
-0190erotic.de
-0190livecam.hotpage.net
-0190telefonsex.de
-019awesomechicks.tumblr.com
-019ee.com
-019hh.com
-01aa.com
-01adult.net
-01amour.com
-01asiasex.com
-01babes.com
-01blonde.en.wanadoo.es
-01brunette.en.wanadoo.es
-01cdsex.hpg.ig.com.br
-01emmabellis.tumblr.com
-01fragments.blogspot.com
-01gaystore.com
-01gmc.tumblr.com
-01hhhh.com
-01hot.com
-01indianmasala.blogspot.com
-01jmf.com
-01ky.tumblr.com
-01lingerie.fr
-01m.top
-01mcu.net
-01mx.cc
-01p.top
-01porn.xyz
-01porna.com
-01porno.club
-01porno.com
-01porny.com
-01rct709u3.com
-01rtys.com
-01sentencereviews.tumblr.com
-01sex.com
-01sexcam.com
-01sexcams.com
-01sexe.com
-01sexlive.com
-01sexnet.com
-01sexstory.blogspot.com
-01shebao.com
-01tatianats.cam
-01teen.com
-01tgp.com
-01tube.com
-01tube.vip
-01tv.jp
-01videos.com
-01xnxx.net
-01xvideo.com
-01xvideos.com
-01yangsheng.com
-01zkw.com
-02-analsexvideobbwporn.blogspot.com
-02-lyceennesalope.blogspot.com
-02-vieillesalopevideo.blogspot.com
-0201979.cn
-0204-show.com
-0204.net
-0204miss.info
-0204mm.com
-0204story.com
-0204yes.com
-020dahema.com
-020gay.net
-020med.com
-020sextoy.com
-020sofa.com
-020tgw.com
-020vc.com
-020yujia.com
-021058.canalblog.com
-021111.xyz
-021beiyang.com
-021blzj.com
-021byedu.com
-021escortmassage.com
-021gay.cc
-021gd.com
-021hwcf.com
-021lawyer-wl.com
-021ll.com
-021pretty.cn
-021scg.cn
-021scg.com
-021sex.net
-021sh2.com
-021shanghai-ktv.com
-021tarena.com
-021wyt.com
-021zxc.com
-0221telefonsex.xyz
-022438.com
-02295.com.cn
-022che.net
-022dmpaifa.com
-022gcyy.com
-022gufengji.com
-022jj.cn
-022sh.com
-022ydlanyin.com
-023dyfs.com
-023gykj.com
-023hysj.com
-023lyc.com
-023steel.cn
-023tg.net
-023vcc.com
-024-webcam-sex-live-cam-meiden.startspot.nl
-024119.com
-024898.com
-024it.com
-024jqd.com
-024pp.com
-024scyz.com
-024toys.com
-024zmb.tumblr.com
-02566664444.com
-025bjgs.com
-025gaokao.com
-025idc.com
-025jj.com
-025npxyy.com
-025ss.com
-025taxi.com
-025xx.com
-025yhdzp.com
-026city.com
-026punyo.com
-026tousatu.com
-027026.com.cn
-027cutie.com
-027jckj.com
-027ju.com
-027jym.com
-027mmw.com
-027sjsx.com
-027xjc.com
-028aab.com
-028acer.com
-028aysm.com
-028cdhy.com
-028cdztmy.com
-028dahuoji.com
-028dhf.com
-028haichuan.com
-028hetong.com
-028jczs.com
-028net.net
-028qsn.com
-028qzbw.com
-028shutong.com
-028ss.com
-028std.com
-028tta.com
-028wcjc.com
-028yi.com
-028yingxiao.com
-028ysxx.com
-0296688.com
-029bb.com
-029bxg.com
-029chinatest.com
-029frefre.blogspot.com
-029oo.com
-029sanxing.com
-029soho.com
-029sp.com
-029sydz.com
-029wanmei.com
-029zh.com.cn
-02bed.tumblr.com
-02g.top
-02gayguy.tumblr.com
-02indianscout.tumblr.com
-02km.cc
-02macoreaper.tumblr.com
-02oi.com
-02rs.com
-02sex.com
-02t.top
-02w.tumblr.com
-02xn.com
-02xvideos.com
-02xvideos.net
-02xxx.com
-02zmtu.top
-030swinger.de
-0311baojia.com
-0311sz.com
-0312ksd.com
-0312mp.com
-0312ww.com
-0312xs.com
-0312yu.com
-0317111.com
-0317cy.com
-0318by.com
-0318show.com
-0319hengxin.com
-031ww.com
-032gg.com
-033e.com
-03416.cc
-034c7fb.netsolhost.com
-0351wsh.com
-0352js.com
-0353tuangou.com
-0355dai.com
-0359jx.com
-0363804426.com
-036edu.com
-037-av.com
-0371fuke.com
-0371jk.com
-0371ls.com
-0371mc.com
-0371tianmao.com
-0371xydz.com
-0372589.com
-0375fcw.com
-0375gree.com
-0376dai.com
-037760.com
-0377zpw.com
-0378alicdn.com
-0379ad.com
-037clipx.com
-037clipx.net
-037clipxx.com
-037clipxxx.com
-037d.com
-037hdjav.com
-0383kk.com
-039763.com
-039798.com
-0398sanmxia.com
-03av.cc
-03devil4life.tumblr.com
-03e.info
-03films-allopass.blogspot.com
-03fq.top
-03free.com
-03l.top
-03o87.com
-03p.info
-03pjpj.net
-03porno.com
-03pron.vip
-03sex.co.il
-03sex.com
-03vp.com
-03xgqz.top
-03xnxx.com
-03xxx.net
-03zs.top
-04-adult-dvds.com
-04-adult-hardcore-sex-videos.com
-04-sex-toys.com
-0401-hot.com
-0401-live.com
-0401-meme.com
-0401-sex.com
-0401-tel.com
-0401good.com
-0401msg.com
-040852.canalblog.com
-040dd.com
-040v.com
-0411dl.net
-0411team.com
-0411yikeshu.com
-0411zhileng.com
-0412fc.com
-0412k.com
-0414xpjw.com
-0415wx.com
-0417hx.com
-0419998.com
-041hh.com
-041tt.com
-041vip.com.br
-042sexmaniac.blogspot.com
-043011x.tumblr.com
-0431douyan.com
-0431hydm.com
-0431ky.com
-0436.org.cn
-044ii.com
-044xx.com
-0451zk.com
-0452fuyu.com
-045328.com
-045scene.com
-04656bbcc.com
-0469bq.com
-046pp.com
-046qq.com
-046qs.com
-0470ec.com
-0474yangtuo.com
-0477coal.com
-0477xx.com
-0478jynm.com
-0478s.com
-0479jbl.com
-047jj.com
-047xx.com
-048x.com
-0492escort.nl
-049bb.com
-049jj.com
-04cc.cc
-04cx.com
-04fenxiang01.com
-04ff2ae37277.com
-04jsb.com
-04oral.blogspot.com
-04phuxache.tumblr.com
-04pink-j.net
-04r.top
-04tube.com
-04ww.cc
-04xd.top
-04xx.cc
-0505n.com
-0509-show.com
-0509-uthome.com
-0509cam.com
-0509liveshow.com
-0509meme.com
-0509tw.com
-0509vip.com
-05102024.org
-0510d.com
-0510sg.com
-0510tyh.com
-0511cl.com
-0511hmy.com
-0511top.com
-0512cad.com
-0512kh.com
-0512paper.com
-0512www.com
-0512yimei.com
-0512zf.com
-0513xpjw.com
-0515fun.com
-0515jc.com
-0516ws.com
-0518fm.com
-0518hy.com
-0518mly.com
-051jj.com
-0522042228.jp
-05231997.tumblr.com
-0523ido.com
-052963.com
-0530lt.com
-0531gcw.com
-0531snews.com
-0532eduinfo.com
-0532npx.com
-05338883666.com
-053434.com
-0534zz.com
-053600.com
-0536xpjw.com
-0537zhaiwu.com
-053ww.com
-0542227333.com
-0546cn.com
-054rr.com
-0550xyy.com
-0551huier.com
-0551oa.com
-0551xsj.com
-0551ye.com
-0552ks.com
-0553jdwx.com
-0554gy.com
-0555edu.com
-0556qc.com
-0556toy.com
-0557400.com
-0557dmz.com
-0557f.com
-0558ahgc.com
-0558bzwy.com
-0558home.com
-0558jhkj.com
-0558ren.com
-0559bike.com
-0559mlh.com
-0559qs.com
-0563nk.com
-0564xianglong.com
-0567av.com
-056hg.com
-0571ai.com
-0571blg.com
-0571bs.com
-0572mp.com
-0572tb.com
-0574china.com
-0574soho.net
-0575edu.com
-0575yiqi.com
-0576dsw.com
-0576h.com
-0577cnfk.com
-0577ra.com
-0577weimob.com
-0577zhengjia.com
-0579sd.com
-057xx.com
-0587d.com
-0592kt.com
-0594138.com
-05948888.com
-05949999.com
-0594bmw.com
-0594you.com
-0595pet.com
-0596eh.com
-0596rl.com
-0596taobao.com
-059915.com
-059ai.com
-059job.net
-059sexshop.com.ar
-05av.cc
-05bgp.com
-05dy.cc
-05kx.com
-05lotus.tumblr.com
-05ml.ru
-05movie.com
-05nnn.com
-06-xxx.com
-06.zoekvinden.nl
-0600.com
-060e.com
-060xxx.com
-06141.cc
-061sp.com
-062game.com
-063.dr.ag
-0632u.com
-0633fdc.com
-063oo.com
-063ww.com
-06666.no
-068rr.com
-069.cc
-0690.hu
-069maninstockings.over-blog.com
-069porn.com
-069sex.de
-06bp.com
-06dh.top
-06dq.top
-06escorts.nl
-06image.com
-06kk.com
-06libertin.over-blog.com
-06manu06.canalblog.com
-06master06.tumblr.com
-06n.top
-06se.com
-06sex.info
-06sex.nl
-06ws.top
-06xf.cc
-06xn.top
-0700swingerclub.de
-0707aa.com
-0707kk.com
-0707zz.com
-0708db.tumblr.com
-070av.com
-070rr.com
-0710zx.com
-0711w.com
-0713sq.com
-0716yy.com
-0717zcw.com
-0718xfw.com
-0719sy.com
-0719yh.com
-071h.com
-0720naughtygirl.tumblr.com
-0721club-hiroshima.net
-0722ddc.com
-072374.com
-072728.com
-0728dy.com
-0728fc.com
-072av.com
-072erodouga.com
-072project.com
-0731ak.com
-0731du.com
-0731gdcm.com
-0731hnnk.com
-0731jiasu.com
-0731xz.com
-0734ls.com
-073505.com
-0735ch.com
-0735mj.com
-0736sw.com
-0737cdc.com
-0737newjob.cn
-0738seo.com
-0745hm.com
-0745zs.com
-075-55.uk
-0750fk.com
-0750huiyuan.com
-0750weixin.com
-0752an.com
-075312.com
-075393.com
-0754ok.com
-075598.com
-0755aic.com
-0755brand.net
-0755chetuoyun.com
-0755co.com
-0755crystal.com
-0755jiaoyu.com
-0755zk.com
-0757bdt.com
-0757px.com
-075927.com
-0759qunyi.net
-0760kt.com
-0762aa.com
-0763cx.com
-0765xpjw.com
-0769hayou.com
-0769ju.com
-0769xf.com
-0771sw.com
-0771ysf.com
-0771zh.com
-0775sh.com
-077616.com
-0777www.com
-07792218018.com
-077xxx.tv
-077xxx.vip
-0783kaiketsu.net
-0785153580.net
-078wm.com
-0790rs.com
-0790tg.com
-0791gljl.com
-0792yyfk.com
-0794121212.ch
-0795ny.com
-0797ok.com
-079cb653801f.com
-07bx.com
-07cams.com
-07chigua.com
-07mg.top
-07ms.cc
-07o.top
-07porn.com
-07t.com
-07v.net
-07xnxx.blogspot.com
-0800-erotik.de
-0800-oralsexx.tumblr.com
-0800-telefonsex.net
-0800808636.com
-080082.com
-0800erotik.de
-0800paja.blogspot.com
-080804.com
-080bbb.com
-080chat.com
-080ek21.com
-080kiss.com
-080ut.com
-080ut11.idv.tw
-080ut18.idv.tw
-080ut19.idv.tw
-080ut20.idv.tw
-080zz.com
-0816zl.com
-0817hua.com
-08255.net
-08296.hk
-0831zhaojisong.com
-08363.hk
-08431.hk
-0851gztq.com
-0851hy.com
-0851yy.com
-0853fdc.com
-0855vip.com
-085rr.com
-086242.com
-0871eat.com
-08723guy.tumblr.com
-0872byby.com
-0873zp.com
-0875.ru
-0894645xxx68.site
-0898fw.net
-0898xj.com
-08ba95f3b85d.com
-08busarida.tumblr.com
-08do.cc
-08g9vf9tl-vlbwrd.usercash.com
-08i.top
-08lf.top
-08long.tumblr.com
-08porr.nu
-08sr.com
-08xj4cv.garden
-08yiko.xyz
-0900-babes.com
-0900-babes.de
-0900-bizarr-sex.de
-0900-camsex-amateure.telefonsex-im-web.xyz
-0900-camsex.com
-0900-camsex.de
-0900-live.com
-0900-livecams.com
-0900-livetelefonsex.de
-0900-sexcam-girls.6telefon.info
-0900-strip.com
-0900-telefon-erotik.com
-0900-telefon-sex.com
-0900-telefon.de
-0900-telefonerotik.de
-0900-telefonsex-girls.com
-0900-telefonsex-girls.de
-0900-telefonsex-live.com
-0900-telefonsex-sofort.com
-0900-telefonsex.at
-0900-telefonsex.ch
-0900-telefonsex.com
-0900-telefonsex.de
-0900-telefonsex.fun
-0900-telefonsex.info
-0900-telefonsexcam.com
-0900-vermietung.de
-0900-videosex.de
-0900.q4y.net
-0900.telefonsex-sklavin.org
-0900.telefonsexxx.org
-09004you.de
-09005-analxxx.de
-09005-telefonsex.net
-09005-telefonsex.sexstellungen.tv
-09005.tel
-09005telefonsex.com
-0900abo.de
-0900anal.de
-0900anja.de
-0900babes.de
-0900beate.de
-0900birgit.de
-0900bondage.de
-0900busen.de
-0900camgirls.info
-0900camsexgirls.info
-0900carmen.de
-0900carola.de
-0900club.de
-0900dauergeil.de
-0900domina.com
-0900dominanz.de
-0900erotik.com
-0900fetisch.de
-0900ficken.de
-0900flirtkontakte.de
-0900flirtline.de
-0900forfree.de
-0900fussfetisch.de
-0900hausfrau.de
-0900hausfrauen.de
-0900intim.de
-0900janette.de
-0900jenny.de
-0900jessica.de
-0900jutta.de
-0900katrin.de
-0900lesbe.de
-0900lisa.de
-0900live.de
-0900livesexcams.com
-0900michaela.de
-0900model.de
-0900modelle.de
-0900natursekt.de
-0900sabine.de
-0900sahra.de
-0900schlampe.de
-0900schlampen.de
-0900sex.net
-0900sex.nl
-0900sexcamchat.info
-0900sexphone.com
-0900simone.de
-0900strip.com
-0900strip.de
-0900tanja.de
-0900telefondomina.de
-0900telefonfick.de
-0900telefonsex.net
-0900telefonsexcams.info
-0900telesex.com
-0900tina.de
-090258.com
-0903overzicht.be
-0906-18plusclub.startspot.nl
-0906-babysitters.maakjestart.nl
-0906-bel.startspot.nl
-0906-brilvolzaad.maakjestart.nl
-0906-huisbaas.maakjestart.nl
-0906-omasex.maakjestart.nl
-0906-sexinhd.startspot.nl
-0906-strandsletten.startspot.nl
-0906-webcams.maakjestart.nl
-0906.4-all.org
-0906.net
-0906.nl
-0906.pagina.nl
-0906.startbewijs.nl
-0906.startkabel.nl
-0906.startpagina.nl
-0906.startplezier.nl
-09062021515.nl
-0906afspraak.nl
-0906babbelbox.nl
-0906livesex.com
-0906overzicht.nl
-0906porno.nl
-0906sex.nl
-0906sexdaten.nl
-0906sexfilms.nl
-0906sexlijn-nl.startspot.nl
-0906sexlijn.nl
-0906sexlijn.startspot.nl
-0906shemale.nl
-0906sm.nl
-0906telefoonseks.net
-0906telefoonsex.nl
-0907.be
-0907sexlijnen.be
-0907webcamsex.be
-090betsextou.com
-090cs.com
-090girls.co.uk
-090heaven.co.uk
-090zes.nl
-0910sfw.com
-0911hr.com
-0915ankang.com
-0915tao.com
-0917osj.com
-0917sy.com
-091sex.tumblr.com
-092219.com
-092uu.com
-0932840957345757527034898453.blogspot.com
-09456.ru
-095.us
-095.vip
-0951wx.com
-0953120.com
-0954u.com
-095se2.com
-095se5.com
-09647.com.cn
-0967.com
-096b.com
-09740.net
-0974bc9816e9.com
-097mm.com
-0982131308.com
-0987j.com
-0987q.com
-0987r.com
-098862.com
-0988666jygjsexp1.top
-098b.top
-099-hd.com
-0991cx.com
-0993f.com
-0993j.com
-0994.org.cn
-099627.com
-099735.com
-0999735.com
-099abb.com
-099i.com
-099jc.com
-099kj.com
-099rc.com
-09aab.com
-09ag.cc
-09connect.nl
-09dfqp.com
-09ewda.tumblr.com
-09hnbiyut6.tumblr.com
-09jeansfetishporn.com
-09parent.com
-09porn.com
-09sex.com
-09sex.nl
-09sexshop.com
-09stream.com
-09xxxx.com
-0a2.top
-0a38.com
-0a59.com
-0a7.top
-0a70ad.garden
-0a73c.com
-0a8a9376227f.com
-0af.cc
-0ag.top
-0ak86i.top
-0ameliaflowerx.blogspot.com
-0anal.com
-0angelnoble0.com
-0angels.com
-0anonyme0.canalblog.com
-0ant.com
-0at.top
-0au.top
-0b-5hq3k1zf6.com
-0b0ks8.com
-0banglachoti.blogspot.com
-0bd.top
-0bestever.com
-0bf.cc
-0bi.top
-0bicn0.xyz
-0big-naturals.com
-0brazzers.com
-0bsexo.galeon.com
-0bsidian.net
-0bu.top
-0bucksforpornmovie.com
-0bvi0uslygay.tumblr.com
-0bviously-gay.tumblr.com
-0ca.top
-0cams.com
-0case.com
-0ch.top
-0chong.net
-0cili.com
-0cili.org
-0ck.net
-0cost.com
-0cqzv9.top
-0cs3ti.com
-0ct0-pussy.tumblr.com
-0cw.top
-0cz.top
-0d0.com
-0d1ao5.com
-0d5g5ysa486s.xyz
-0data.xxx
-0datesexx-joinme.pages.dev
-0dayhentai.blogspot.com
-0daymeme.com
-0dayporn.info
-0dayporn.org
-0dayporn.pro
-0dayporn.stream
-0dayporno.com
-0dayvideos.tk
-0dayxx.com
-0designer.com
-0dj.top
-0dm69xd0.tumblr.com
-0dontkillmyvibe.tumblr.com
-0dp.net
-0dph.com
-0dt.top
-0duende0.tumblr.com
-0dzn.com
-0e-28slnd7z4.com
-0e0.jp
-0ea.top
-0ebay.com
-0elodie0.jepose.org
-0ex-rb6id.garden
-0eyj2.cc
-0f-all-thiiings-sexy-colorful.tumblr.com
-0f3scd9.garden
-0f8.top
-0fantasmes0.tumblr.com
-0ff1ce-l0gin.com
-0ffn0n.tumblr.com
-0fl.top
-0ft.top
-0fzx0f.garden
-0g0.com
-0gb.top
-0gfz.top
-0ggvm9.garden
-0gjqn.cc
-0gl.top
-0gq.top
-0gw.top
-0h-my-tit.tumblr.com
-0h-n0-a-negro-fucked-my-daugter.tumblr.com
-0h1.top
-0hbmx.com
-0hd.cc
-0hentai.com
-0hentai0.tumblr.com
-0hfuckitall.tumblr.com
-0hgir1.tumblr.com
-0hh-shesthatgirl.tumblr.com
-0hhx.com
-0hipu8u4y.garden
-0hl.top
-0hlulu.tumblr.com
-0hmy-gay.tumblr.com
-0hmyg0shj0sh.tumblr.com
-0hmysweetness.tumblr.com
-0hornyteen0.tumblr.com
-0hthatgirl.tumblr.com
-0huller.dk
-0hwellfuckyou.tumblr.com
-0i3.top
-0iam.xxx
-0interestrate.com
-0it6.top
-0iwbds.top
-0iyl.top
-0j2.cc
-0j5z7c5.garden
-0j7-sp91c8ez.com
-0jav-daily.blogspot.com
-0jf.com
-0jomajo.tumblr.com
-0k3.top
-0k4hes1d-97.com
-0kgalc.com
-0kit.com
-0koreagay0.tumblr.com
-0kp.top
-0ktonion.tumblr.com
-0l6.top
-0l8nub.top
-0lagersexposed.blogspot.com
-0lb.top
-0ldperv.tumblr.com
-0limits4-deactivated20140606.tumblr.com
-0livejasmin.com
-0lporn.com
-0lz.top
-0m908q.com
-0masale.com
-0michaly.top-100.pl
-0mji35.top
-0mn.top
-0n89w6.com
-0nce08.garden
-0ndl.top
-0ne-eyedwilly.tumblr.com
-0ne-swallow.tumblr.com
-0nestepcl0sert0theedge.tumblr.com
-0ni.cc
-0nline-adult-dvd.dk
-0nline-sexshoppen.dk
-0nlineporn.com
-0nlinesexshoppen.dk
-0nly-sexxx.tumblr.com
-0nlyfanssex.pages.dev
-0nlyrealgirls.tumblr.com
-0nlyshemale.tumblr.com
-0nsexchanges.xyz
-0nu.cc
-0nude.com
-0nv.cc
-0nyra6.com
-0oh.top
-0onp.com
-0oy.cc
-0oy6.com
-0p0.com
-0p3ns3as0n.tumblr.com
-0p4ma58-hn9f.com
-0p6.top
-0pa.org
-0pal-s0ul.tumblr.com
-0pb.top
-0pc8.top
-0pd.top
-0pe.cc
-0pe.top
-0pe3.top
-0penh0le4u.tumblr.com
-0pentoanything.tumblr.com
-0peracoin.com
-0pgg5n.com
-0pointsex.com
-0porn.cc
-0porn.com
-0porn.info
-0porn.net
-0porn.org
-0porn.shop
-0porno.click
-0porno.name
-0pornoonline.com
-0pornoonline.net
-0pornoonline.top
-0pornoonlines.click
-0pornoonlines.net
-0pornoonlines.top
-0pornos.cc
-0pornos.click
-0pornos.com
-0pornos.one
-0pornos.top
-0pornovideo.cc
-0pornovideo.click
-0pornovideo.link
-0pornovideo.me
-0pornovideo.net
-0pornovideo.one
-0pornovideo.org
-0pornovideo.top
-0pupppyloki.tumblr.com
-0puppypigpornstar0.tumblr.com
-0q50.top
-0qdq7o.garden
-0qko1z.com
-0qmf.top
-0qy.top
-0qz.top
-0r5.top
-0r6.top
-0rc.top
-0rchid.canalblog.com
-0rcyj7.garden
-0rffiefriends.com
-0rg4smos-lesb-kos.tumblr.com
-0rgasm-faces.tumblr.com
-0rgasme.com
-0rgies.com
-0rgy.com
-0rifooyz.6ecz8f.com
-0riginal-7.tumblr.com
-0rockey0.tumblr.com
-0ruepq.top
-0ry2rk.com
-0s2.top
-0s4.top
-0sex.club
-0sex.com
-0sex.homes
-0sexe.com
-0sh.top
-0shouzhuan.com
-0smm.xyz
-0something0dirty0.tumblr.com
-0sso.top
-0sunnyleonenakedpicsg.tumblr.com
-0t4.top
-0t76.com
-0t8.top
-0t9.top
-0tario.tumblr.com
-0te1pu.garden
-0teenluver.tumblr.com
-0teszd.garden
-0tgp.com
-0therm32.tumblr.com
-0titsmcgee.tumblr.com
-0tp.top
-0tq4-6rw5b8u.com
-0tub.com
-0tubes.com
-0tx.top
-0u0.com
-0u2.top
-0u3.top
-0u6.top
-0uav8b.garden
-0ue.top
-0uq.top
-0ur5exlife.tumblr.com
-0urloveadventure.tumblr.com
-0usadia-sex-and-drugs.tumblr.com
-0v3rth1nkin8ita11.tumblr.com
-0vawn9.com
-0vh.cc
-0vi.top
-0video2cul.free.fr
-0voyeur.com
-0vp.top
-0vs1.net
-0w3569.com
-0wds.top
-0wetlatinpussy0.tumblr.com
-0wgd.top
-0wh.top
-0wi.top
-0witter.com
-0wvn.com
-0x0.free.fr
-0x0x0mandy0x0x0.tumblr.com
-0x294a.top
-0x4d0x690x6c0x66.tumblr.com
-0x7121.com
-0x7a69.net
-0xb.top
-0xdaily.com
-0xfeb.store
-0xhamster.com
-0xnd.top
-0xo.xyz
-0xp.top
-0xroots.com
-0xvq.top
-0xxx.com
-0xxx.free.fr
-0xxx.io
-0xxx.li
-0xxx.org
-0xxx.ru
-0xxx.st
-0xxx.unblockit.ing
-0xxx.ws
-0xy.xxx
-0xyz.top
-0y02.com
-0y1n.top
-0y3r.top
-0y4.top
-0y40v0.garden
-0yae12vdh.garden
-0yc.cc
-0yl291.garden
-0ylt.top
-0ys4wq.garden
-0yt.top
-0yueshen0.tumblr.com
-0z1.cc
-0z4.top
-0z6tm6.com
-0z7.top
-0ze.top
-0zfg.top
-0zgwya.huxiaoyan8.com.cn
-0zk.cc
-0zl.top
-0zm.top
-0zt3.com
-0ztie.com
-1-1.cam
-1-12asianpops7stourism.blogspot.com
-1-2-1-cam-girls.co.uk
-1-2-1-cam-wives.co.uk
-1-2-1-naked-girls.co.uk
-1-2-1-swingers.co.uk
-1-2-3-4-getthefuckawayfromme.tumblr.com
-1-5-0-smsclips.startspot.nl
-1-8-p-l-u-s.startspot.nl
-1-800-305-babe.com
-1-800-470-jill.com
-1-800-555-dick.tumblr.com
-1-800-900whip.com
-1-800-998-slit.com
-1-800-adultsites.com
-1-800-anal-sex.com
-1-800-analsex.com
-1-800-ass-play.com
-1-800-assplay.com
-1-800-bigtits.com
-1-800-call-sex.com
-1-800-callsex.com
-1-800-free-sex.com
-1-800-freesex.com
-1-800-fuckboys.tumblr.com
-1-800-fuckgirls.com
-1-800-get-girls.com
-1-800-getgirls.com
-1-800-girl-sex.com
-1-800-girlman.com
-1-800-girlsex.com
-1-800-hardcore.com
-1-800-have-sex.com
-1-800-hot-legs.com
-1-800-hotlinegay.tumblr.com
-1-800-hotlinepink.tumblr.com
-1-800-hotmilf.com
-1-800-lesbians.com
-1-800-livegirls.com
-1-800-momlust.com
-1-800-need-sex.com
-1-800-net-sexx.com
-1-800-nude-girls.com
-1-800-phone-sex.com
-1-800-phone-sexy.com
-1-800-phonesex.com
-1-800-quickie.com
-1-800-raw-porn.com
-1-800-rawporn.com
-1-800-real-sex.com
-1-800-sexcall.com
-1-800-sexgirl.com
-1-800-sexline.com
-1-800-sexy-babe.com
-1-800-sexy-girl.com
-1-800-teen-cams.net
-1-800-teen-sex.com
-1-800-teensex.com
-1-800-want-sex.com
-1-800-weflirt.com
-1-800-wild-call.com
-1-800-wildcall.com
-1-800cummakers.com
-1-800freesex.com
-1-800fuckmehard.tumblr.com
-1-800loan.com
-1-866-778-slut.com
-1-866-old-sexy.com
-1-866-sin-lady.com
-1-900adultpersonals.com
-1-900phonesexnumbers.com
-1-a-z-adult-free-stories.com
-1-absolute-asian-sex-and-pussy-pics.com
-1-absolute-free-erotic-xxx-sex-stories.com
-1-absolute-teen-sex-and-pussy-pics.com
-1-acclaimed-sexual-supplements.com
-1-adult-6shop.dk
-1-adult-nude-models-pics.com
-1-adultchat.tv
-1-adultfriendfinder.blogspot.com
-1-adultfriendfinder.com
-1-all-foot-n-toe-fucking-sex-fetish-pics.com
-1-and-only.com
-1-bare-naked-free-latina-teens-porn-pussy-pictures.com
-1-belflore-modele.cmonbook.com
-1-big-naturals.com
-1-big-tits-pics.com
-1-bisexual-dating-personals-men-women.com
-1-black-porno.com
-1-black-sex-porn-pussy-ass.com
-1-black-sex.com
-1-black-tube.blogspot.com
-1-black-tube.com
-1-blacks.com
-1-blogsexe.com
-1-bondage-sex.com
-1-byday.com
-1-cam-met-me.startspot.nl
-1-cam-slut.co.uk
-1-casino-gambling-directory.com
-1-casino-webcam.com
-1-celebrity.com
-1-cent-fick.dr.ag
-1-chat-bdsm.com
-1-class-erotik.dk
-1-class-sexshop.dk
-1-cochon.com
-1-content.com
-1-dating-services.com
-1-des-sens.tumblr.com
-1-dollar-porn.com
-1-enculeuses.com
-1-enorme-lul.startspot.nl
-1-eros-com-escorts-versus-sugar-babies-baby.com
-1-erotic-sex-stories-club.com
-1-escort.com
-1-escorts.com
-1-eurotica-live-nude-girls.com
-1-extra-porno.startspot.nl
-1-extra-sex-pagina.startspot.nl
-1-fat-bbw-sex-pics.com
-1-fat.com
-1-fellation.com
-1-femme-russe.com
-1-ficken.de
-1-fitnezz-junkie.tumblr.com
-1-free-hardcore-sex-xxx-porn-videos.com
-1-free-pics.com
-1-free-porno.blogspot.com
-1-free-sex-and-porn-pics.com
-1-gay-dating-singles-personals.com
-1-geile-webcam-sex.startspot.nl
-1-gem.tumblr.com
-1-girl-next-door.tumblr.com
-1-grosse-poitrine.com
-1-grosses.com
-1-hardcore-sex-pics.com
-1-heart-1-soul-1-sex-position.tumblr.com
-1-heet-moment.startspot.nl
-1-hete-sex-meiden.startspot.nl
-1-high-end-party-girls-entertainment.com
-1-hosting.com
-1-jeu.com
-1-lekker-geil.startspot.nl
-1-lesbian-dating-freepersonals.com
-1-lesbian-sex.com
-1-like-pussy.tumblr.com
-1-livejasmin.com
-1-lulverslaafd.startspot.nl
-1-mature.com
-1-modele-photo.com
-1-naked-boy.tumblr.com
-1-natte-sex.startspot.nl
-1-nude-amateurs.com
-1-nudetube.com
-1-nudisttube.com
-1-obese.com
-1-on.biz
-1-online-bingo.us
-1-onlinedating.com
-1-penis-enlargement-solution.com
-1-pervers.com
-1-plan-cam.com
-1-plan-cam.net
-1-plan-coquin.com
-1-plan-cul.com
-1-plan-cul.net
-1-plan-gay.com
-1-plan-homo.com
-1-plancul.com
-1-porn-sex-cartoons.com
-1-porn-videos-youporn.blogspot.com
-1-porn-youporn.blogspot.com
-1-porn.com
-1-porn.fr
-1-porno-free.blogspot.com
-1-porno-tube.blogspot.com
-1-porno-youporn.blogspot.com
-1-porno.net
-1-porno.org
-1-porns.com
-1-redtube-sexe.blogspot.com
-1-renconte-libertine.com
-1-rencontre-coquine.com
-1-rencontre-cougar.blogspot.com
-1-rencontre-cougar.com
-1-rencontre.eu
-1-salope.com
-1-script.com
-1-sensual-cpl.tumblr.com
-1-sex-met-21hotgirl.startspot.nl
-1-sex-met-ada.startspot.nl
-1-sex-met-amber.startspot.nl
-1-sex-met-babefleur.startspot.nl
-1-sex-pictures.com
-1-sex-poesjes.startspot.nl
-1-sex-sex-sex.startspot.nl
-1-sex-shop.com
-1-sex-toys-sex.com
-1-sex-tube.blogspot.com
-1-sex-videos.blogspot.com
-1-sex.com
-1-sex.net
-1-sex.nl
-1-sexe-gratuit.com
-1-sexe-youporn.blogspot.com
-1-sexeze.blogspot.com
-1-sexo.com
-1-sextoys.com
-1-singles.com
-1-sixteen.tumblr.com
-1-smoking.com
-1-smokinggirls.com
-1-st-celebrity-hairstyle.blogspot.com
-1-stop-blowjobs-and-cumshots.com
-1-stop-malaysia-massage-escort.com
-1-super-geil-orgasme.startspot.nl
-1-super-geil.startspot.nl
-1-teen-sex.com
-1-telephone-rose.com
-1-tits.com
-1-toons.com
-1-top-bestofsex.blogspot.com
-1-top-sex.startspot.nl
-1-trans.com
-1-tube.net
-1-tubekitty.blogspot.com
-1-tushy-school.com
-1-twinks.com
-1-video-porno.blogspot.com
-1-vieille.com
-1-we-live-together.com
-1-web-cam-sex.startspot.nl
-1-webcamsex.startspot.nl
-1-websalope-com.blogspot.com
-1-x.com
-1-xxx-tube.com
-1-xxx.ru
-1-xxx.site
-1-zu-1.com
-1.aaaa10010.top
-1.aaaa333518.top
-1.lesben.frauen.xxx.free.fr
-1.muschi.arschbilder.free.fr
-1.ooskar.com
-1.papno-tour.net
-1.pornoabuelas.net
-1.rank-nation.jp
-1.taki-taki.lol
-1.tv
-1.xporno.space
-1.xx-i.com
-10-20-03.tumblr.com
-10-barosh.co.il
-10-inches.com
-10-man-cum-slam.com
-10-sexbegin.startspot.nl
-10-sextube.startspot.nl
-10-star.com
-10-top-online-casinos.com
-10-xxx-movies.startspot.nl
-100-amateur-sex.com
-100-amateur.over-blog.com
-100-best-adult-sites.com
-100-best-dating-sites.com
-100-best-single-sites.com
-100-bombes.com
-100-free-big-fat-women-xxx-sex-pics.com
-100-free-big-huge-tits-boobs-breasts-xxx-pics.com
-100-free-cartoon-anime-xxx-sex-porn-pictures.com
-100-free-foot-feet-fetish-toe-xxx-sex-pictures.com
-100-free-hardcore-anal-xxx-sex-pictures.com
-100-free-hardcore-group-sex-orgy-pictures.com
-100-free-horny-lesbian-xxx-sex-pictures.com
-100-free-interracial-xxx-sex-pictures.com
-100-free-kinky-bondage-spanking-leather-xxx-sex-pictures.com
-100-free-naked-amateur-xxx-sex-pictures.com
-100-free-naked-latina-xxx-kiss-sex-pictures.com
-100-free-nude-pregnant-women-sex-pictures.com
-100-free-nude-teen-xxx-sex-pics.com
-100-free-older-mature-women-sex-pictures.com
-100-free-porn-movies-sex-videos-and-pics.com
-100-free-porn.com
-100-free-sex-pictures.com
-100-free-sex.com
-100-free-sexy-nude-asian-xxx-sex-pictures.com
-100-free-shemale-transsexual-xxx-sex-pictures.com
-100-free-xxx-sex-pictures-and-videos.com
-100-geile-filmpjes.startspot.nl
-100-live-teen-sex.com
-100-nakedgirls.com
-100-naughty-monkey.tumblr.com
-100-orgasmes.over-blog.com
-100-percent-adult-dirty-sex-jokes-free.com
-100-percent-adult-sex-positions.com
-100-percent-free-personals.netfirms.com
-100-rican.tumblr.com
-100-sex.com
-100-tabous.net
-100-top-adult-sites.com
-100-top-asian-women-sites.com
-100-top-dating-sites.com
-100-top-gay-men-sites.com
-100-top-gay-women-sites.com
-100-top-latin-women-sites.com
-100-top-russian-women-sites.com
-100-top-single-sites.com
-100-top-ukraine-women-sites.com
-100-top.de
-100.naver.com
-1000-agent.com
-1000-dating-sites.com
-1000-facial.net
-1000-facials.tumblr.com
-1000-gay-hotties.blogspot.com
-1000-russian-girls.com
-1000-stars-nues.com
-1000-wurdz.tumblr.com
-1000.cam
-1000.members0703.kci.org
-10000-girls.tumblr.com
-10000-in-place.tumblr.com
-1000000links.com
-1000000pv.net
-100000av.top
-100000jaarsex.be
-100000xxxmovies.net
-10000100010.tumblr.com
-10000bedrooms.blogspot.com
-10000cumshots.com
-10000facials.blogspot.com
-10000hoursexperiment.com
-10000posturassexuales.com
-10000sexygirlspics.blogspot.com
-10000w.co.kr
-10001films.blogspot.com
-10003gpbokepgratis.blogspot.com
-1000adultvideos.com
-1000amateur.canalblog.com
-1000amateurs.blogspot.com
-1000amateurs.com
-1000annunci.com
-1000annunci.it
-1000argentinas.com.ar
-1000babes.net
-1000bbw.com
-1000blagues.blaguesflash.com
-1000brides.com
-1000casinos.com
-1000cigarettes.com
-1000cocks.com
-1000culos.com.ar
-1000culs.free.fr
-1000cumshots.net
-1000dh.top
-1000divxmovies.com
-1000escort.com
-1000escort.net
-1000et1nuits-sexygirl.tumblr.com
-1000exgirlfriends.com
-1000facials.adult
-1000facials.com
-1000facials.net
-1000facials.org
-1000facials.pics
-1000facials.porn
-1000facials.sex
-1000fapvids.com
-1000femmes.com
-1000films.fr
-1000folies.com
-1000fotosgay.com.ar
-1000fotosgratis.com
-1000gatinhas.cjb.net
-1000gays.com
-1000giribest.com
-1000grand.com
-1000hentai.com
-1000homemovies.com
-1000hotel.com
-1000hotmen.tumblr.com
-1000images.tumblr.com
-1000inculate.com
-1000inwhot.blogspot.com
-1000jav.com
-1000lasek.toplista.pl
-1000lesbiennes.free.fr
-1000letie.ru
-1000livecams.com
-1000londonescorts.com
-1000love.co.kr
-1000mg.jp
-1000misspenthours.com
-1000mmail.com
-1000more.tumblr.com
-1000moviedownloads.com
-1000ne.ch
-1000ngayvang.com
-1000notesormore.tumblr.com
-1000novel.com
-1000nudebabes.com
-1000offers.com
-1000orgasms.net
-1000personals.com
-1000photosx.free.fr
-1000pl.com
-1000porn.com
-1000pornmovies.com
-1000porno.me
-1000porno.net
-1000porno.ru
-1000porno.tv
-1000pornvideos.com
-1000queen.com
-1000reasonstobustanut.tumblr.com
-1000reasonstomovetojapan.tumblr.com
-1000sbdsmvideo.com
-1000sexartikelen.com
-1000sexartikelen.nl
-1000sexblog.blogspot.com
-1000sexybabesphotogalleries.blogspot.com
-1000sofadultsextoys.co.uk
-1000sun.com
-1000teencamvideos.com
-1000teens.blogspot.com
-1000teenwebcams.com
-1000tetas.tumblr.com
-1000tieten.nl
-1000transexuales.com.ar
-1000tube.net
-1000videoporno.com
-1000videosx.wtf.la
-1000videosx.yi.org
-1000videosxxx-gratis.blogspot.com
-1000vids.com
-1000webcams.nl
-1000websporno.com
-1000xteens.com
-1000xxx.com
-1000xxxpics.com
-1000xxxu.com
-1000xyev.xyz
-1001-adventures.dk
-1001-annuaire.com
-1001-attitude.com
-1001-beauties.com
-1001-cochonnes.com
-1001-dicks.tumblr.com
-1001-erotik.de
-1001-filles.com
-1001-filmx.be
-1001-hotties-of-the-day.com
-1001-lingerie.over-blog.com
-1001-macht.at
-1001-nacht-erotik.de
-1001-nat.dk
-1001-salopes.com
-1001-sextoys.com
-1001-teens.com
-1001-teens.powa.fr
-1001.msk.ru
-100105.com.cn
-10010600.xyz
-10010gps.com
-1001amatrices.com
-1001bbw.com
-1001beurettes.canalblog.com
-1001bundas.hpg.com.br
-1001cam.de
-1001camgirls.com
-1001cartoons.com
-1001chattes.canalblog.com
-1001chattes.com
-1001culsdunet.canalblog.com
-1001delights.com
-1001dessous-sexy.wifeo.com
-1001dessous.com
-1001dirtyjokes.com
-1001dvds.com
-1001eroset.ru
-1001erotic.com
-1001eroticlights.tumblr.com
-1001eroticnights.tumblr.com
-1001erotiekverhalen.nl
-1001erotikgeschichten.com
-1001escortadressen.nl
-1001expo.com
-1001facials.com
-1001freepics.com
-1001freeporns.com
-1001gay.com
-1001gays.com
-1001gaysexstories.blogspot.com
-1001geilesex.nl
-1001hiebe.de
-1001hotgirls.tumblr.com
-1001images.canalblog.com
-1001lingerie.fr
-1001loads.blogspot.com
-1001logos-sexy.magikmobile.com
-1001moppen.be
-1001movies.com
-1001night.ru
-1001nighters.com
-1001noites.com
-1001orgasmes.blogspot.com
-1001pengalamansex.blogspot.com
-1001persosexy.com
-1001petitsriens.blogspot.com
-1001plaisirs.fr
-1001priveadressen.nl
-1001raccontierotici.com
-1001reasonstobeagirl.tumblr.com
-1001recettesdecuisine.com
-1001relatoseroticos.com
-1001relatosx.com
-1001rt.com
-1001salopes.com
-1001sex.com
-1001sexcams.nl
-1001sexe.com
-1001sexfilmz.com
-1001sexgeschichten.com
-1001sexlinks.nl
-1001sexsite.blogranking.us
-1001sextoys.com
-1001sexygifs.site.voila.fr
-1001shemales.com
-1001sletten.nl
-1001slofies.com
-1001tube.com
-1001twiggs.tumblr.com
-1001twinks.webjump.com
-1001ty.com
-1001vicieuses.free.fr
-1001videobokep.blogspot.com
-1001waystobenaked.blogspot.com
-1001webcamsexdames.nl
-1001webcamsexsites.nl
-1001x.net
-1001xxx.com
-1001xxxcams.nl
-1001xxxfilms.nl
-1001xxxpictures.com
-1001xxxvideos.nl
-100345.shop
-1003wessex.com
-10041959.tumblr.com
-1004stock.com
-1006902.com
-1006playlist.com
-1007-dxlove.com
-1007-live173.com
-1007.tw
-10086.click
-10086xx.com
-1008dy.com
-1008h.com
-1008yh.com
-1009shop.com
-100adult.com
-100alphadaddy-93.tumblr.com
-100amateur-videos.blogspot.com
-100amateur.com
-100amateurvideos.com
-100anaal.nl
-100asians.com
-100asiat.blogspot.com
-100av.com
-100bestadultsites.com
-100bestpornsites.com
-100bestsex.ru
-100bigass.com
-100bizarrladies.de
-100boobs.tumblr.com
-100boyself.com
-100brazzers.blogspot.com
-100bucksbabes.com
-100c.xxx
-100calcinhas.com.br
-100cameltoe.com
-100cb.com
-100celebs.com
-100celebwallpapers.blogspot.com
-100chan.com
-100chicas.blogspot.com
-100christy.tumblr.com
-100citives.free.fr
-100click.it
-100clips.com
-100cmsexdoll.xyz
-100cocks.com
-100colegialas.blogspot.com
-100complex.com
-100cucixxx.com
-100dailyboys.com
-100date.com
-100delolas.com
-100dessousdessus.tumblr.com
-100dicks.com
-100dollargirls.ru
-100dominas.de
-100donmoingay.com
-100e.over-blog.com
-100escorts.co.uk
-100euroescorts.com
-100famosasdesnudas.com
-100fantasies.com
-100films.com
-100free.com
-100freecamsites.com
-100freedirtycams.blogspot.com
-100freemb.com
-100freenudecelebrities.com
-100freeporn.com
-100freesexpics.net
-100freesexsites.com
-100freeteenseries.com
-100freezooclubs.club
-100fun.net
-100games.hop.clickbank.net
-100gaoxx.com
-100gayboyvideos.com
-100gaycocks.com
-100gbtube.com
-100gbvideo.com
-100girls.nl
-100gn.com
-100grannysites.com
-100handjobs.com
-100hbjc.com
-100hdporn.shop
-100heat.com
-100helps.com
-100hen.virtualave.net
-100hits.com
-100homemade.com
-100hot.com
-100hotbabes.com
-100hotpics.com
-100hotsites.com
-100hottestpornstars.blogspot.com
-100jbuc.com
-100jiang.com
-100juegossexuales.com
-100k1dem.blogspot.com
-100keys.su
-100kiki.com
-100kissesescort.com
-100kjk.com
-100kong.com
-100lendemain.com
-100lesbianstories.com
-100limites.cjb.net
-100livecam.com
-100liveporn.shop
-100lutv.xyz
-100mamadas.com
-100mature.com
-100maturesites.com
-100megsfree4.com
-100molezasaudesexual.com
-100mujereslindas.blogspot.com
-100mulheresbonitas.blogspot.com
-100naked.com
-100ngay.app
-100ngay.co
-100ngay.net
-100ngay.org
-100nn.bz
-100nonude.biz
-100nudes.com
-100nudeshoots.tumblr.com
-100one.com
-100p-douga.com
-100p100manga.chez-alice.fr
-100panty.com
-100pantyhose.com
-100passwords.com
-100pecados.net
-100per100sex.com.rya-network.com
-100percent-online.com
-100percentfreeporn.blogspot.com
-100percentgay.blogspot.com
-100percentjohn.com
-100percentlesbian.tumblr.com
-100percentlive.com
-100percentmature.com
-100percentperfection.tumblr.com
-100percentporn.com
-100percentprimebeef.tumblr.com
-100percentsex.de
-100pezd.net
-100pezd.pro
-100photos.free.fr
-100pics.com
-100picsbbw.com
-100poor100gay.free.fr
-100porn.com
-100porn.net
-100porn.shop
-100porn.tumblr.com
-100porno.one
-100pornogratuit.com
-100pornos.net
-100pornsites.com
-100porntube.com
-100pour100gay.com
-100pour100sex.canalblog.com
-100pour100sexe.com
-100pregnantpics.com
-100pro-teens.de
-100pro-versaut.com
-100procent-gratissex.nl
-100procent.nu
-100proofoflasvegas.com
-100proporn.shop
-100prozentprivat.de
-100prozentprivat.net
-100pure.net
-100pussy.com
-100puyu.com
-100royalgrant.com
-100rupaiya.com
-100russianbrides.com
-100russiangirls.com
-100russianwomenlinks.com
-100sexgames.com
-100sexmsk.ru
-100sextube.com
-100sexvideos.com
-100sexy.com
-100sexygirl.com
-100sexygirls.easy4blog.com
-100sexywomen.blogspot.com
-100shadesofgry.tumblr.com
-100shemales.com
-100shmar.net
-100sht.com
-100siteaccess.com
-100size.ru
-100sklavinnen.de
-100solucionesexpress.com
-100sponsors.com
-100stron.pl
-100suelle.com
-100suelle.com.free.fr
-100tabous.canalblog.com
-100tabous.com
-100tabu.com
-100tb-porno.ru
-100teams.net
-100teenbabes.com
-100teenthumbs.com
-100telefonsexgirls.com
-100tequila.com
-100tgirls.com
-100thbear.tumblr.com
-100tipcams.blogspot.com
-100tipcams.com
-100tits.com
-100top.com
-100topescorts.com
-100toppornmovies.blogspot.com
-100toppornstars.com
-100topsites.net
-100tvporn.shop
-100ubrc.com
-100upskirts.com
-100upskirts.org
-100video.com.br
-100vod.net
-100voyeur.com
-100vporn.shop
-100waibao.com
-100web.com
-100web.de
-100wk.com
-100worlds.com
-100x.com
-100x100argentinas.blogspot.com
-100x100argentinas.com.ar
-100x100negras.com
-100x100pamela.com
-100x100sexshop.com.ar
-100xporn.shop
-100xsexo.kit.net
-100xxx.com
-100xxx.net
-100xxx.ru
-100xxxpix.com
-100xxxvideos.com
-100xxxxx.com
-100yixin.com
-101-escort-go-home.com
-101-sex-positions.com
-101-sex-positions.tumblr.com
-101-sex.com
-101-sexstellungen.org
-1010-china.com
-1010013.com
-1010ben.com
-1010butterfly.tumblr.com
-1010sex.com
-1010shemales.blogspot.com
-1011.com
-1012betsextou.com
-1012k.com
-1014epp.com
-1014trr.com
-1014yff.com
-1014yuu.com
-1017tgirllover.tumblr.com
-101821.myshoutbox.com
-1019ly.com
-101adult.com
-101adult.com.readfinance.au
-101anal.com
-101babes.com
-101blowjobs.tumblr.com
-101bokep.blogspot.com
-101boys.blogspot.com
-101boys.com
-101boyvideos.com
-101butts.com
-101celebrities.com
-101date.com
-101datingideas.com
-101domain.com
-101eroticstories.com
-101fetish.com
-101funjokes.com
-101galleries.com
-101gayporn.com
-101gaystreet.com
-101gaytwinks.com
-101gayvideos.com
-101gem.ru
-101hotguys.com
-101japanese.com
-101lalex.tumblr.com
-101livecams.com
-101lunwen.com
-101milf.com
-101modeling.com
-101nacht.de
-101nights.com
-101nudegirls.com
-101porn.tumblr.com
-101pussy.com
-101s.com.tw
-101sex.com
-101sex.hpg.com.br
-101sexcams.com
-101sexmovies.com
-101sexpositions.blogspot.com
-101sexshop.ru
-101sextoys.com
-101sluts.com
-101spanking.com
-101st-armyvet.tumblr.com
-101stories.com
-101teengirls.blogspot.com
-101teengirls.com
-101to1.com
-101true101.tumblr.com
-101tube.com
-101vagina.tumblr.com
-101wanks.com
-101xturkpornocu.site
-101xxx.xyz
-102.over-blog.com
-102.prostitutki-msk.com
-1020xxx.com
-102114.info.targetgroup.ru
-1024-caoliu.com
-102495.xyz
-102499.xyz
-1024abc.com
-1024bt.cyou
-1024bt.top
-1024btbt.com
-1024btso.com
-1024cg.com
-1024dns.com
-1024fans.com
-1024free.me
-1024kan.com
-1024kan.shop
-1024pp.com
-1024sex.tumblr.com
-1024sp3.casa
-1024sp3.mom
-1024sp4.autos
-1024sp7.help
-1024su.com
-1024videos.com
-10271.8d.com.tw
-10273537281.tumblr.com
-102farkop.ru
-102jj.com
-102liverpool.com
-102model.com
-102porn.com
-102porno.club
-102porno.net
-102porno.top
-102xx.com
-1030.51whc.vip
-1030chelsea.com
-1031video.com
-10320-136.s.cdn13.com
-10360.com
-1038438322488.usercash.com
-1039thex.com
-103bb.com
-103j.com
-103n.com
-103porno.cc
-104-meimei.com
-104245245784458.blogspot.com
-104karine.83r.free.fr
-104xx.com
-104xxx.com
-105035.shoutboxes.com
-1050words.blogspot.com
-10517.com
-1053.ru
-105662.com
-105debundinha.hpg.ig.com.br
-105dy.com
-105fetish.cl
-105matures.com
-105pymblehouse.com.au
-10639615a.tumblr.com
-1069boys.net
-1069boys.xyz
-1069gay.click
-1069tube.com
-106jsb.com
-106zzznormastitz.com
-1077c713a488.com
-107881.shoutbox.de
-107e.com
-107kq.com
-107ss.com
-1080-porno.blogspot.com
-1080.hlkjsm.com
-1080bf.blogspot.com
-1080hdporn.shop
-1080liveporn.shop
-1080maxporn.shop
-1080p4me.com
-1080p4u.com
-1080paz.com
-1080pcontent.com
-1080plusporn.shop
-1080pok.com
-1080porn.com
-admireme.vip
-adultfriendfinder.com
-alt.com
-amador55.com
-ashleymadison.com
-babes.com
-babestation.tv
-bangbros.com
-bdsmlr.com
-beNaughty.com
-beeg.com
-bongacams.com
-brazzers.com
-cam4.com
-camerahot.com.br
-camerasex.com.br
-camsoda.com
-camversity.com
-candfans.jp
-casualx.badpuppy.com
-chaturbate.com
-clicksex.com.br
-daftsex.com
-digitalplayground.com
-drtuber.com
-empflix.com
-eporner.com
-erome.com
-fakehub.com
-fancentro.com
-fansly.com
-fanvue.com
-fapello.com
-fatalmodel.com
-fatalmodel.com.br
-fetlife.com
-flagrasamadores.com
-fling.com
-flirt4free.com
-friendfinder.com
-fuq.com
-furaffinity.net
-garotacomlocal.com
-garotascomlocal.com.br
-gotporn.com
-guiana.com.br
-heavy-r.com
-hqporner.com
-imlive.com
-jasmin.com
-justforfans.com
-livejasmin.com
-lobstertube.com
-loyalfans.com
-manyvids.com
-mofos.com
-motherless.com
-myfreecams.com
-naughtyamerica.com
-novinhasdoinsta.com
-nuvid.com
-onlyfans.com
-passion.com
-phncdn.com
-photoacompanhantes.com
-phprcdn.com
-pocketstars.com
-porn.com
-porn555.com
-porndig.com
-porngo.com
-pornhat.com
-pornhub.com
-pornhub.org
-pornhubpremium.com
-pornhubselect.com
-pornmd.com
-porntrex.com
-pornve.com
-privacidade.com.br
-privacy.com.br
-realitykings.com
-redtube.com
-redtube.net
-rk.com
-skokka.com
-skokka.com.br
-spankbang.com
-spankbang.party
-spankbang.site
-streamate.com
-stripchat.com
-sunporno.com
-tblop.com
-thumbzilla.com
-tnaflix.com
-tube8.com
-tubegalore.com
-twistys.com
-upornia.com
-vidoomy.com
-webcamchecker.com
-www.pornhub.com
-www.xhamster.com
-www.xnxx.com
-www.xvideo.com
-www.xvideos.com
-xhamster.com
-xhamster.desi
-xhamsterlive.com
-xhcdn.com
-xnxx-cdn.com
-xnxx.com
-xnxx.es
-xnxx.fr
-xnxx.tv
-xnxx2.com
-xnxx3.com
-xtube.com
-xvideo.com
-xvideos-cdn.com
-xvideos.com
-xvideos.com.br
-xvideos.es
-xvideos.fr
-xvideos.in
-xvideos2.com
-xvideos3.com
-xvideosporn.com
-xvideosred.com
-youporn.com
-
-EOF_FEED_adult.txt
-echo '>> Extraindo feeds/doh-providers.txt...'
-cat << 'EOF_FEED_doh-providers.txt' > $TMP_DIR/feeds/doh-providers.txt
-# ==========================================
-# WAM Feed - DoH Providers (Anti-Bypass)
-# ==========================================
-# Mozilla Firefox Enterprise Canary (Desativa DoH automático em navegadores)
-use-application-dns.net
-
-# Cloudflare DoH & 1.1.1.1 Endpoints
-cloudflare-dns.com
-1dot1dot1dot1.cloudflare-dns.com
-one.one.one.one
-mozilla.cloudflare-dns.com
-chrome.cloudflare-dns.com
-security.cloudflare-dns.com
-family.cloudflare-dns.com
-
-# Google DNS DoH & 8.8.8.8 Endpoints
-dns.google
-dns.google.com
-dns.google.com.br
-dns64.dns.google
-
-# Quad9 & CleanBrowsing
-dns9.quad9.net
-dns.quad9.net
-doh.cleanbrowsing.org
-
-# AdGuard DoH
-dns.adguard.com
-dns.adguard-dns.com
-dns-family.adguard.com
-
-# Cisco OpenDNS
-doh.opendns.com
-resolver1.opendns.com
-resolver2.opendns.com
-
-# NextDNS, Mullvad, ControlD & Apple Private Relay
-dns.nextdns.io
-doh.mullvad.net
-doh.controld.com
-doh.dns.apple.com
-mask.icloud.com
-mask-h2.icloud.com
-
-EOF_FEED_doh-providers.txt
-echo '>> Extraindo feeds/gambling.txt...'
-cat << 'EOF_FEED_gambling.txt' > $TMP_DIR/feeds/gambling.txt
-# ==========================================
-# Rules WAM Feed - Apostas, Bets & Cassinos
-# Total de dominios consolidados: 1594
-# ==========================================
-
-0-10-7.casino
-0-2-0-7.casino
-0-30-7.casino
-0-5-07-casino.buzz
-0-50-7.casino
-0-60-7r.casino
-0-7-0-7s.casino
-0-8-07c.casino
-0-bdmbet.com
-0-bet.com
-0-betsixty.com
-0-casino.info
-0-coolzino.com
-0-g-j-3.com
-0-o-x-h.com
-0-w-v-s.com
-0-x-g-5.com
-0-xbets.net
-00.game
-000-online-casino.biz
-000-online-casino.com
-000000.com
-000000hd.com
-000000tyc.com
-00000178.com
-00000234.com
-00000hd.com
-00001676.com
-00001betsorte.com
-00002004.com
-00002007.com
-00002277.com
-00002tyc.com
-00003044.com
-00003tyc.com
-00004008.com
-0000442.com
-00004tyc.com
-0000502.com
-00005138.com
-00005156.com
-0000540.com
-00005424.com
-000068.com
-00008126.com
-00009tyc.com
-0000iplwin.com
-0000jili.com
-0000wb.com
-00012023.com
-0001235.com
-0001239.com
-000148.com
-000173.com
-000192.com
-0002.space
-0002.world
-000248.com
-00032023.com
-0003608.com
-0003977.com
-0004560.com
-0005.com
-00052023.com
-0005vip.pages.dev
-0005vip1.pages.dev
-0005vip2.pages.dev
-0006138.com
-00066030.com
-00067899.com
-0006yh.com
-0007-casino.xyz
-000706.com
-0007154.com
-00071yy.com
-00072023.com
-0007865.com
-000789win.com
-0007bet10.com
-0007betsorte.com
-0008154.com
-00082023.com
-0008n.com
-00090.xyz
-00091145.com
-00092dl.com
-0009990.com
-0009994.com
-0009995.com
-0009996.com
-0009997.com
-0009998.com
-0009casino.com
-000casinos.com
-000i9.com
-000i9bet.com
-000iplwin.com
-000jaya.com
-000m88.com
-000n83.com
-000q.cc
-000q88.com
-000sodo.com
-000yabo.com
-000yb.com
-000zryl.com
-001.casino
-0010n.com
-00111381.com
-00112007.com
-00112017.com
-00112023.com
-00113044.com
-00113118.com
-0011368.com
-00114008.com
-00114137.com
-0011502.com
-00115316.com
-00118332.com
-001358.com
-001359.com
-001366.com
-001371.com
-001372.com
-0013n.com
-001533.com
-0015n.com
-001678pk.com
-001699.com
-0018-casino.buzz
-0018g.com
-0018k.com
-0018n.com
-0018q.com
-001917.com
-001992.com
-001993.com
-001998.com
-0019n.com
-001casino.com
-001fxh9-fe-source.bjravv03.com
-001fxh9-tiger-fluid.bjravv03.com
-001game.org
-001game1.cc
-001game8.cc
-001game8.com
-001game9.com
-001gameios.com
-001k.xyz
-001k8.com
-001konco88.xyz
-001nohu.com
-001p.casino
-001p6.com
-001win14.com
-001win8.com
-001yabo.com
-001yd.com
-0022003.com
-0022153.com
-00222005.com
-00222979.com
-00224118.com
-0022442.com
-0022502.com
-00225076.com
-00225316.com
-0022540.com
-00226076.com
-0022696.com
-0023n.com
-0024t.com
-0025156.com
-0026-casino.buzz
-0026n.com
-0027128.com
-0027528.com
-0029.top
-0029dh.com
-0029jc.com
-002k8.com
-002nohu.com
-002p6.com
-002pg88.com
-003.com
-003008h.com
-003066.com
-0031-casino.buzz
-00332003.com
-00332017.com
-00332277.com
-00333044.com
-00333118.com
-0033502.com
-00335076.com
-00336076.com
-0033678.com
-0033696.com
-003377.com
-003399.com
-0033bet55.com
-0033bet66.com
-0033wb.com
-0033win.bet
-0033win.com
-003457.com
-00358.casino
-00359.com
-0036-casino.buzz
-00361.casino
-003665.com
-003776.com
-003885.com
-0038888.com
-0038n.com
-00395.casino
-003990.com
-003991.com
-003992.com
-003997.com
-003nohu.com
-003p6.com
-003pg88.com
-004044.com
-0040a.com
-0041n.com
-0042n.com
-0043n.com
-004400.com
-00442005.com
-00442017.com
-00442023.com
-00442277.com
-00443044.com
-00443118.com
-004433.com
-004440.com
-00444118.com
-0044442.com
-0044502.com
-0044540.com
-0044634.com
-0044696.com
-00448449.com
-0044n.com
-0044wb.com
-0046-casino.buzz
-0048-casino.buzz
-00489.casino
-004gg.com
-004nohu.com
-004p6.com
-004pxj.com
-00505.casino
-005117.com
-0051a.com
-0051n.com
-005218.com
-005219.com
-005226.com
-0054t.com
-0055153.com
-00552017.com
-00552023.com
-00553044.com
-0055502.com
-00555132.com
-0055540.com
-005564.com
-005566.com
-00557337.com
-005574.com
-00558449.com
-0055bet055.com
-0055betsorte.com
-0055pgslots.com
-0055wb.com
-005689.com
-0057v.com
-00581.casino
-005893.com
-005987.com
-005gg.com
-005nohu.com
-005p6.com
-006024.com
-006025.com
-006032.com
-006042.com
-006043.com
-006045.com
-006049.com
-006054.com
-006059.com
-006071.com
-006073.com
-006074.com
-006083.com
-006084.com
-006087.com
-006091.com
-006092.com
-0062s.com
-0063.bet
-00630.casino
-006364.com
-006489.com
-00661577.com
-00662003.com
-00662277.com
-00663044.com
-0066540.com
-0066608.com
-00667076.com
-006699.com
-00669980.com
-0066bet.com
-0066bet1.com
-0066bet2.com
-0066bet2026.com
-0066bet3.com
-0066bet4.com
-0066bet5.com
-0066pgvip.com
-0066vn.com
-0066wb.com
-0068888.com
-006891.com
-006895.com
-006906.com
-0069910.com
-006bet.com
-006i9.com
-006nohu.com
-006p6.com
-006pg88.com
-006pxj.com
-006uni.com
-007.poker
-0074662.com
-00749.casino
-00760033.com
-00760055.com
-00760066.com
-00760088.com
-00760099.com
-00761144.com
-00761155.com
-00762200.com
-00762233.com
-00762277.com
-00762288.com
-00762299.com
-00763311.com
-00763322.com
-00763355.com
-00763377.com
-00763399.com
-00764411.com
-00764433.com
-00764444.com
-00764455.com
-00765522.com
-00765533.com
-00765544.com
-00765566.com
-00765599.com
-00766655.com
-00766677.com
-00767711.com
-00768811.com
-00768844.com
-00768877.com
-00768899.com
-00769900.com
-00769944.com
-00769955.com
-00769966.com
-00769977.com
-00769988.com
-00769999.com
-0077-casino.buzz
-00772005.com
-00772017.com
-00772023.com
-00772277.com
-00773044.com
-00774118.com
-0077442.com
-0077502.com
-00775076.com
-0077540.com
-0077696.com
-0077go.com
-0077vn.com
-0077xj.com
-007912.com
-007913.com
-007915.com
-007916.com
-007bet00.com
-007bet22.com
-007bet33.com
-007bet44.com
-007bet70.com
-007game02.win
-007game05.one
-007go.xyz
-007jlcasinoph.com
-007jlgcashcasino.com
-007k8.com
-007p6.com
-007pg88.com
-007slot.site
-007slots.app
-007slots.org
-007togel.org
-007vip4.com
-007vip5.com
-007vip9.sbs
-007vn.cc
-007vn.co
-007vn.net
-007vn.org
-007vn.vip
-007win.com
-007win.org
-007win.shop
-007win0.com
-007win04.com
-007win06.com
-007win07.com
-007win10.com
-007win2.com
-007win22.com
-007win33.com
-007win44.com
-007win6.com
-007win77.com
-007yb.com
-008-122.vip
-008-137.vip
-008-142.vip
-008-146.vip
-008-152.vip
-008-153.vip
-008-161.vip
-008-167.vip
-008-169.vip
-0080-casino.buzz
-00800.vip
-00803.app
-00808.vip
-0080a.com
-0080c.com
-0080kk.com
-0080pj.com
-0080y.com
-008138.app
-0081n.com
-0081t.com
-008239.cc
-008389.com
-0085002.com
-0085006.com
-0085008.com
-0085009.com
-008502.com
-00853yurenmatou.com
-0085ee.com
-0085ll.com
-0085pp.com
-0085qq.com
-0085uu.com
-0085vip.com
-0085vip3.com
-0085vip8.com
-0085vv.com
-0085ww.com
-0085zz.com
-0086t.com
-0087ph.com
-00882005.com
-00882007.com
-00882023.com
-00882277.com
-0088304.com
-00884118.com
-00885003.com
-0088502.com
-0088540.com
-0088696.com
-00887076.com
-00888076.com
-00888449.com
-0088bet20.com
-0088bet23.com
-0088bet63.com
-0088bet72.com
-0088bet73.com
-0088bet96.com
-0088bet97.com
-0088vn.com
-0088wb.com
-008901.com
-008902.com
-008905.com
-008906.com
-008907.com
-008938.com
-0089bet.com
-008a103.com
-008a104.com
-008a105.com
-008a106.com
-008a109.com
-008a111.com
-008a112.com
-008a114.com
-008a115.com
-008a117.com
-008a118.com
-008a129.com
-008a77.com
-008a81.com
-008a83.com
-008a85.com
-008a86.com
-008a87.com
-008a89.com
-008a93.com
-008a96.com
-008bet7.com
-008fs.com
-008i9.com
-008nohu.com
-008p6.com
-008pxj.com
-008u1.com
-008u10.com
-008u3.com
-008u4.com
-008u8.com
-008u9.com
-008win999.com
-008xpj.com
-008yd.com
-009.casino
-009.com
-009015.com
-009017.com
-009024.com
-009026.com
-009028.com
-009041.com
-009043.com
-009047.com
-009054.com
-009064.com
-009074.com
-009084.com
-009131.com
-009189.com
-00956.net
-009881.com
-009883.com
-00990.vip
-0099153.com
-00992.com
-00992003.com
-00992005.com
-00992007.com
-00992017.com
-009944.com
-00994688.com
-0099502.com
-00995076.com
-0099540.com
-00997076.com
-00998.vip
-00998.xyz
-00998076.com
-0099bet22.com
-0099vn.com
-009bet.bet
-009c99.com
-009casino.bet
-009casino.co
-009casino.com
-009casino.cyou
-009casino.guide
-009casino.help
-009casino.mobi
-009casino.today
-009casino.zone
-009casinoz.net
-009game.link
-009kyc.com
-009mgm.com
-009nohu.com
-009p6.com
-009sfym.com
-009uni.com
-009yd.com
-00a.casino
-00bestpg.com
-00bet088.com
-00bet99.com
-00boi.bet
-00bs.com
-00casino.com
-00d88.com
-00ff9980.com
-00fun.vip
-00go99.com
-00hh145.com
-00hi88.com
-00ii9980.com
-00iplwin.com
-00jl777.com
-00l.casino
-00ll145.com
-00ll9980.com
-00nohu.com
-00oo9980.com
-00pg88.com
-00ph92.com
-00phpwin.com
-00poker.com
-00r.casino
-00rockstarcasino64.com
-00rr88.com
-00rr9980.com
-00slot365.com
-00win33.com
-00xwin.com
-00xx9980.com
-00yabo.com
-00yb.com
-00yeu88.com
-00yy8331.com
-00z.casino
-00zun.com
-00zz9980.com
-01-06.me
-01-07-26.casino
-01-07.casino
-01-07m.casino
-01-7.casino
-01-casino.com
-01000.com
-010033.cc
-010044.cc
-010055.cc
-010066.cc
-010077.cc
-010088.cc
-0100n.com
-0101076.com
-0101304.com
-01016018.com
-0101650.com
-01017076.com
-01018177.com
-010183.xyz
-0101bet08.com
-0101bet365.com
-0101bet38.com
-0101bet39.com
-0101bet56.com
-0101bet57.com
-0101bet61.com
-0101bet63.com
-0101bet69.com
-0101bet72.com
-0101bet79.com
-0101bet85.com
-0101bet89.com
-0101bet90.com
-0101bet94.com
-0101bet98.com
-0101betsorte.com
-010200.com
-0102138.com
-010232.xyz
-01026.casino
-0102c.com
-0105.app
-0107casino.team
-0107d.casino
-010casino.com
-010nohu.com
-010p6.com
-010wanbo.com
-010wns888.com
-010xin888.com
-0111hui.com
-0112003.com
-0112n.com
-0112t.com
-011317.com
-011351.com
-011397.com
-0113s.com
-011432.com
-011517.com
-01155.com
-0115s.com
-01166a.com
-01166b.com
-01166c.com
-01166d.com
-01166f.com
-01166h.com
-01166j.com
-01166k.com
-01166m.com
-01166n.com
-01166p.com
-01166q.com
-01166r.com
-01166u.com
-01166v.com
-01166w.com
-01166x.com
-01166y.com
-01166z.com
-01185.vip
-011869.com
-0118t.com
-0119s.com
-011ks.com
-011nohu.com
-011p6.com
-011z.casino
-012.vip
-01209.casino
-0122003.com
-0122n.com
-0123win.com
-0125-casino.buzz
-01265.casino
-01266e.com
-012a5.com
-012aee.com
-012ajj.com
-012akk.com
-012all.com
-012amm.com
-012bet22.com
-012bet33.com
-012bg.com
-012c2.com
-012dd.com
-012ff.com
-012nohu.com
-012p6.com
-012pxj.com
-012rr.com
-012uu.com
-012uuuu.com
-012vv.com
-012wwww.com
-012xxxx.com
-013.app
-013123.com
-0133win.com
-0134000.com
-0136358.com
-01371188.com
-01372233.com
-013806.app
-013833.com
-0139.com
-013958.com
-013bet.co
-013bet.com
-013bet.net
-013bet.win
-013bet23.com
-013bet8.com
-013nohu.com
-013p6.com
-0140-casino.buzz
-014060.com
-01427.com
-01438.casino
-0144t.com
-01472.com
-014nohu.com
-014p6.com
-014vip.com
-015108.com
-015160.com
-015180.com
-015208.com
-0152ii.com
-015327.com
-01548.com
-01548c.com
-01548g.com
-015621.com
-015625.com
-015631.com
-0158bet8600.vip
-015nohu.com
-015p6.com
-015win.app
-015win.com
-016006.com
-016066.com
-01630163h.com
-01630163s.com
-01643.casino
-0164677.com
-01660166h.com
-01660166o.com
-01660166u.com
-01662.casino
-016659.com
-016665.com
-016679.com
-016688.net
-01677.com
-01678xpj.top
-0167xxx.com
-01681680.com
-0169.vip
-01698.casino
-016996.com
-016n.casino
-016nohu.com
-016p6.com
-01716.vip
-017217.cc
-017723.com
-017755.com
-0178888.com
-01789win.com
-017bet-12.com
-017bet.co
-017bet.win
-017bet03.com
-017bet25.com
-017bet49.com
-017bet70.com
-017bet83.com
-017bet87.com
-017nohu.com
-017p6.com
-017zl.com
-01802.com
-0180c.com
-01811su.com
-01832.casino
-01835.vip
-018389.com
-01846.casino
-0185666.com
-01867.casino
-018789.com
-018789win.com
-01888.xyz
-018nohu.com
-018p6.com
-0191146.com
-019219.cc
-019312.com
-019393.app
-0198.pro
-0199-casino.buzz
-019966.com
-019fgyijy.com
-019nohu.com
-019p6.com
-019zl.com
-01b3659.com
-01bets.com
-01casinos.com
-01go99.com
-01hello88.com
-01jl6.com
-01kuwin.com
-01livedrawhk.online
-01nohu.com
-01o.casino
-01ph92.com
-01qh88.com
-01slvip.com
-01turf.com
-01uu88.com
-01xbet.net
-01xbet.org
-01ycw.com
-02-06.casino
-02-07.casino
-02-07m.casino
-02000.com
-020002.com
-020034.com
-02005.casino
-020062.com
-020063.com
-020064.com
-020065.com
-020071.com
-020076.com
-020079.com
-020081.com
-020083.com
-020084.com
-020085.com
-020087.com
-020094.com
-0200n.com
-02022007.com
-02022017.com
-0202304.com
-0202442.com
-020252.com
-020259.com
-02026018.com
-02027076.com
-02034.casino
-0203659.com
-020390.com
-020429.com
-0205-casino.buzz
-020726.casino
-0207casino.buzz
-0207casino.team
-0207casino.top
-0207t.casino
-020casino.nl
-020k365.com
-020nohu.com
-020p6.com
-020wanbo.com
-020wns666.com
-020wns888.com
-020xin888.com
-021166.com
-0211s.com
-0214677.com
-0215x.com
-02169.com
-02169c.com
-02175.com
-02180.com
-021nohu.com
-021saibo.com
-021v.casino
-021wanbo.com
-021wns666.com
-021wns888.com
-021xin888.com
-0221s.com
-0222n.com
-0223-casino.buzz
-0223s.com
-0224-casino.buzz
-0224677.com
-02258.casino
-022789.com
-0227s.com
-0228s.com
-0229x.com
-022nohu.com
-022wanbo.com
-022wns888.com
-022xin888.com
-02302.com
-02325.com
-0233win.com
-023nohu.com
-023wns666.com
-023wns888.com
-023xfc.com
-023xin888.com
-024.app
-0242x.com
-0244677.com
-024488.com
-02451.casino
-02452.casino
-0247-casino.buzz
-0248-casino.buzz
-024bona.com
-024k2.com
-024nohu.com
-024pj8.com
-024wanbo.com
-024wns666.com
-024wns888.com
-024xin888.com
-0250-casino.buzz
-025147.cc
-02521.casino
-0252x.com
-0253659.com
-025460.cc
-0254677.com
-0255-casino.buzz
-025k365.com
-025k8.com
-025nohu.com
-025pj8.com
-025saibo.com
-025wanbo.com
-025wns666.com
-025wns888.com
-025xin888.com
-0260bets.com
-026172.com
-026178.com
-0263-casino.buzz
-0264677.com
-026casino.courses
-026df.com
-026kb.com
-026ks.com
-026nohu.com
-02702.com
-0271199.com
-02724.casino
-0275-casino.buzz
-0279-casino.buzz
-027k2.com
-027nohu.com
-027saibo.com
-027wanbo.com
-027wns888.com
-027xin888.com
-02819.com
-0281x.com
-028222.com
-0282k.com
-0282x.com
-0282zb.com
-0283659.com
-0284.casino
-0287.casino
-02878.casino
-02887b.com
-02887o.com
-02888.xyz
-0288betss.com
-0289.casino
-02896.casino
-0289h.com
-0289p.com
-0289q.com
-028k2.com
-028k365.com
-028nohu.com
-028pj8.com
-028wanbo.com
-028wns666.com
-028wns888.com
-028xin888.com
-02919a.com
-02919app.com
-02919f.com
-02929.org
-0293659.com
-029393.app
-029399.com
-0294677.com
-0296888.com
-02986.com
-02986a.com
-02986b.com
-02986c.com
-02986d.com
-02986e.com
-02986f.com
-02986g.com
-02986t.com
-02986z.com
-0299-casino.buzz
-0299s.com
-029k2.com
-029nohu.com
-029pj8.com
-029wanbo.com
-029wns666.com
-029wns888.com
-029xin888.com
-02b3659.com
-02d.casino
-02go99.com
-02hi88.com
-02i.casino
-02jl59.com
-02k.casino
-02kuwin.com
-02livedrawhk.online
-02n1.casino
-02ninecasino61.com
-02nohu.com
-02ph92.com
-02qh88.com
-02yb.com
-03-0-7.casino
-03-07.casino
-03000.com
-030014.com
-030016.com
-030024.com
-030029.com
-030041.com
-030042.com
-030043.com
-030046.com
-030049.com
-030054.com
-030064.com
-0300726.casino
-030074.com
-030081.com
-030084.com
-03009.casino
-030090.com
-030094.com
-0300n.com
-0302-casino.buzz
-030256.com
-0303076.com
-03032277.com
-0303442.com
-030386.com
-0305799.com
-03061.com
-03068.casino
-0307.casino
-0307casino.online
-0307d.casino
-0307r.casino
-0308888.com
-03090.app
-030ks.com
-030nohu.com
-031.app
-03113659.com
-0311pj8.com
-0311wanbo.com
-0311wns888.com
-0311xin888.com
-0314677.com
-0315-casino.buzz
-03157.casino
-0315z6.com
-03168520.net
-03168666.com
-03174.com
-03179.casino
-0318888.com
-031df.com
-031nohu.com
-032.app
-0320-casino.buzz
-03207.com
-03226.casino
-0322w.com
-0325.casino
-032686930.com
-0327-casino.buzz
-0329-casino.buzz
-032df.com
-032nohu.com
-0331s.com
-0333n.com
-0333win.com
-03342.casino
-0335799.com
-0335n.com
-0335z6.com
-033666.com
-03368.app
-0336a.com
-0336s.com
-033777.com
-0337n.com
-0338s.com
-033hg.com
-033nohu.com
-034034a.com
-034034h.com
-034034k.com
-034034n.com
-0344n.com
-03457.casino
-0346.casino
-034nohu.com
-035129.com
-03513659.com
-0351wanbo.com
-0351wns888.com
-0351xin888.com
-0352-casino.buzz
-03520168.net
-03520666.com
-035420.org
-0354239.com
-0355.casino
-0355799.com
-0356-casino.buzz
-0357-casino.buzz
-03580.casino
-035nohu.com
-036161.com
-0362288.com
-0363-casino.buzz
-03641b.com
-03641c.com
-03641f.com
-03641g.com
-03641h.com
-03641i.com
-03641j.com
-03641k.com
-03641l.com
-03641m.com
-03641n.com
-03641o.com
-03641p.com
-03641q.com
-03641r.com
-03641t.com
-03641u.com
-03641v.com
-03641w.com
-03641x.com
-03641y.com
-036601.com
-03663333.com
-03663344.com
-03663355.com
-03663366.com
-03663388.com
-03663399.com
-03664400.com
-03666168.com
-03666168.net
-03666520.com
-0367-casino.buzz
-036df.com
-036ks.com
-036nohu.com
-03713659.com
-0371wanbo.com
-0371wns888.com
-0371xin888.com
-03739.casino
-0376-casino.buzz
-0376239.com
-037766.com
-03777.co
-037979.com
-037df.com
-037nohu.com
-037vip.com
-037ww.com
-038010.com
-038020.com
-038021.com
-038023.com
-038024.com
-038025.com
-038036.com
-038042.com
-038043.com
-038045.com
-038051.com
-038054.com
-038060.com
-038061.com
-038062.com
-038063.com
-038064.com
-038065.com
-038067.com
-038072.com
-038073.com
-038075.com
-038076.com
-038091.com
-038092.com
-0382.casino
-0383.casino
-03832.casino
-0383app.com
-0383bet.com
-0385-casino.buzz
-038799.com
-0387x.com
-03888177.com
-038986.com
-038nohu.com
-0391100.com
-0391102.com
-0391104.com
-0391106.com
-0391107.com
-0391109.com
-0392-casino.buzz
-0393830.com
-0393831.com
-0393834.com
-0393837.com
-0393838.com
-0393839.com
-039393.vet
-03957.com
-03980.casino
-0398482.com
-0399s.com
-039app.com
-039bb.com
-039bet039.com
-039casino.net
-039dl.vip
-039nohu.com
-039t.casino
-039vip0.com
-039vip0.top
-039vip1.com
-039vip2.com
-039vip20.vip
-039vip24.vip
-039vip26.vip
-039vip3.com
-039vip4.com
-039vip4.top
-039vip5.com
-039vip5.top
-039vip6.top
-039vip9.top
-03b3659.com
-03go8.com
-03go99.com
-03hg3535.com
-03j.casino
-03jili.com
-03k0.casino
-03nohu.com
-03ph92.com
-03pxj.com
-03qh88.com
-03uu88.com
-03v.casino
-03v7sb.com
-04-0-7.casino
-04-07.casino
-04-07f.casino
-04-07m.casino
-04008vip.com
-0400n.com
-0404076.com
-04041006.com
-0404153.com
-0404304.com
-0404442.com
-0405-casino.buzz
-0406-casino.buzz
-0406casino.buzz
-0406casino.online
-040726.casino
-04074.casino
-0407m.casino
-0407x.casino
-0408-casino.buzz
-0408888.com
-040gg.com
-040nohu.com
-041.app
-0410-casino.buzz
-0411.casino
-041627.com
-0416666.com
-0418-casino.buzz
-041nohu.com
-042.app
-042000.com
-0424-casino.buzz
-04270.casino
-042700.com
-042777.com
-04293.casino
-042c.casino
-042nohu.com
-0430-casino.buzz
-0431-casino.buzz
-04313659.com
-043189.com
-0431wanbo.com
-0431wns888.com
-0431xin888.com
-043200.vip
-043211.vip
-0432111.com
-0432222.com
-04322a.com
-043233.vip
-0432333.com
-0432444.com
-043255.vip
-0432555.com
-043266.vip
-04326a.com
-04327a.com
-04328a.com
-043299.vip
-0432bbb.com
-04336.com
-043390.com
-0433n.com
-0433s.com
-0433win.com
-0436666.com
-0439-casino.buzz
-043h.com
-043nohu.com
-0441s.com
-0442.casino
-044503.com
-0448-casino.buzz
-044858.com
-0448888.com
-044940.com
-044nohu.com
-04513659.com
-04513b.top
-0451wanbo.com
-0451wns888.com
-0451xin888.com
-045577.com
-0455t.com
-0459js.com
-045nohu.com
-046.app
-046399.com
-0465.com
-0465r.com
-0466.casino
-04674.casino
-046nohu.com
-047000.com
-0471-casino.buzz
-04712.com
-04713659.com
-0471k365.com
-0471pj8.com
-0471wanbo.com
-0471wns666.com
-0471wns888.com
-0471xin888.com
-04726.casino
-0476-casino.buzz
-04761.com
-047df.com
-047nohu.com
-048.app
-048.com
-04847.casino
-048818.com
-048868.com
-048889.com
-048casino.bond
-048nohu.com
-0490-casino.buzz
-0490.casino
-049393.vet
-04940.casino
-04946.casino
-049555.com
-049678.com
-04970.com
-0498-casino.buzz
-04993.com
-049nohu.com
-04caopen.com
-04june.casino
-04nohu.com
-04ol.com
-04p.casino
-04ph92.com
-04pxj.com
-04qh88.com
-04uu88.com
-04w.casino
-04zxkf.com
-05-07.casino
-05-07m.casino
-05-7-26.casino
-05-7.casino
-0502-casino.buzz
-0503-casino.buzz
-0504casino.online
-1x-bet.com
-1xbet.com
-1xbet.com.br
-22bet.com
-888casino.com
-888poker.com
-apolobet.com
-bet365.bet.br
-bet365.com
-betano.bet.br
-betano.com
-betboo.com
-betcris.com
-betfair.bet.br
-betfair.com
-betfast.io
-betmotion.com
-betnacional.bet.br
-betnacional.com
-betsson.com
-betsul.com
-betway.com
-blaze-1.com
-blaze-2.com
-blaze.bet.br
-blaze.com
-bodog.com
-brxbet.com
-campobet.com
-casa-de-apostas.com
-casadeapostas.bet.br
-casadeapostas.com
-esportedasorte.bet.br
-esportedasorte.com
-estrelabet.bet.br
-estrelabet.com
-f12.bet
-f12bet.com
-fulltbet.com
-galera.bet
-jonbet.com
-kto.bet.br
-kto.com
-luva.bet
-novibet.bet.br
-novibet.com
-pagbet.com
-parimatch.bet.br
-parimatch.com
-pixbet.bet.br
-pixbet.com
-playbonds.com
-pokerstars.com
-rivalo.com
-sportingbet.bet.br
-sportingbet.com
-stake.bet.br
-stake.com
-superbet.bet.br
-superbet.com
-vaidebet.bet.br
-vaidebet.com
-vbet.com
-www.1xbet.com
-www.22bet.com
-www.888poker.com
-www.bet365.com
-www.betano.com
-www.betboo.com
-www.betfair.com
-www.betmotion.com
-www.betnacional.com
-www.betsson.com
-www.betsul.com
-www.betway.com
-www.blaze.com
-www.bodog.com
-www.esportedasorte.com
-www.estrelabet.com
-www.f12.bet
-www.galera.bet
-www.jonbet.com
-www.kto.com
-www.luva.bet
-www.novibet.com
-www.pagbet.com
-www.parimatch.com
-www.pixbet.com
-www.pokerstars.com
-www.rivalo.com
-www.sportingbet.com
-www.stake.com
-www.superbet.com
-www.vaidebet.com
-betano.com.br
-www.betano.com.br
-br.betano.com
-www.betano.bet.br
-betanobr.com
-www.betanobr.com
-br-betano.com
-betano-br.com
-kaizengaming.com
-bet365.com.br
-www.bet365.com.br
-www.bet365.bet.br
-betfair.com.br
-www.betfair.com.br
-www.betfair.bet.br
-sportingbet.com.br
-www.sportingbet.com.br
-www.sportingbet.bet.br
-estrelabet.com.br
-www.estrelabet.com.br
-www.estrelabet.bet.br
-kto.com.br
-www.kto.com.br
-www.kto.bet.br
-superbet.com.br
-www.superbet.com.br
-www.superbet.bet.br
-esportesdasorte.com
-esportesdasorte.bet.br
-esportesdasorte.com.br
-www.esportesdasorte.com
-www.esportesdasorte.bet.br
-www.esportesdasorte.com.br
-blaze.com.br
-www.blaze.com.br
-www.blaze.bet.br
-pixbet.com.br
-www.pixbet.com.br
-www.pixbet.bet.br
-betnacional.com.br
-www.betnacional.com.br
-www.betnacional.bet.br
-vaidebet.com.br
-www.vaidebet.com.br
-www.vaidebet.bet.br
-realsbet.com
-reals.bet.br
-segurobet.com
-segurobet.bet.br
-f12bet.com.br
-apostaganha.bet.br
-apostaganha.bet
-jonbet.bet.br
-jonbet.com.br
-pagbet.bet.br
-pagbet.com.br
-
-EOF_FEED_gambling.txt
-echo '>> Extraindo feeds/gaming.txt...'
-cat << 'EOF_FEED_gaming.txt' > $TMP_DIR/feeds/gaming.txt
-# ==========================================
-# WAM Feed - Jogos Online & Plataformas
-# ==========================================
-# Plataformas e Lojas de Jogos
-steampowered.com
-steamcommunity.com
-steamgames.com
-steamcontent.com
-epicgames.com
-unrealengine.com
-roblox.com
-rbxcdn.com
-riotgames.com
-leagueoflegends.com
-playvalorant.com
-pvp.net
-blizzard.com
-battle.net
-ea.com
-origin.com
-ubisoft.com
-uplay.com
-gog.com
-rockstargames.com
-minecraft.net
-mojang.com
-
-# Consoles e Redes
-playstation.com
-playstation.net
-sonyentertainmentnetwork.com
-xbox.com
-xboxlive.com
-nintendo.com
-nintendo.net
-
-# Jogos Mobile e Casuais Populares
-freefiremobile.com
-garena.com
-brawlstars.com
-clashofclans.com
-clashroyale.com
-supercell.com
-king.com
-candycrush.com
-miniclip.com
-poki.com
-y8.com
-clickjogos.com.br
-
-EOF_FEED_gaming.txt
-echo '>> Extraindo feeds/messaging.txt...'
-cat << 'EOF_FEED_messaging.txt' > $TMP_DIR/feeds/messaging.txt
-# ==========================================
-# WAM Feed - Mensageiros & Ferramentas de Comunicacao
-# ==========================================
-
-api.signal.org
-api.skype.com
-api.telegram.org
-api.whatsapp.com
-app.slack.com
-apps.skype.com
-a.web.telegram.org
-b-api.facebook.com
-bazoocam.org
-cdn.discordapp.com
-chatex.com
-chat.facebook.com
-chathub.cam
-chat-messenger.com
-chatous.com
-chatroulette.com
-chat.signal.org
-chat.whatsapp.com
-clubhouse.com
-config.teams.microsoft.com
-contacts.msn.com
-contest.com
-crashlogs.whatsapp.net
-discordapp.com
-discordapp.net
-discordcdn.com
-discord.co
-discord.com
-discord.design
-discord.dev
-discord.gg
-discord.gift
-discord.media
-discord.new
-dit.whatsapp.net
-dl.viber.com
-dyn.whatsapp.net
-edge-chat.facebook.com
-edge-chat.messenger.com
-edge.skype.com
-element.io
-fbmessenger.com
-flora.web.telegram.org
-gateway.discord.gg
-gateway.messenger.live.com
-getsession.org
-g.whatsapp.net
-icq.com
-icq.net
-interncache-ash.fbcdn.net
-joinclubhouse.com
-kakaocdn.net
-kakao.com
-kakaotalk.com
-kik.com
-k.web.telegram.org
-line-apps.com
-line.me
-line-scdn.net
-lne.me
-matrix.org
-media.discordapp.net
-media-gru1-1.cdn.whatsapp.net
-media-gru1-2.cdn.whatsapp.net
-media-gru2-1.cdn.whatsapp.net
-media-gru2-2.cdn.whatsapp.net
-media-iad3-1.cdn.whatsapp.net
-media-iad3-2.cdn.whatsapp.net
-media.whatsapp.net
-messenger.com
-messenger.hotmail.com
-messenger.microsoft.com
-messenger.msn.com
-m.me
-mmg-fna.whatsapp.net
-mmg.whatsapp.net
-msg.facebook.com
-msgr.live.com
-msn-messenger.com
-msnmessenger.com
-omegle.com
-pipe.skype.com
-pluto.web.telegram.org
-pps.whatsapp.net
-qpic.cn
-relay.skype.com
-share.viber.com
-signal.org
-skypeassets.com
-skype.com
-slackb.com
-slack.com
-slack-core.com
-slack-edge.com
-slack-files.com
-slack-gov.com
-slack-imgs.com
-slack-msgs.com
-slack.net
-slack-redir.net
-s-msn.com
-static.skypeassets.com
-statics.teams.cdn.office.net
-static.whatsapp.net
-static.xx.fbcdn.net
-status.discord.com
-stel.com
-storage.signal.org
-talkwithstranger.com
-tandem.net
-td.telegram.org
-teams.cloud.microsoft
-teams.live.com
-teams.microsoft.com
-teams.office.com
-teams.skype.com
-telegram-cdn.org
-telegram.dog
-telegram.me
-telegram.org
-telegra.ph
-telesco.pe
-textsecure-service.whispersystems.org
-threema.ch
-tinychat.com
-t.me
-ui.skype.com
-updates.signal.org
-us02web.zoom.us
-us04web.zoom.us
-us05web.zoom.us
-us06web.zoom.us
-venus.web.telegram.org
-vest.web.telegram.org
-viber.com
-v.whatsapp.com
-v.whatsapp.net
-wa.me
-webicq.icq.com
-web.messenger.com
-web.skype.com
-web.telegram.org
-web.whatsapp.com
-wechat.com
-weixin.com
-weixin.qq.com
-whatsapp-cdn-msft.akamaized.net
-whatsapp.com
-whatsapp.net
-whispersystems.org
-wire.com
-www.discordapp.com
-www.discord.com
-www.messenger.com
-www.signal.org
-www.skype.com
-www.slack.com
-www.telegram.org
-www.viber.com
-www.wechat.com
-www.whatsapp.com
-www.zoom.us
-zoomcloud.cn
-zoom.cn
-zoom.co
-zoom.com
-zoomgov.com
-zoom.us
-zura.web.telegram.org
-
-EOF_FEED_messaging.txt
-echo '>> Extraindo feeds/msg-discord.txt...'
-cat << 'EOF_FEED_msg-discord.txt' > $TMP_DIR/feeds/msg-discord.txt
-# Discord (Chat, Voz & Comunidades)
-discord.com
-www.discord.com
-discordapp.com
-www.discordapp.com
-discordapp.net
-discord.gg
-discord.media
-discordcdn.com
-gateway.discord.gg
-status.discord.com
-cdn.discordapp.com
-media.discordapp.net
-discord.co
-discord.design
-discord.dev
-discord.new
-discord.gift
-
-EOF_FEED_msg-discord.txt
-echo '>> Extraindo feeds/msg-messenger.txt...'
-cat << 'EOF_FEED_msg-messenger.txt' > $TMP_DIR/feeds/msg-messenger.txt
-# Facebook Messenger (Web & Apps)
-messenger.com
-www.messenger.com
-m.me
-fbmessenger.com
-edge-chat.messenger.com
-edge-chat.facebook.com
-chat.facebook.com
-b-api.facebook.com
-msg.facebook.com
-interncache-ash.fbcdn.net
-chat-messenger.com
-web.messenger.com
-static.xx.fbcdn.net
-
-EOF_FEED_msg-messenger.txt
-echo '>> Extraindo feeds/msg-others.txt...'
-cat << 'EOF_FEED_msg-others.txt' > $TMP_DIR/feeds/msg-others.txt
-# Signal, WeChat, Viber, LINE & Outros Mensageiros
-signal.org
-www.signal.org
-chat.signal.org
-api.signal.org
-storage.signal.org
-updates.signal.org
-textsecure-service.whispersystems.org
-wechat.com
-www.wechat.com
-weixin.qq.com
-weixin.com
-qpic.cn
-viber.com
-www.viber.com
-share.viber.com
-dl.viber.com
-line.me
-line-apps.com
-line-scdn.net
-lne.me
-kakao.com
-kakaotalk.com
-kakaocdn.net
-icq.com
-icq.net
-webicq.icq.com
-kik.com
-element.io
-matrix.org
-threema.ch
-getsession.org
-omegle.com
-chathub.cam
-chatroulette.com
-talkwithstranger.com
-bazoocam.org
-tinychat.com
-chatous.com
-chatex.com
-tandem.net
-clubhouse.com
-joinclubhouse.com
-wire.com
-whispersystems.org
-
-EOF_FEED_msg-others.txt
-echo '>> Extraindo feeds/msg-slack.txt...'
-cat << 'EOF_FEED_msg-slack.txt' > $TMP_DIR/feeds/msg-slack.txt
-# Slack (Chat Corporativo & Canais)
-slack.com
-www.slack.com
-app.slack.com
-slack-msgs.com
-slack-files.com
-slack-imgs.com
-slack-edge.com
-slackb.com
-slack-core.com
-slack-redir.net
-slack.net
-slack-gov.com
-
-EOF_FEED_msg-slack.txt
-echo '>> Extraindo feeds/msg-teams-skype.txt...'
-cat << 'EOF_FEED_msg-teams-skype.txt' > $TMP_DIR/feeds/msg-teams-skype.txt
-# Microsoft Teams, Skype & MSN Messenger
-teams.microsoft.com
-teams.live.com
-teams.office.com
-teams.cloud.microsoft
-teams.skype.com
-skype.com
-www.skype.com
-web.skype.com
-api.skype.com
-ui.skype.com
-apps.skype.com
-static.skypeassets.com
-skypeassets.com
-edge.skype.com
-pipe.skype.com
-relay.skype.com
-messenger.msn.com
-gateway.messenger.live.com
-msgr.live.com
-contacts.msn.com
-messenger.hotmail.com
-msnmessenger.com
-msn-messenger.com
-s-msn.com
-messenger.microsoft.com
-config.teams.microsoft.com
-statics.teams.cdn.office.net
-
-EOF_FEED_msg-teams-skype.txt
-echo '>> Extraindo feeds/msg-telegram.txt...'
-cat << 'EOF_FEED_msg-telegram.txt' > $TMP_DIR/feeds/msg-telegram.txt
-# Telegram (Web, Desktop, Mobile & API)
-telegram.org
-www.telegram.org
-t.me
-web.telegram.org
-telegram.me
-api.telegram.org
-telegra.ph
-telesco.pe
-td.telegram.org
-telegram.dog
-venus.web.telegram.org
-pluto.web.telegram.org
-flora.web.telegram.org
-zura.web.telegram.org
-vest.web.telegram.org
-k.web.telegram.org
-a.web.telegram.org
-contest.com
-telegram-cdn.org
-stel.com
-
-EOF_FEED_msg-telegram.txt
-echo '>> Extraindo feeds/msg-whatsapp.txt...'
-cat << 'EOF_FEED_msg-whatsapp.txt' > $TMP_DIR/feeds/msg-whatsapp.txt
-# WhatsApp (Web, Desktop & Mobile)
-whatsapp.com
-www.whatsapp.com
-web.whatsapp.com
-api.whatsapp.com
-v.whatsapp.com
-chat.whatsapp.com
-wa.me
-whatsapp.net
-static.whatsapp.net
-v.whatsapp.net
-media.whatsapp.net
-mmg.whatsapp.net
-mmg-fna.whatsapp.net
-crashlogs.whatsapp.net
-g.whatsapp.net
-dit.whatsapp.net
-pps.whatsapp.net
-dyn.whatsapp.net
-media-iad3-1.cdn.whatsapp.net
-media-iad3-2.cdn.whatsapp.net
-media-gru1-1.cdn.whatsapp.net
-media-gru1-2.cdn.whatsapp.net
-media-gru2-1.cdn.whatsapp.net
-media-gru2-2.cdn.whatsapp.net
-whatsapp-cdn-msft.akamaized.net
-
-EOF_FEED_msg-whatsapp.txt
-echo '>> Extraindo feeds/msg-zoom-meet.txt...'
-cat << 'EOF_FEED_msg-zoom-meet.txt' > $TMP_DIR/feeds/msg-zoom-meet.txt
-# Zoom Meetings
-zoom.us
-www.zoom.us
-zoomgov.com
-zoom.com
-us02web.zoom.us
-us04web.zoom.us
-us05web.zoom.us
-us06web.zoom.us
-zoom.cn
-zoom.co
-zoomcloud.cn
-
-EOF_FEED_msg-zoom-meet.txt
-echo '>> Extraindo feeds/news.txt...'
-cat << 'EOF_FEED_news.txt' > $TMP_DIR/feeds/news.txt
-# ==========================================
-# Rules WAM Feed - Notícias, Portais & Jornalismo
-# ==========================================
-
-# Grupo Globo e Variações de Domínio / Typos
-globo.com
-www.globo.com
-g1.globo.com
-g1globo.com
-www.g1globo.com
-g1.com.br
-www.g1.com.br
-g1.com
-oglobo.globo.com
-oglobo.com
-oglobo.com.br
-globo.com.br
-valor.globo.com
-valoreconomico.com.br
-valoreconomico.globo.com
-epocanegocios.globo.com
-techtudo.com.br
-techtudo.globo.com
-cbn.globoradio.globo.com
-radioglobo.globo.com
-
-# Grupo Folha / UOL
-uol.com.br
-www.uol.com.br
-noticias.uol.com.br
-economia.uol.com.br
-tab.uol.com.br
-folha.uol.com.br
-folha.com
-folha.com.br
-www.folha.com.br
-fsp.com.br
-f5.folha.uol.com.br
-agenciatass.com
-
-# Grupo Estado (Estadão)
-estadao.com.br
-www.estadao.com.br
-estadao.com
-politica.estadao.com.br
-economia.estadao.com.br
-internacional.estadao.com.br
-cultura.estadao.com.br
-
-# Grupo Record (R7)
-r7.com
-www.r7.com
-noticias.r7.com
-recordtv.r7.com
-fala-brasil.r7.com
-jornaldarecord.r7.com
-
-# Grupo Abril
-veja.abril.com.br
-veja.com.br
-veja.com
-exame.com
-www.exame.com
-quatro-rodas.abril.com.br
-super.abril.com.br
-guiadoestudante.abril.com.br
-claudia.abril.com.br
-
-# Portais Independentes e Noticiosos
-metropoles.com
-www.metropoles.com
-cnnbrasil.com.br
-www.cnnbrasil.com.br
-jovempan.com.br
-www.jovempan.com.br
-gazetadopovo.com.br
-www.gazetadopovo.com.br
-poder360.com.br
-www.poder360.com.br
-oantagonista.com.br
-www.oantagonista.com.br
-brasil247.com
-www.brasil247.com
-istoe.com.br
-www.istoe.com.br
-istoedinheiro.com.br
-cartacapital.com.br
-www.cartacapital.com.br
-infomoney.com.br
-www.infomoney.com.br
-revistaoeste.com
-conjur.com.br
-migalhas.com.br
-diariodocentrodoseumundo.com.br
-jornaldacidadeonline.com.br
-ndmais.com.br
-correiobraziliense.com.br
-em.com.br
-gazetaonline.com.br
-opovo.com.br
-zerohora.com.br
-gauchazh.clicrbs.com.br
-clicrbs.com.br
-tribunapr.com.br
-oliberal.com
-folhape.com.br
-diariodepernambuco.com.br
-atarde.com.br
-bnews.com.br
-bahianoticias.com.br
-campograndenews.com.br
-midiamax.com.br
-
-# Portais Internacionais de Notícias
-cnn.com
-edition.cnn.com
-bbc.com
-www.bbc.com
-bbc.co.uk
-reuters.com
-bloomberg.com
-nytimes.com
-theguardian.com
-washingtonpost.com
-wsj.com
-ft.com
-forbes.com
-elpais.com
-lemonde.fr
-dw.com
-aljazeera.com
-apnews.com
-huffpost.com
-time.com
-newsweek.com
-dailymail.co.uk
-independent.co.uk
-thesun.co.uk
-cbsnews.com
-nbcnews.com
-abcnews.go.com
-foxnews.com
-usatoday.com
-politico.com
-axios.com
-thehill.com
-sputniknews.lat
-rt.com
-
-EOF_FEED_news.txt
-echo '>> Extraindo feeds/p2p.txt...'
-cat << 'EOF_FEED_p2p.txt' > $TMP_DIR/feeds/p2p.txt
-# ==========================================
-# WAM Feed - Torrents, P2P & Pirataria
-# ==========================================
-thepiratebay.org
-thepiratebay.zone
-1337x.to
-1337x.is
-1337x.st
-yts.mx
-yts.lt
-rarbg.to
-torrentz2.eu
-torrentgalaxy.to
-limetorrents.pro
-eztv.re
-nyaa.si
-fitgirl-repacks.site
-skidrowreloaded.com
-utorrent.com
-bittorrent.com
-qbittorrent.org
-seedhost.eu
-tracker.opentrackr.org
-open.demonii.com
-
-EOF_FEED_p2p.txt
-echo '>> Extraindo feeds/shopping.txt...'
-cat << 'EOF_FEED_shopping.txt' > $TMP_DIR/feeds/shopping.txt
-# ==========================================
-# WAM Feed - Compras & E-commerce
-# ==========================================
-mercadolivre.com.br
-mercadolibre.com
-shopee.com.br
-shopee.com
-aliexpress.com
-shein.com
-amazon.com.br
-magazineluiza.com.br
-magalu.com
-casasbahia.com.br
-americanas.com.br
-submarino.com.br
-pontofrio.com.br
-extra.com.br
-kabum.com.br
-pichau.com.br
-terabyteshop.com.br
-enjoei.com.br
-olx.com.br
-netshoes.com.br
-centauro.com.br
-dafiti.com.br
-zattini.com.br
-
-EOF_FEED_shopping.txt
-echo '>> Extraindo feeds/social-media.txt...'
-cat << 'EOF_FEED_social-media.txt' > $TMP_DIR/feeds/social-media.txt
-# ==========================================
-# WAM Feed - Mídias Sociais
-# ==========================================
-
-# Meta / Facebook
-facebook.com
-www.facebook.com
-m.facebook.com
-fb.com
-fb.me
-fbcdn.net
-fbsbx.com
-facebook.net
-web.facebook.com
-
-# Instagram & Threads
-instagram.com
-www.instagram.com
-cdninstagram.com
-ig.me
-threads.net
-www.threads.net
-
-# TikTok / ByteDance
-tiktok.com
-www.tiktok.com
-m.tiktok.com
-tiktokcdn.com
-tiktokv.com
-musical.ly
-byteoversea.com
-ibyteimg.com
-pstatp.com
-bytedance.com
-
-# Twitter / X
-twitter.com
-www.twitter.com
-mobile.twitter.com
-x.com
-www.x.com
-t.co
-twimg.com
-abs.twimg.com
-pbs.twimg.com
-
-# Kwai / Kuaishou
-kwai.com
-www.kwai.com
-m.kwai.com
-kwai.net
-kwaicdn.com
-kuaishou.com
-
-# LinkedIn
-linkedin.com
-www.linkedin.com
-licdn.com
-
-# Pinterest
-pinterest.com
-www.pinterest.com
-pinimg.com
-
-# Snapchat
-snapchat.com
-www.snapchat.com
-snap-dev.net
-sc-cdn.net
-
-# Reddit
-reddit.com
-www.reddit.com
-redd.it
-redditstatic.com
-redditmedia.com
-
-# Bluesky & Outras
-bsky.app
-bsky.social
-tumblr.com
-www.tumblr.com
-bereal.com
-
-EOF_FEED_social-media.txt
-echo '>> Extraindo feeds/sports.txt...'
-cat << 'EOF_FEED_sports.txt' > $TMP_DIR/feeds/sports.txt
-# ==========================================
-# WAM Feed - Esportes, Futebol & Placares
-# ==========================================
-# Portais de Esportes e Futebol
-ge.globo.com
-globoesporte.globo.com
-espn.com.br
-espn.com
-espncdn.com
-lance.com.br
-tntsports.com.br
-gazetaesportiva.com
-trivela.com.br
-esporte.uol.com.br
-onefootball.com
-goal.com
-footstats.com.br
-ogol.com.br
-netvasco.com.br
-colunadofla.com
-meutimao.com.br
-gazetaesportiva.net
-superesportes.com.br
-
-# Placares ao Vivo e Estatísticas
-sofascore.com
-sofascore.com.br
-flashscore.com.br
-flashscore.com
-365scores.com
-livescore.com
-whoscored.com
-aiscore.com
-scoreboard.com
-besoccer.com
-
-# Sites Internacionais de Esportes
-marca.com
-as.com
-mundodeportivo.com
-sport.es
-lequipe.fr
-gazzetta.it
-corrieredellosport.it
-skysports.com
-theathletic.com
-
-# Entidades e Ligas Esportivas
-fifa.com
-uefa.com
-cbf.com.br
-conmebol.com
-nba.com
-nfl.com
-mlb.com
-nhl.com
-ufc.com
-formula1.com
-f1.com
-motorsport.com
-grandepremio.com.br
-
-# Transmissões e Streamings Esportivos (Legais e Piratas)
-futemax.app
-futemax.to
-futemax.la
-futemax.re
-multicanais.tv
-multicanais.is
-multicanais.fans
-futebolplayhd.com
-rojadirecta.me
-canaisplay.com
-futebolonlinehd.com
-rededoesporte.com
-globoesporte.com
-globoesporte.com.br
-
-EOF_FEED_sports.txt
-echo '>> Extraindo feeds/streaming.txt...'
-cat << 'EOF_FEED_streaming.txt' > $TMP_DIR/feeds/streaming.txt
-# ==========================================
-# WAM Feed - Streaming & Vídeo
-# ==========================================
-youtube.com
-www.youtube.com
-m.youtube.com
-youtu.be
-googlevideo.com
-ytimg.com
-netflix.com
-www.netflix.com
-nflxvideo.net
-nflximg.net
-nflxext.com
-primevideo.com
-www.primevideo.com
-pv-cdn.net
-disneyplus.com
-www.disneyplus.com
-dssott.com
-twitch.tv
-www.twitch.tv
-ttvnw.net
-jtvnw.net
-max.com
-www.max.com
-hbomax.com
-globoplay.globo.com
-spotify.com
-www.spotify.com
-scdn.co
-deezer.com
-www.deezer.com
-crunchyroll.com
-www.crunchyroll.com
-pluto.tv
-www.pluto.tv
-paramountplus.com
-www.paramountplus.com
-
-EOF_FEED_streaming.txt
-echo '>> Extraindo feeds/vpn-cisco.txt...'
-cat << 'EOF_FEED_vpn-cisco.txt' > $TMP_DIR/feeds/vpn-cisco.txt
-# Cisco AnyConnect, Secure Client & VPN Gateway
-ciscoanyconnect.com
-anyconnect.cisco.com
-vpn.cisco.com
-anyconnect.com
-secureclient.cisco.com
-pan-duo.cisco.com
-vpn-global.cisco.com
-asa.cisco.com
-ftd.cisco.com
-anyconnect-client.cisco.com
-
-EOF_FEED_vpn-cisco.txt
-echo '>> Extraindo feeds/vpn-commercial.txt...'
-cat << 'EOF_FEED_vpn-commercial.txt' > $TMP_DIR/feeds/vpn-commercial.txt
-# Commercial VPN Providers, Web Proxies & Tor
-nordvpn.com
-nordcdn.com
-nordvpn.net
-nordaccount.com
-nordsec.com
-expressvpn.com
-expressvpn.net
-xv-cdn.com
-expvpn.com
-surfshark.com
-surfshark.net
-surfsharkdns.com
-protonvpn.com
-protonvpn.net
-api.protonvpn.ch
-cyberghostvpn.com
-cyberghost.com
-cg-dialup.net
-privateinternetaccess.com
-piavpn.com
-windscribe.com
-mullvad.net
-api.mullvad.net
-tunnelbear.com
-hotspotshield.com
-hsselite.com
-anchorfree.com
-afsm.mobi
-purevpn.com
-purevpn.net
-ipvanish.com
-vyprvpn.com
-goldenfrog.com
-hidemyass.com
-hma.com
-zenmate.com
-zenmate.io
-strongvpn.com
-ivacy.com
-torguard.net
-privatevpn.com
-airvpn.org
-ovpn.com
-cactusvpn.com
-safervpn.com
-betternet.co
-hola.org
-urban-vpn.com
-turbovpn.com
-speedify.com
-adguard-vpn.com
-privadovpn.com
-fastestvpn.com
-pandavpnpro.com
-pandavpn.com
-freevpnplanet.com
-clearvpn.com
-kaspersky-vpn.com
-secureline.avast.com
-torproject.org
-torproject.net
-bridges.torproject.org
-psiphon.ca
-psiphon3.com
-psiphon3.net
-getlantern.org
-lantern.io
-ultrasurf.us
-ultrasurfing.com
-shadowsocks.org
-v2fly.org
-v2ray.com
-kproxy.com
-hide.me
-croxyproxy.com
-croxyproxy.rocks
-croxy.network
-croxy.org
-hidester.com
-proxysite.com
-proxysite.cloud
-megaproxy.com
-4everproxy.com
-whoer.net
-hideip.me
-blockaway.net
-plainproxy.com
-zalmos.com
-filterbypass.me
-vpnbook.com
-my-proxy.com
-proxfree.com
-free-proxy.cz
-geonode.com
-spys.one
-proxyscrape.com
-webshare.io
-brightdata.com
-smartproxy.com
-oxylabs.io
-proxyrack.com
-iproyal.com
-
-EOF_FEED_vpn-commercial.txt
-echo '>> Extraindo feeds/vpn-fortinet.txt...'
-cat << 'EOF_FEED_vpn-fortinet.txt' > $TMP_DIR/feeds/vpn-fortinet.txt
-# Fortinet / FortiGate SSL-VPN & FortiClient
-fortinet.com
-fortinet.net
-forticlient.com
-fortigate.com
-fortisandbox.com
-forticlouddns.com
-fortidns.com
-fortiview.com
-fct.fortinet.net
-global-forticlient.fortinet.net
-fortiguard.com
-fortiguard.net
-fortiportal.com
-fortisase.com
-fortissl.com
-fortiap.com
-fortiauthenticator.com
-
-EOF_FEED_vpn-fortinet.txt
-echo '>> Extraindo feeds/vpn-paloalto.txt...'
-cat << 'EOF_FEED_vpn-paloalto.txt' > $TMP_DIR/feeds/vpn-paloalto.txt
-# Palo Alto Networks GlobalProtect & Prisma Access
-globalprotect.paloaltonetworks.com
-prismaaccess.com
-gp.paloaltonetworks.com
-vpn.paloaltonetworks.com
-globalprotect.com
-pan-os.paloaltonetworks.com
-prisma.paloaltonetworks.com
-prismacloud.io
-strata.paloaltonetworks.com
-portal.paloaltonetworks.com
-gateway.paloaltonetworks.com
-gp-cloud.paloaltonetworks.com
-
-EOF_FEED_vpn-paloalto.txt
-echo '>> Extraindo feeds/vpn-ztna.txt...'
-cat << 'EOF_FEED_vpn-ztna.txt' > $TMP_DIR/feeds/vpn-ztna.txt
-# Fortinet / FortiGate SSL-VPN & FortiClient
-fortinet.com
-fortinet.net
-forticlient.com
-fortigate.com
-fortisandbox.com
-forticlouddns.com
-fortidns.com
-fortiview.com
-fct.fortinet.net
-global-forticlient.fortinet.net
-fortiguard.com
-fortiguard.net
-fortiportal.com
-fortisase.com
-fortissl.com
-fortiap.com
-fortiauthenticator.com
-# Cisco AnyConnect, Secure Client & VPN Gateway
-ciscoanyconnect.com
-anyconnect.cisco.com
-vpn.cisco.com
-anyconnect.com
-secureclient.cisco.com
-pan-duo.cisco.com
-vpn-global.cisco.com
-asa.cisco.com
-ftd.cisco.com
-anyconnect-client.cisco.com
-# Palo Alto Networks GlobalProtect & Prisma Access
-globalprotect.paloaltonetworks.com
-prismaaccess.com
-gp.paloaltonetworks.com
-vpn.paloaltonetworks.com
-globalprotect.com
-pan-os.paloaltonetworks.com
-prisma.paloaltonetworks.com
-prismacloud.io
-strata.paloaltonetworks.com
-portal.paloaltonetworks.com
-gateway.paloaltonetworks.com
-gp-cloud.paloaltonetworks.com
-# Zscaler ZPA & ZIA Cloud
-zscaler.com
-zscaler.net
-zscloud.net
-zscalerbeta.net
-zscalergov.net
-zscalerone.net
-zscalerthree.net
-zscalertwo.net
-zscalerenterprise.net
-zscaleranalytics.com
-zscalerapp.net
-zpa.zscaler.com
-zia.zscaler.com
-zpath.zscaler.com
-mobile.zscaler.com
-pac.zscaler.net
-sme.zscaler.net
-safebrowse.zdn.net
-zdn.net
-# Netskope Security Cloud & Netskope Private Access (NPA)
-netskope.com
-goskope.com
-netskopedns.com
-netskope.io
-eu.goskope.com
-us.goskope.com
-app.netskope.com
-addon-netskope.com
-nsclient.netskope.com
-npa.netskope.com
-gateway.goskope.com
-ep.goskope.com
-ca.goskope.com
-# Cloudflare WARP & Cloudflare Zero Trust
-cloudflareclient.com
-warp.plus
-gateway.warp.plus
-zero-trust.cloudflare.com
-argo.tunnel.cloudflare.com
-teams.cloudflare.com
-warp-svc.cloudflare.com
-warp-svc.net
-# Tailscale, ZeroTier, Twingate & Mesh Port Tunnels
-tailscale.com
-tailscale.io
-ts.net
-derp.tailscale.com
-controlplane.tailscale.com
-login.tailscale.com
-zerotier.com
-zerotier.net
-my.zerotier.com
-twingate.com
-autoupdate.twingate.com
-ngrok.com
-ngrok.io
-ngrok-free.app
-ngrok.app
-localtunnel.me
-pagekite.net
-pinggy.io
-localhost.run
-serveo.net
-bore.pub
-packetriot.com
-loophole.cloud
-teleport.sh
-goteleport.com
-netbird.io
-firezone.dev
-defined.net
-vpn.net
-logmein-gateway.com
-hamachi.cc
-# Commercial VPN Providers, Web Proxies & Tor
-nordvpn.com
-nordcdn.com
-nordvpn.net
-nordaccount.com
-nordsec.com
-expressvpn.com
-expressvpn.net
-xv-cdn.com
-expvpn.com
-surfshark.com
-surfshark.net
-surfsharkdns.com
-protonvpn.com
-protonvpn.net
-api.protonvpn.ch
-cyberghostvpn.com
-cyberghost.com
-cg-dialup.net
-privateinternetaccess.com
-piavpn.com
-windscribe.com
-mullvad.net
-api.mullvad.net
-tunnelbear.com
-hotspotshield.com
-hsselite.com
-anchorfree.com
-afsm.mobi
-purevpn.com
-purevpn.net
-ipvanish.com
-vyprvpn.com
-goldenfrog.com
-hidemyass.com
-hma.com
-zenmate.com
-zenmate.io
-strongvpn.com
-ivacy.com
-torguard.net
-privatevpn.com
-airvpn.org
-ovpn.com
-cactusvpn.com
-safervpn.com
-betternet.co
-hola.org
-urban-vpn.com
-turbovpn.com
-speedify.com
-adguard-vpn.com
-privadovpn.com
-fastestvpn.com
-pandavpnpro.com
-pandavpn.com
-freevpnplanet.com
-clearvpn.com
-kaspersky-vpn.com
-secureline.avast.com
-torproject.org
-torproject.net
-bridges.torproject.org
-psiphon.ca
-psiphon3.com
-psiphon3.net
-getlantern.org
-lantern.io
-ultrasurf.us
-ultrasurfing.com
-shadowsocks.org
-v2fly.org
-v2ray.com
-kproxy.com
-hide.me
-croxyproxy.com
-croxyproxy.rocks
-croxy.network
-croxy.org
-hidester.com
-proxysite.com
-proxysite.cloud
-megaproxy.com
-4everproxy.com
-whoer.net
-hideip.me
-blockaway.net
-plainproxy.com
-zalmos.com
-filterbypass.me
-vpnbook.com
-my-proxy.com
-proxfree.com
-free-proxy.cz
-geonode.com
-spys.one
-proxyscrape.com
-webshare.io
-brightdata.com
-smartproxy.com
-oxylabs.io
-proxyrack.com
-iproyal.com
-
-EOF_FEED_vpn-ztna.txt
-echo '>> Extraindo feeds/ztna-cloudflare.txt...'
-cat << 'EOF_FEED_ztna-cloudflare.txt' > $TMP_DIR/feeds/ztna-cloudflare.txt
-# Cloudflare WARP & Cloudflare Zero Trust
-cloudflareclient.com
-warp.plus
-gateway.warp.plus
-zero-trust.cloudflare.com
-argo.tunnel.cloudflare.com
-teams.cloudflare.com
-warp-svc.cloudflare.com
-warp-svc.net
-
-EOF_FEED_ztna-cloudflare.txt
-echo '>> Extraindo feeds/ztna-netskope.txt...'
-cat << 'EOF_FEED_ztna-netskope.txt' > $TMP_DIR/feeds/ztna-netskope.txt
-# Netskope Security Cloud & Netskope Private Access (NPA)
-netskope.com
-goskope.com
-netskopedns.com
-netskope.io
-eu.goskope.com
-us.goskope.com
-app.netskope.com
-addon-netskope.com
-nsclient.netskope.com
-npa.netskope.com
-gateway.goskope.com
-ep.goskope.com
-ca.goskope.com
-
-EOF_FEED_ztna-netskope.txt
-echo '>> Extraindo feeds/ztna-tailscale.txt...'
-cat << 'EOF_FEED_ztna-tailscale.txt' > $TMP_DIR/feeds/ztna-tailscale.txt
-# Tailscale, ZeroTier, Twingate & Mesh Port Tunnels
-tailscale.com
-tailscale.io
-ts.net
-derp.tailscale.com
-controlplane.tailscale.com
-login.tailscale.com
-zerotier.com
-zerotier.net
-my.zerotier.com
-twingate.com
-autoupdate.twingate.com
-ngrok.com
-ngrok.io
-ngrok-free.app
-ngrok.app
-localtunnel.me
-pagekite.net
-pinggy.io
-localhost.run
-serveo.net
-bore.pub
-packetriot.com
-loophole.cloud
-teleport.sh
-goteleport.com
-netbird.io
-firezone.dev
-defined.net
-vpn.net
-logmein-gateway.com
-hamachi.cc
-
-EOF_FEED_ztna-tailscale.txt
-echo '>> Extraindo feeds/ztna-zscaler.txt...'
-cat << 'EOF_FEED_ztna-zscaler.txt' > $TMP_DIR/feeds/ztna-zscaler.txt
-# Zscaler ZPA & ZIA Cloud
-zscaler.com
-zscaler.net
-zscloud.net
-zscalerbeta.net
-zscalergov.net
-zscalerone.net
-zscalerthree.net
-zscalertwo.net
-zscalerenterprise.net
-zscaleranalytics.com
-zscalerapp.net
-zpa.zscaler.com
-zia.zscaler.com
-zpath.zscaler.com
-mobile.zscaler.com
-pac.zscaler.net
-sme.zscaler.net
-safebrowse.zdn.net
-zdn.net
-
-EOF_FEED_ztna-zscaler.txt
-
-mkdir -p /usr/local/pkg
-mkdir -p /usr/local/www
-mkdir -p /usr/local/www/widgets/include
-mkdir -p /usr/local/www/widgets/widgets
-mkdir -p /usr/local/share/wam/feeds
-mkdir -p /var/unbound/conf.d
-
-cp $TMP_DIR/pkg/rules_wam.xml /usr/local/pkg/rules_wam.xml
-cp $TMP_DIR/pkg/rules_wam.inc /usr/local/pkg/rules_wam.inc
-cp $TMP_DIR/pkg/rules_wam.inc /usr/local/pkg/wam.inc
-cp $TMP_DIR/pkg/register_menu.php /usr/local/pkg/register_menu.php
-cp $TMP_DIR/pkg/rules_wam_hook.inc /usr/local/pkg/rules_wam_hook.inc
-cp $TMP_DIR/pkg/wam_cron.php /usr/local/pkg/wam_cron.php
-cp $TMP_DIR/www/rules_wam.php /usr/local/www/rules_wam.php
-cp $TMP_DIR/www/rules_wam_status.php /usr/local/www/rules_wam_status.php
-cp $TMP_DIR/www/rules_wam_dashboard.php /usr/local/www/rules_wam_dashboard.php
-cp $TMP_DIR/www/rules_wam_block.php /usr/local/www/rules_wam_block.php
-cp $TMP_DIR/widgets/include/rules_wam.inc /usr/local/www/widgets/include/rules_wam.inc
-cp $TMP_DIR/widgets/widgets/rules_wam.widget.php /usr/local/www/widgets/widgets/rules_wam.widget.php
-cp $TMP_DIR/feeds/*.txt /usr/local/share/wam/feeds/
-
-chmod 644 /usr/local/pkg/rules_wam.xml
-chmod 644 /usr/local/pkg/rules_wam.inc
-chmod 644 /usr/local/pkg/rules_wam_hook.inc
-chmod 644 /usr/local/pkg/wam.inc
-chmod 755 /usr/local/pkg/register_menu.php
-chmod 755 /usr/local/pkg/wam_cron.php
-chmod 644 /usr/local/www/rules_wam.php
-chmod 644 /usr/local/www/rules_wam_status.php
-chmod 644 /usr/local/www/rules_wam_dashboard.php
-chmod 644 /usr/local/www/rules_wam_block.php
-chmod 644 /usr/local/www/widgets/include/rules_wam.inc
-chmod 644 /usr/local/www/widgets/widgets/rules_wam.widget.php
-chmod 644 /usr/local/share/wam/feeds/*.txt
-
-touch /var/log/wam_audit.log
-chown www:wheel /var/log/wam_audit.log 2>/dev/null || true
-chmod 640 /var/log/wam_audit.log
-
-rm -rf "$TMP_DIR"
-
-echo "⚙️ Configurando interceptação de banner HTTP nos hosts..."
-cat << 'EOF_HOOK_PHP' > /tmp/wam_hook.php
-<?php
-$hook = 'if (file_exists("/usr/local/pkg/rules_wam_hook.inc")) { require_once("/usr/local/pkg/rules_wam_hook.inc"); }';
-foreach (array("/usr/local/www/index.php", "/usr/local/www/404.php") as $f) {
-    if (file_exists($f)) {
-        $c = file_get_contents($f);
-        if (strpos($c, "rules_wam_hook.inc") === false) {
-            $c = preg_replace("/<\\?php\\s*/i", "<?php\n" . $hook . "\n", $c, 1);
-            file_put_contents($f, $c);
-            echo "✓ Interceptor adicionado em $f\n";
-        } else {
-            echo "✓ Interceptor já presente em $f\n";
-        }
-    }
-}
-if (file_exists("/usr/local/www/404.html")) {
-    $c404 = file_get_contents("/usr/local/www/404.html");
-    require_once("config.inc");
-    require_once("interfaces.inc");
-    global $config;
-    $lan_ip = function_exists("get_interface_ip") ? get_interface_ip("lan") : "";
-    if (empty($lan_ip) && function_exists("get_interface_info")) { $linfo = get_interface_info("lan"); $lan_ip = $linfo["ipaddr"] ?? ""; }
-    if (empty($lan_ip) && function_exists("config_get_path")) { $lan_ip = config_get_path("interfaces/lan/ipaddr", ""); }
-    if (empty($lan_ip) && !empty($config["interfaces"]["lan"]["ipaddr"])) { $lan_ip = $config["interfaces"]["lan"]["ipaddr"]; }
-    if (empty($lan_ip) || !filter_var($lan_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) { $lan_ip = "192.168.1.1"; }
-    $js_redirect = '<script>if(window.location.hostname!=="' . $lan_ip . '"&&!window.location.hostname.includes("pfsense")){window.location.replace(window.location.protocol+"//' . $lan_ip . '/rules_wam_block.php?domain="+encodeURIComponent(window.location.hostname));}</script>';
-    $c404 = preg_replace('/<script>if\(window\.location\.hostname!==.*?<\/script>\s*/i', '', $c404);
-    $c404 = preg_replace("/<head[^>]*>/i", "<head>\n" . $js_redirect, $c404, 1);
-    file_put_contents("/usr/local/www/404.html", $c404);
-    echo "✓ Redirecionador de subrotas atualizado em /usr/local/www/404.html\n";
-}
-EOF_HOOK_PHP
-/usr/local/bin/php -q /tmp/wam_hook.php
-rm -f /tmp/wam_hook.php
-
-echo "⚙️ Configurando suporte a banner em HTTPS (porta 443)..."
-mkdir -p /usr/local/etc/nginx /usr/local/etc/rc.d
-
-echo "⚙️ Liberando as portas 80 e 443 para exibição dos banners e blindando acesso na porta 50443..."
-INITIAL_GUI_PORT=$(/usr/local/bin/php -r 'require_once("config.inc"); global $config; echo (!empty($config["system"]["webgui"]["port"])) ? $config["system"]["webgui"]["port"] : "443";' 2>/dev/null)
-[ -z "$INITIAL_GUI_PORT" ] && INITIAL_GUI_PORT=443
-
-/usr/local/bin/php -r '
-    require_once("config.inc");
-    global $config;
-    init_config_arr(array("system", "webgui"));
-    $config["system"]["webgui"]["nodnsrebindcheck"] = true;
-    $config["system"]["webgui"]["disablehttpredirect"] = true;
-    unset($config["system"]["webgui"]["noantilockout"]);
-
-    if (isset($config["interfaces"]["wan"]["blockprivatenets"])) {
-        unset($config["interfaces"]["wan"]["blockprivatenets"]);
-    }
-    if (isset($config["interfaces"]["wan"]["blockbogons"])) {
-        unset($config["interfaces"]["wan"]["blockbogons"]);
-    }
-
-    $cur_port = !empty($config["system"]["webgui"]["port"]) ? $config["system"]["webgui"]["port"] : "";
-    $cur_proto = !empty($config["system"]["webgui"]["protocol"]) ? $config["system"]["webgui"]["protocol"] : "https";
-    if (empty($cur_port) || $cur_port == "443" || $cur_port == "80" || $cur_port == "8443") {
-        $config["system"]["webgui"]["port"] = "50443";
-        $config["system"]["webgui"]["protocol"] = "https";
-        write_config("Rules WAM: WebGUI ajustada para porta 50443 e portas 80/443 liberadas");
-    } else {
-        write_config("Rules WAM: Portas 80 e 443 liberadas para banner e regras blindadas");
-    }
-' 2>/dev/null
-
-if [ "$INITIAL_GUI_PORT" != "50443" ]; then
-    echo ">> WebGUI estava na porta '${INITIAL_GUI_PORT}'. Migrando para 50443 em segundo plano..."
-    (sleep 2 && /etc/rc.restart_webgui) >/dev/null 2>&1 &
-    echo "   ✓ Reinício do webConfigurator agendado em segundo plano (conexão preservada sem queda)."
-else
-    echo ">> WebGUI já está ativa na porta 50443. Conexão mantida 100% ativa (sem reiniciar o webConfigurator)."
-fi
-/etc/rc.filter_configure 2>/dev/null || true
-
-GUI_PROTO=$(/usr/local/bin/php -r 'require_once("config.inc"); global $config; echo (!empty($config["system"]["webgui"]["protocol"])) ? $config["system"]["webgui"]["protocol"] : "https";' 2>/dev/null)
-GUI_PORT=$(/usr/local/bin/php -r 'require_once("config.inc"); global $config; echo (!empty($config["system"]["webgui"]["port"])) ? $config["system"]["webgui"]["port"] : "50443";' 2>/dev/null)
-[ -z "$GUI_PORT" ] && GUI_PORT=50443
-
-LAN_IP=$(/usr/local/bin/php -r 'require_once("config.inc"); require_once("interfaces.inc"); $ip = function_exists("get_interface_ip") ? get_interface_ip("lan") : ""; if (empty($ip) && function_exists("get_interface_info")) { $i = get_interface_info("lan"); $ip = $i["ipaddr"] ?? ""; } if (empty($ip)) { $ip = function_exists("config_get_path") ? config_get_path("interfaces/lan/ipaddr", "") : ($config["interfaces"]["lan"]["ipaddr"] ?? ""); } echo filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) ? $ip : "192.168.1.1";' 2>/dev/null)
-[ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
-
-# 1. Gerar Autoridade Certificadora (CA) interna com extensões v3_ca válidas
-cat << 'EOF_CA_CNF' > /tmp/rules_wam_ca.cnf
-[req]
-distinguished_name = req_distinguished_name
-prompt = no
-x509_extensions = v3_ca
-
-[req_distinguished_name]
-C = BR
-ST = SP
-O = Seguranca Corporativa
-CN = Rules WAM Firewall CA
-
-[v3_ca]
-basicConstraints = critical, CA:TRUE
-keyUsage = critical, digitalSignature, cRLSign, keyCertSign
-subjectKeyIdentifier = hash
-authorityKeyIdentifier = keyid:always,issuer
-EOF_CA_CNF
-
-if [ -f /tmp/rules_wam_ca.crt ] && [ -f /tmp/rules_wam_ca.key ]; then
-    echo "⚙️ Utilizando Autoridade Certificadora (CA) Corporativa pré-existente/importada..."
-    cp -f /tmp/rules_wam_ca.crt /var/etc/rules_wam_ca.crt
-    cp -f /tmp/rules_wam_ca.key /var/etc/rules_wam_ca.key
-    chmod 600 /var/etc/rules_wam_ca.key 2>/dev/null || true
-    chmod 644 /var/etc/rules_wam_ca.crt 2>/dev/null || true
-elif [ ! -f /var/etc/rules_wam_ca.crt ] || [ ! -f /var/etc/rules_wam_ca.key ]; then
-    /usr/bin/openssl req -x509 -new -newkey rsa:2048 -nodes -days 3650 \
-        -config /tmp/rules_wam_ca.cnf \
-        -keyout /var/etc/rules_wam_ca.key -out /var/etc/rules_wam_ca.crt 2>/dev/null || true
-    chmod 600 /var/etc/rules_wam_ca.key 2>/dev/null || true
-    chmod 644 /var/etc/rules_wam_ca.crt 2>/dev/null || true
-fi
-rm -f /tmp/rules_wam_ca.cnf 2>/dev/null || true
-
-cp -f /var/etc/rules_wam_ca.crt /usr/local/www/rules_wam_ca.crt 2>/dev/null || true
-chmod 644 /usr/local/www/rules_wam_ca.crt 2>/dev/null || true
-
-# 2. Gerar Certificado SSL do Servidor com SANs válidos (wildcards reais dos serviços)
-cat << 'EOF_GEN_CNF' > /tmp/wam_gen_cnf.php
-<?php
-require_once("config.inc");
-require_once("interfaces.inc");
-global $config;
-
-$lan_ip = function_exists("get_interface_ip") ? get_interface_ip("lan") : "";
-if (empty($lan_ip) && function_exists("get_interface_info")) { $linfo = get_interface_info("lan"); $lan_ip = $linfo["ipaddr"] ?? ""; }
-if (empty($lan_ip) && function_exists("config_get_path")) { $lan_ip = config_get_path("interfaces/lan/ipaddr", ""); }
-if (empty($lan_ip) && !empty($config["interfaces"]["lan"]["ipaddr"])) { $lan_ip = $config["interfaces"]["lan"]["ipaddr"]; }
-if (empty($lan_ip) || !filter_var($lan_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) { $lan_ip = "192.168.1.1"; }
-
-$popular = array(
-    'whatsapp.com', 'whatsapp.net', 'wa.me', 'facebook.com', 'fb.com', 'messenger.com', 'm.me',
-    'instagram.com', 'threads.net', 'tiktok.com', 'telegram.org', 't.me', 'telegra.ph',
-    'discord.com', 'discord.gg', 'discordapp.com', 'skype.com', 'microsoft.com', 'office.com',
-    'live.com', 'slack.com', 'zoom.us', 'zoom.com', 'youtube.com', 'youtu.be', 'twitter.com', 'x.com',
-    'netflix.com', 'spotify.com', 'twitch.tv', 'bet365.com', 'bet365.bet.br', 'bet365.com.br',
-    'betano.com', 'betano.bet.br', 'betano.com.br', 'br.betano.com', 'blaze.com', 'blaze.bet.br',
-    'sportingbet.com', 'sportingbet.bet.br', 'estrelabet.com', 'estrelabet.bet.br', 'kto.com', 'pixbet.com',
-    'xvideos.com', 'pornhub.com', 'xnxx.com', 'fatalmodel.com', 'globo.com', 'uol.com.br'
-);
-
-$san_lines = array('DNS.1 = localhost', 'IP.1 = ' . $lan_ip);
-$idx = 2;
-$added = array('localhost' => true, $lan_ip => true);
-
-foreach ($popular as $p) {
-    if (!isset($added[$p])) {
-        $san_lines[] = "DNS.{$idx} = {$p}";
-        $idx++;
-        $added[$p] = true;
-    }
-    $wild = "*.{$p}";
-    if (!isset($added[$wild])) {
-        $san_lines[] = "DNS.{$idx} = {$wild}";
-        $idx++;
-        $added[$wild] = true;
-    }
-}
-
-$feeds_dir = '/usr/local/share/wam/feeds';
-if (is_dir($feeds_dir)) {
-    $files = glob("{$feeds_dir}/*.txt");
-    // Pass 1: garante que cada categoria tenha seus principais dominios no certificado SSL
-    foreach ($files as $f) {
-        $lines = file($f, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        if (!$lines) continue;
-        $count = 0;
-        foreach ($lines as $line) {
-            $d = strtolower(trim($line));
-            if (empty($d) || $d[0] === '#') continue;
-            if (!isset($added[$d]) && $idx < 1200) {
-                $san_lines[] = "DNS.{$idx} = {$d}";
-                $idx++;
-                $added[$d] = true;
-                $count++;
-            }
-            $wild = "*.{$d}";
-            if (!isset($added[$wild]) && $idx < 1200) {
-                $san_lines[] = "DNS.{$idx} = {$wild}";
-                $idx++;
-                $added[$wild] = true;
-            }
-            if ($count >= 30) break;
-        }
-    }
-    // Pass 2: preenche as vagas restantes
-    foreach ($files as $f) {
-        if ($idx >= 1200) break;
-        $lines = file($f, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        if (!$lines) continue;
-        foreach ($lines as $line) {
-            $d = strtolower(trim($line));
-            if (empty($d) || $d[0] === '#') continue;
-            if (!isset($added[$d]) && $idx < 1200) {
-                $san_lines[] = "DNS.{$idx} = {$d}";
-                $idx++;
-                $added[$d] = true;
-            }
-            $wild = "*.{$d}";
-            if (!isset($added[$wild]) && $idx < 1200) {
-                $san_lines[] = "DNS.{$idx} = {$wild}";
-                $idx++;
-                $added[$wild] = true;
-            }
-        }
-    }
-}
-
-$cnf  = "[req]\n";
-$cnf .= "distinguished_name = req_distinguished_name\n";
-$cnf .= "prompt = no\n";
-$cnf .= "req_extensions = v3_req\n\n";
-$cnf .= "[req_distinguished_name]\n";
-$cnf .= "C = BR\nST = SP\nO = Seguranca Corporativa\nCN = Rules WAM Block\n\n";
-$cnf .= "[v3_req]\n";
-$cnf .= "basicConstraints = critical, CA:FALSE\n";
-$cnf .= "keyUsage = critical, digitalSignature, keyEncipherment\n";
-$cnf .= "extendedKeyUsage = serverAuth\n";
-$cnf .= "subjectKeyIdentifier = hash\n";
-$cnf .= "subjectAltName = @alt_names\n\n";
-$cnf .= "[alt_names]\n";
-$cnf .= implode("\n", $san_lines) . "\n";
-
-file_put_contents('/tmp/rules_wam_ssl.cnf', $cnf);
-echo "✓ Configuração SSL gerada com " . count($san_lines) . " nomes alternativos (SANs válidos)\n";
-EOF_GEN_CNF
-/usr/local/bin/php -q /tmp/wam_gen_cnf.php
-rm -f /tmp/wam_gen_cnf.php
-
-rm -f /var/etc/rules_wam_ssl.key /var/etc/rules_wam_ssl.crt
-/usr/bin/openssl req -new -newkey rsa:2048 -nodes \
-    -keyout /var/etc/rules_wam_ssl.key -out /tmp/rules_wam_ssl.csr \
-    -config /tmp/rules_wam_ssl.cnf 2>/dev/null || true
-
-/usr/bin/openssl x509 -req -days 3650 -in /tmp/rules_wam_ssl.csr \
-    -CA /var/etc/rules_wam_ca.crt -CAkey /var/etc/rules_wam_ca.key -CAcreateserial \
-    -out /var/etc/rules_wam_ssl.crt -extfile /tmp/rules_wam_ssl.cnf -extensions v3_req 2>/dev/null || true
-
-if [ ! -s /var/etc/rules_wam_ssl.crt ]; then
-    /usr/bin/openssl req -x509 -new -newkey rsa:2048 -nodes -days 3650 \
-        -config /tmp/rules_wam_ssl.cnf -extensions v3_req \
-        -keyout /var/etc/rules_wam_ssl.key -out /var/etc/rules_wam_ssl.crt 2>/dev/null || true
-fi
-
-chown root:www /var/etc/rules_wam_ssl.key /var/etc/rules_wam_ssl.crt 2>/dev/null || true
-chmod 640 /var/etc/rules_wam_ssl.key 2>/dev/null || true
-chmod 644 /var/etc/rules_wam_ssl.crt 2>/dev/null || true
-rm -f /tmp/rules_wam_ssl.csr /tmp/rules_wam_ssl.cnf 2>/dev/null || true
-
-# 3. Registrar CA e Certificado no Gerenciador de Certificados do pfSense (System > Cert. Manager)
-echo "⚙️ Registrando CA e Certificado no Gerenciador de Certificados do pfSense..."
-cat << 'EOF_CERT_PHP' > /tmp/wam_cert.php
-<?php
-require_once("config.inc");
-require_once("certs.inc");
-global $config;
-init_config_arr(array("ca"));
-init_config_arr(array("cert"));
-
-$ca_crt_file = "/var/etc/rules_wam_ca.crt";
-$ca_key_file = "/var/etc/rules_wam_ca.key";
-$cert_crt_file = "/var/etc/rules_wam_ssl.crt";
-$cert_key_file = "/var/etc/rules_wam_ssl.key";
-
-if (file_exists($ca_crt_file) && file_exists($ca_key_file)) {
-    $ca_descr = "Rules WAM Firewall CA";
-    $ca_refid = null;
-    foreach ($config["ca"] as $idx => &$ca_item) {
-        if ($ca_item["descr"] === $ca_descr) {
-            $ca_refid = $ca_item["refid"];
-            ca_import($ca_item, file_get_contents($ca_crt_file), file_get_contents($ca_key_file));
-            echo "✓ CA Rules WAM atualizada no Gerenciador de Certificados (Ref: $ca_refid)\n";
-            break;
-        }
-    }
-    unset($ca_item);
-
-    if (!$ca_refid) {
-        $ca_refid = uniqid();
-        $ca_entry = array(
-            "refid" => $ca_refid,
-            "descr" => $ca_descr,
-        );
-        ca_import($ca_entry, file_get_contents($ca_crt_file), file_get_contents($ca_key_file));
-        $config["ca"][] = $ca_entry;
-        echo "✓ CA Rules WAM registrada no Gerenciador de Certificados (Ref: $ca_refid)\n";
-    }
-
-    if (file_exists($cert_crt_file) && file_exists($cert_key_file)) {
-        $cert_descr = "Rules WAM SSL Server";
-        $cert_refid = null;
-        foreach ($config["cert"] as $idx => &$cert_item) {
-            if ($cert_item["descr"] === $cert_descr) {
-                $cert_refid = $cert_item["refid"];
-                cert_import($cert_item, file_get_contents($cert_crt_file), file_get_contents($cert_key_file));
-                $cert_item["caref"] = $ca_refid;
-                echo "✓ Certificado SSL Rules WAM atualizado no Gerenciador de Certificados\n";
-                break;
-            }
-        }
-        unset($cert_item);
-
-        if (!$cert_refid) {
-            $cert_entry = array(
-                "refid" => uniqid(),
-                "descr" => $cert_descr,
-                "caref" => $ca_refid,
-            );
-            cert_import($cert_entry, file_get_contents($cert_crt_file), file_get_contents($cert_key_file));
-            $config["cert"][] = $cert_entry;
-            echo "✓ Certificado SSL Rules WAM registrado no Gerenciador de Certificados\n";
-        }
-    }
-
-    write_config("Rules WAM: Certificados registrados no pfSense");
-}
-EOF_CERT_PHP
-/usr/local/bin/php -q /tmp/wam_cert.php
-rm -f /tmp/wam_cert.php
-
-# 4. Configurar NGINX SSL na porta 443 como Proxy Reverso para o webConfigurator local
-cat << 'EOF_NGINX_SSL' > /usr/local/etc/nginx/rules_wam_ssl.conf
-worker_processes 1;
-pid /var/run/rules_wam_ssl.pid;
-error_log /var/log/rules_wam_ssl.log info;
-events {
-    worker_connections 256;
-}
-http {
-    access_log off;
-    error_log /var/log/rules_wam_ssl.log info;
-
-    default_type text/html;
-    types {
-        text/html                             html htm;
-        application/x-x509-ca-cert            crt;
-    }
-
-    # Servidor HTTP na porta 80 (Intercepção direta sem avisos SSL)
-    server {
-        listen 80;
-        server_name _;
-        root /usr/local/www;
-
-        location = /rules_wam_ca.crt {
-            root /usr/local/www;
-        }
-
-        location / {
-            fastcgi_pass unix:/var/run/php-fpm.socket;
-            fastcgi_param SCRIPT_FILENAME /usr/local/www/rules_wam_block.php;
-            fastcgi_param SCRIPT_NAME /rules_wam_block.php;
-            fastcgi_param DOCUMENT_URI /rules_wam_block.php;
-            fastcgi_param DOCUMENT_ROOT /usr/local/www;
-            fastcgi_param QUERY_STRING domain=$host&$query_string;
-            fastcgi_param REQUEST_METHOD $request_method;
-            fastcgi_param CONTENT_TYPE $content_type;
-            fastcgi_param CONTENT_LENGTH $content_length;
-            fastcgi_param SERVER_PROTOCOL $server_protocol;
-            fastcgi_param REMOTE_ADDR $remote_addr;
-            fastcgi_param REMOTE_PORT $remote_port;
-            fastcgi_param SERVER_ADDR $server_addr;
-            fastcgi_param SERVER_PORT $server_port;
-            fastcgi_param SERVER_NAME $host;
-            fastcgi_param HTTP_HOST $host;
-            fastcgi_param GATEWAY_INTERFACE CGI/1.1;
-            fastcgi_param SERVER_SOFTWARE nginx;
-            fastcgi_param REDIRECT_STATUS 200;
-            fastcgi_buffers 16 16k;
-            fastcgi_buffer_size 32k;
-            fastcgi_read_timeout 15s;
-            fastcgi_send_timeout 15s;
-            fastcgi_connect_timeout 5s;
-        }
-    }
-
-    # Servidor HTTPS na porta 443 (Intercepção SSL com CA e certificados)
-    server {
-        listen 443 ssl;
-        server_name _;
-        ssl_certificate /var/etc/rules_wam_ssl.crt;
-        ssl_certificate_key /var/etc/rules_wam_ssl.key;
-        ssl_protocols TLSv1.2 TLSv1.3;
-        ssl_ciphers HIGH:!aNULL:!MD5;
-        root /usr/local/www;
-        
-        location = /rules_wam_ca.crt {
-            root /usr/local/www;
-        }
-
-        location / {
-            fastcgi_pass unix:/var/run/php-fpm.socket;
-            fastcgi_param SCRIPT_FILENAME /usr/local/www/rules_wam_block.php;
-            fastcgi_param SCRIPT_NAME /rules_wam_block.php;
-            fastcgi_param DOCUMENT_URI /rules_wam_block.php;
-            fastcgi_param DOCUMENT_ROOT /usr/local/www;
-            fastcgi_param QUERY_STRING domain=$host&$query_string;
-            fastcgi_param REQUEST_METHOD $request_method;
-            fastcgi_param CONTENT_TYPE $content_type;
-            fastcgi_param CONTENT_LENGTH $content_length;
-            fastcgi_param SERVER_PROTOCOL $server_protocol;
-            fastcgi_param REMOTE_ADDR $remote_addr;
-            fastcgi_param REMOTE_PORT $remote_port;
-            fastcgi_param SERVER_ADDR $server_addr;
-            fastcgi_param SERVER_PORT $server_port;
-            fastcgi_param SERVER_NAME $host;
-            fastcgi_param HTTP_HOST $host;
-            fastcgi_param HTTPS on;
-            fastcgi_param GATEWAY_INTERFACE CGI/1.1;
-            fastcgi_param SERVER_SOFTWARE nginx;
-            fastcgi_param REDIRECT_STATUS 200;
-            fastcgi_buffers 16 16k;
-            fastcgi_buffer_size 32k;
-            fastcgi_read_timeout 15s;
-            fastcgi_send_timeout 15s;
-            fastcgi_connect_timeout 5s;
-        }
-    }
-}
-EOF_NGINX_SSL
-
-cat << 'EOF_RC_SSL' > /usr/local/etc/rc.d/rules_wam_ssl.sh
-#!/bin/sh
-
-stop_banner() {
-    pkill -TERM -f "rules_wam_ssl.conf" 2>/dev/null || true
-    if [ -f /var/run/rules_wam_ssl.pid ]; then
-        PID=$(cat /var/run/rules_wam_ssl.pid 2>/dev/null)
-        if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
-            kill -QUIT "$PID" 2>/dev/null || kill -TERM "$PID" 2>/dev/null || true
-        fi
-    fi
-    sleep 1
-    for p in $(sockstat -4 -l -p 80,443 2>/dev/null | awk 'NR>1 {print $3}' | sort -u); do
-        [ -n "$p" ] && kill -TERM "$p" 2>/dev/null || true
-    done
-    sleep 1
-    for p in $(sockstat -4 -l -p 80,443 2>/dev/null | awk 'NR>1 {print $3}' | sort -u); do
-        [ -n "$p" ] && kill -9 "$p" 2>/dev/null || true
-    done
-    rm -f /var/run/rules_wam_ssl.pid
-    sleep 1
-}
-
-case "$1" in
-    stop)
-        stop_banner
-        ;;
-    start|restart|*)
-        stop_banner
-        chmod 666 /var/run/php-fpm.socket 2>/dev/null || true
-        if [ ! -s /var/etc/rules_wam_ssl.crt ] || [ ! -s /var/etc/rules_wam_ssl.key ]; then
-            /usr/local/bin/php -r 'require_once("/usr/local/pkg/rules_wam.inc"); rules_wam_ensure_banner_certs();' 2>/dev/null || true
-        fi
-        /usr/local/sbin/nginx -c /usr/local/etc/nginx/rules_wam_ssl.conf 2>>/var/log/rules_wam_ssl.log || true
-        ;;
-esac
-EOF_RC_SSL
-chmod +x /usr/local/etc/rc.d/rules_wam_ssl.sh
-
-echo "⚙️ Iniciando NGINX SSL na interface LAN (${LAN_IP}:443)..."
-sh /usr/local/etc/rc.d/rules_wam_ssl.sh restart 2>/dev/null || true
-sleep 1
-
-if sockstat -4 -l -p 80,443 2>/dev/null | grep -q nginx; then
-    echo "✓ NGINX Banner (Portas 80 e 443) ativo e respondendo na LAN!"
-else
-    echo "⚠️ NGINX Banner não iniciou. Verifique /var/log/rules_wam_ssl.log"
-    tail -n 10 /var/log/rules_wam_ssl.log 2>/dev/null || true
-fi
-
-echo "⚙️ Executando registro nos menus do pfSense..."
-/usr/local/bin/php -q /usr/local/pkg/register_menu.php
-
-echo "⚙️ Recompilando regras do Unbound e liberando o Terra..."
-sed -i '' '/terra\.com\.br/d' /usr/local/share/wam/feeds/news.txt 2>/dev/null || true
-sed -i '' '/terra\.com\.br/d' /var/unbound/wam_blocklist.conf 2>/dev/null || true
-
-cat << 'EOF_CFG_PHP' > /tmp/wam_cfg.php
-<?php
-require_once("config.inc");
-require_once("/usr/local/pkg/rules_wam.inc");
-global $config;
-
-$lan_ip = function_exists("rules_wam_get_lan_ip") ? rules_wam_get_lan_ip() : "192.168.1.1";
-
-$cfg = rules_wam_get_config();
-$cfg["enable"] = "yes";
-$cfg["block_adult"] = "yes";
-$cfg["block_gambling"] = "yes";
-$cfg["block_gaming"] = "yes";
-$cfg["initialized"] = "yes";
-if (!isset($cfg["block_dns_bypass"])) {
-    $cfg["block_dns_bypass"] = "no";
-}
-if (!isset($cfg["enable_upstream_forwarding"])) {
-    $cfg["enable_upstream_forwarding"] = "no";
-}
-if (!isset($cfg["corp_protect_tools"])) {
-    $cfg["corp_protect_tools"] = "yes";
-}
-if (!isset($cfg["corp_protect_cloudflare"])) {
-    $cfg["corp_protect_cloudflare"] = "yes";
-}
-if (!isset($cfg["corp_protect_helpdesk"])) {
-    $cfg["corp_protect_helpdesk"] = "yes";
-}
-if (!isset($cfg["corp_protect_voip"])) {
-    $cfg["corp_protect_voip"] = "yes";
-}
-if (empty($cfg["block_action"])) {
-    $cfg["block_action"] = "block_page";
-}
-if (empty($cfg["block_page_ip"])) {
-    $cfg["block_page_ip"] = $lan_ip;
-}
-if (empty($cfg["corp_allowed_subnets"])) {
-    $cfg["corp_allowed_subnets"] = "172.24.0.0/16\n" . "192.168.0.0/16\n" . "192.192.0.0/16\n" . "10.0.0.0/8";
-}
-init_config_arr(array("system", "webgui"));
-$config["system"]["webgui"]["nodnsrebindcheck"] = true;
-$config["system"]["webgui"]["disablehttpredirect"] = true;
-config_set_path("installedpackages/rules_wam/config/0", $cfg);
-config_set_path("installedpackages/wam/config/0", $cfg);
-write_config("Rules WAM ativado (Banner de bloqueio ativo)");
-rules_wam_apply_rules($cfg);
-EOF_CFG_PHP
-/usr/local/bin/php -q /tmp/wam_cfg.php
-rm -f /tmp/wam_cfg.php
-
-/usr/local/sbin/unbound-control -c /var/unbound/unbound.conf local_zone_remove meet.google.com 2>/dev/null || true
-/usr/local/sbin/unbound-control -c /var/unbound/unbound.conf local_data_remove meet.google.com 2>/dev/null || true
-/usr/local/sbin/unbound-control -c /var/unbound/unbound.conf flush meet.google.com 2>/dev/null || true
-/usr/local/sbin/unbound-control -c /var/unbound/unbound.conf flush_zone google.com 2>/dev/null || true
-/usr/local/sbin/unbound-control -c /var/unbound/unbound.conf reload 2>/dev/null || true
-/usr/local/sbin/unbound-control -c /var/unbound/unbound.conf flush_zone . 2>/dev/null || true
-/etc/rc.filter_configure 2>/dev/null || true
-
-rm -f /tmp/config.cache /tmp/menu.cache 2>/dev/null || true
-
-echo ""
-echo "======================================================"
-echo " 🎉 INSTALAÇÃO DO RULES WAM CONCLUÍDA COM SUCESSO!"
-echo "======================================================"
-echo "👉 Menu: Services > Rules WAM"
-echo "👉 Dashboard: Aba 'Dashboard & Tentativas de Acesso'"
-echo "👉 Widget pfSense: Disponível no Dashboard (+ Adicionar Widget > Rules WAM)"
-echo "👉 Anti-Bypass DNS (Porta 53 NAT): Desativado por padrão (Opt-in via WebGUI)"
-echo "👉 Exportação: CSV para Excel e JSON nativo"
-echo "👉 WebGUI: ${GUI_PROTO}://<IP>:${GUI_PORT}"
-echo "======================================================"
+TMP_DIR=$(mktemp -d /tmp/wam_install.XXXXXX)
+trap 'rm -rf "$TMP_DIR"' EXIT
+LINE=$(awk '/^__PAYLOAD_BELOW__$/ { print NR + 1; exit 0 }' "$0")
+tail -n +"$LINE" "$0" | /usr/bin/openssl base64 -d | tar -xzf - -C "$TMP_DIR"
+sh "$TMP_DIR/install.sh" "$@"
+exit $?
+__PAYLOAD_BELOW__
+H4sIAAAAAAAAA+xcW3Mbt5L2a/gr4InWJH3IGZK6OKubl5bohFW2pCNSzknpeFkQ
+ByQnHs5MBjOUlNhP+7B/Y7P7cCqnap9S+3Je+ce2G8BcOaQoX5JNrZmUqRkAjUaj
+0f11A6Dl8IDats4nDz7ZpwGfJ9vb4hs+ue/mztbO9oPmdmsHKm02nmw9aDSbO42d
+B6Tx6VhKPiGM3yfkge+6wap6d5X/QT9fPjSuLMfgk9KX5OAjfIBMV6gUNV2fGIQG
+IbWtH8WT6ZLz0GacfNt+STzqU+KNeszhjLT0J/oN1G7pX+k3pS+ByAV3d+GLED4h
+Vqyj5LJen7ozVh+H1mt8gO+65/rBwXZja2tTvLqmjnjN3dAfMn7QPWvWumett47r
+sNeCNiEJFZL69Bih5Ft29fVFlzAeWDPmE4dygh3A11cNA/qoEWwq2U/6F1SLPxWP
+mv78v1wiWKwSRkzGKVCnxCU+My2fDS3XoVPmBC75pt8/qxHbumI+dUx3BV0q+QK2
+JDMuuaKOw3wdxjFF/uGVN/8b9hyPysGn+S+E2gHQN+kK8gwJ2u4PIbNcMrKGlDgu
+DB3mkFs2c4Bl7pJKQxf/VXUl1rzwhVjnv0oOgdY0VghiUtLUN3eJ+FIjBpkkvMJf
+7RPRcgWbPwA1oOsT17fGbKqD9o1cfwrcc9I9g7mb/+PKtobwBLVAYiawMHSdwHJC
+6q+SLnDPcQZqxA2JhsqjyVH4DBUAOpR1XOIxW7CqC+XqTAnIdmo51AbFRTHDVIOk
+er1vqgSVifnj0EF94jgZI2bh3zDYAMjoH2sVljgLSJ2FpZI1IpdE26hYJqmHVY3U
+HUYa5PUeCSbMKYmZHk5conV8390l7IYNw4CBiKagnGDycNbVKtU1Wf3GCkizNLJK
+pd7RefesPzjunh9AD0MT+wF9Rl2GPxsadPfoEfGuzapWOvvm7MAIuW/Y7pDawuh4
+E6/UPel3zttH/e6rzoHjli5JPUD2sF266JbxUgnMxuDl6avOANQDOvwp/bxbf6eJ
+CvD34Oz0vB9ViJ5362L9qVowXaKkd3pxftTpRZVzrwVRUCdC/TFMJozpX7Q9MGNC
+DkPKcZRQpEFZKVKcxLRUSYZhGALZ20vVi23XY1kzzTlQ/fLxwTst2yK/ulTDgsEU
+tp+8rdcnzPaqhDPQBoeUW7VWwyuLudqTE9tItwD6UjlOlSEBywWLZwIGy6S7RIxd
+tWtG7cC2DUsmLJeSkNwI5ea9GRs+Wv7BNZ3qljPMvbmZ2rk3nm/NkopsbHFYSQMw
+kaEOWiPeQrXB0Hcd8eKvMc9xGayA0BOF19fXadL5NwMwlUHICwpMyidXLvXNfB/Z
+amAmh29kc8scs4AbwLkdmiw36Kg0+k5K5RskEauXWLcPSX0Es5OsM2NjpGUWb34B
+U/+HEO0NDTn4EyaWLx26AYPpGmlJE7mI8U9YyHK6JJn3Mziaap1y8HXlt6lUnQQK
+iGftA7tTzRs6ecV8C/0TkP0f6Nrz57/MLDCpFQccXMrZucQRTpEF1KNVXQdzxm5w
+/RWtIWE//8RKG2C2SP2H7BwsaJhGhrAm3uD6LCGh86ODjafKBEcGWL4H+8t+IK0C
++wt/dNPyEr7Dd6ceLDVYr1M1DDnK3UVjILza/JcpmVHb9eHZcmbzn23LdHnacLfQ
+cBewtCltLtjfH0XJgkS0Ap61LP9tAn5ReDX06EPfAs8ZTtFjjsFvxpim0MWTP1+0
+X/z5onMeOfIc7Q5OXUReumCCHloSR8xDZu5w/ndCTfC9YC6AJEw3A/X22TWgx9hN
+13KUrWWAAeTOYDF5CNhIvyvZnFKcl9j5KzaVQFMeSyMHRAOTv7hawbQ5wUhO+BkY
+AQZGFZZrAONGmMxjRkmFM+xTvANTOpv/N0AHm1YRkZQRkZR3SbKkfUbBqPuF2qzW
+eczqepOcn+j3VFacZlDOkTUOfVlfL6B3DtAMrNVM4GABQAocnsLyKIDFQoHRshZu
+Mz3yFatdCeYhufd6LxTXPdey0HiHizmPVi3lem4srWgsiLyQ+aPTk+cvukf9g43K
+/djGsKd1aJhsZjghrIy3b0ngh6wq7UIdcU6avrZgGiJMs4ZNyFLKlp2qiAXXVxxq
+eBgOcREexPGNbc18JuMaib0jC1LDVcutANZZlrQkJ5YO9RgGcSL0oVdgOkgFzKPn
+okGJwpeanBVY/D+PAbkLz2UFoYjL7A9b4y8zDEsjEg3tn3gqGvSXhYNPySU3Tl7D
+Wlfij4Di4tqnDo/fRfjU4YhPCX/be8ut6dvbt9+9BZ4LwSl5nHsN6AHeCkiXUj4p
+5aZOjlzPkhZdog4uvOr0DQyC1D2Sgvugi+lHxE85rLSsWH2n0VeqJp9Qn6GWGyPG
+TJ4uYsHQcGA2b/Iv/aFuEvEXdG0g0iQGiN8wr0oq00DqU9LY2dpaXE8ZzKoVMLRQ
+6T40gZ+7aUKlNWjmIbNWRDNf6W66adCtFU1IvtJ6JFMmajnJuNJ9RBoFEkg4M+cF
+dVbTXYgikvFn+V2oeA+6qVhEW0k3VfE+5DMRjbaCfKbifXqIgyFttWCSindQXxVS
+FapggXG5z/JZJ0pblNw6rVb3KwyYoT3Wg5tghYkzMEeSCwpDJ0mRKm+d7urJ9vaq
++oV9pauUSl+SnnvlU4GJ0xi/Mpz/6mGwZYYegGYIuHiNTFz3TY0ctSMoTcG7QjDg
+Bejn+S0EwoChrbFbLflTHMriUhfRcsFrzBMUGQagmYnQl9nOAbKWJy5mL5sFWKqz
+Q6oP/QDlkY11TGbdUJHQ5aDUEPeBTwRIVn9+9pJAeAKQbsZsAeLjfGXIw/nPECKB
+DCdT1yQ7OzsRAOtJf+SHIkVWH3lTXZGNgBhCtMrIcsylNeseQ+m6f7pOQ71qFqrI
+nt26f31TG9evlxHLQqszzG5yLpC9WTRgH8PsENPLHKEWIDYIQpN0KSiBGwY+ILNI
+BLyqCVwRuOFwIpmwXTm1NDStQIenkuQVlk1jWQ2FS1o6OReOTQab6NtqBN0RYC20
+9JY9/2VsKawSAec7PaMivqmTttB0JJ0LanIZhQhEZXJ7hdHH+dFBYxkn2UxWtKoP
+iRFMvVQhSBTm+VETsbzMPox95pH6jJT/9dvOszi1WC5qqPB/lBYQKYEVWWJC4X8h
+BMS1WSEIi2DC4iZApqqQs1rmCx0nWQnRKepAzOhGJcpRciMzAsPwigdBAmrZ2KIZ
+G5bFWuKVZFkfUgiH5BsxzalnkPwgeRdN/ofmrBZSZFa0U6Z/JNIvgeddgjtZ/szC
+pNBh0ltc6Zhx1bG/i9trd9r/uKWMYXbJJAg8vmsY+92zuunWoxTL4e7GT0m6/ek7
+Tdkznl2xIgjFORhAUIwrtygb1u53Tub/Pv+3UwiPyYVz5YZg7Hz2PbPASmAUFTB0
+RrklSF6x7+kdvQk9+zBp/96bth/xk57nT9XH6v3/xnbzSSva/29ub+H+f6u51fq8
+//9bfD7B/n9iX1Zu+suaI/oj7opm84WRaxWAr33S7/QQNVCPjjFLwpN0wx9ru/Tj
+eA+R+3YEolqw7e9LO0npnDPAtQFbhDekoqxwTWXtanFq3Thp92swhRAIMMD/6Di5
+hFw15TLkdov0BkWAPwVxIoi7UC27l5aekcVt5TuBVGz2SswGVcwA3PbM4jC32QYi
+fcgc3GQRe0mVzOaWCGhoVZdZbDd9YsVENJzLTkahA8DRKbMAUWEW0HMtLrcszPQC
+qkWnDsS8FCCuoev7LJBp82U6B5j4jEo8HB8TWTIjUYYsnWrgYiRpkWdhw/I2PHC9
+GF8m/GzqKT3OJA8XQsI4jZcjjlJYi4eIJIKCUKqwEecfbID5ilS6HN/oRdWKQ9as
+aq7KBt4dmn70oHhVcq54NAvb7SuX0p1ZtYVOFvfj18hyrZuqWt1baq/+w1IAhd2s
+3v5/n4xRSneFgufYWFLyht0uKeG+XVQiFlQxOSwCemlOzKsM0YCNXd9iXP+eQ5Cd
+Ad9KoIsFizFAXJztGgN77NofFcYp6UjvfcO6LTRGEMyC3isLqTydMEjpXtG7KBNR
+F57AhYBzmDUd6lsaFZ/ZLjVJaq8tCtKFQfxUcWWUdInDSnJKUMYIojBdAtNFyci1
+xG42JmfYdElShVQQdYWMcCZdoNqe86sfHLL+3sj38wc/aM8/dR93xH/ib4z/mi34
+NFsQ/zU2NxsPyPanZgw//8/jv+Ldso/bB07wDsb1xfPf2t5M4v/N7U2Y/61G8/P5
+/9/ks/8UYYbxuEQekwLsBm/PUjlzTLmpgwyZuL4SxyvClWQQYVUQwU0DEdrYDIN4
+tRcw/w8uzj1zcf4CXOaQmRDjaOBzWB0CKE2HxkapNLbdK2qTDSQ4QDC+VyolD5dl
+UZ+rpGddjAOGUX5NDiC68Oltpbq3Vv3LMh68EO00GOfRaEzqcTJ1Nz3gbBBW1dal
+jydofdlBJBOZ+yiI7NIi1tfuYUqD4eR9hq4aXgrmMvj88X07z9FIAesPJpVB+x9M
+LQ4HkNIapOoCGd1XulGr9dUrhmnraVbSQYF+ycsKcgrEtY5YhAgIA+YE4vwRF/BQ
+7dHdW/MSDt5L/xaaf6gG3UnwPfToTpoZbfq9Lft6n4UMxSfo4y7/v9lsJPf/mpj/
+32xsb332/7/FZ/8p5o8wIWm5zoHW1BuaSHOaljM+0MJgVP9KI08PS/sPj0+P+t+d
+dfA6wRtYHniItPddr995STRdNzgE1FNqqEKum4GpQSukXufBLSjYhLGABLceO9AC
+dhMYN9zWyMRnowNsD09RYx1LsMukp8PSF/tD17v1rfEkwIeHl0fH7X77cgG54Ik7
+eJG+hgCWlrSHaNjIS+oAQT+7DwHVn0WnT8EEHqmEhjSIPTxcClbzzHcDJt3y8UmP
+tGfUmf8Nb9AhPvni9WtkysiwiKb+MGZs3xDP8F7J+rCpb+mNfSN6hJLACmx2WOAP
+9g1ZBHVUamkwsuB5VRpy38hUhaaY+YBvxVmKuOLsi33OhgHyErGwb0RvsFSiE0Et
+I+99I1WCFUPfPswm+PYNfIdlgevageWhBhymJ+lr5uOlQnXsld01IyCRFCGUvRrd
+fkCvuOyJXuE3/IFVjlLQSpxcSboAWpLIata/2KdDvBNqCOqGIp/rpie97CM69fZI
+X2Xz1+gp5d8SWak+xDcXWl+vi0PQ+yOL2SY/3F3EjPNf5JVCgcOzSdYKnqmfUTxc
+LkGrXvpCHJfqzLCBuB/5ZjxgmPqB+rh0D7LJa+5e+YgvmLinmesZEbyk7uukXhdL
+FoyrOx0AsQG0u3WGA9kGvqZT6pg4ykQEsgriBVxKdzbdN9L24fe2o3/UT35L4FP0
+cUf+p7Wd3P9vNsX9/9bOk8/x/2/yScf/ma0heO6I3W0M6j1mu/IMnRnvb6MFwBt2
+22RqOWGAl5SyF6TGzDGVPefgi6C1uOCEIT05Etd7rnDHvDKc0GnciTicL25gWOAN
+4uuCVbznxRyGlye4vPPFa+T7+c/CbGHuWtztBiPkk3NwKKbF36jcwYbFB6KjAyA6
+kDFJWfZdrok7rDPy9GkUrNTkVZg93BqtRE2r5Cex62mykeWwSvn84kWnN8CjfM9O
+T/vluM27UsnHK2M+G2Aqo6KpLQk8qQzF2bJVzhtrlzbEfECMeJDgm8GYBcoSisCK
+OfTKZmamCjAttleYWYlIXJZlRQjLYKjiJOheqXCI4p2iGr0TZ/gKzDS+fxdvOFca
+UgJI4WHM2Nu35OEdrCF0NKHKYIHHiIE0ecMgx3j/mEl9wd110B08ZCuueFIy/wfg
+gilVRxTV2YVo9wKv1gE1Hsz/jmiDJNvPNaSMyhTQ6RXeoxTVwH2Dg8MLaYAXacgp
+QBVUQgujZKxtTT1wmDT9YwkmXkW0wapUSxsq6j7IyI+ayt2LKRyGPkCfwL6V4SPg
+btRUzllQUc0vyzhJqrD8ukqekgrMmV0tLie7QnpAmk/c0DZlUV5FYC3Egr+2HNO9
+jqck1o1M+0ePSBGvDw8OpPqrubLdMe7puX5Fu0wA3hGs/tek46hDuY5LJq5PfSmt
+SHK436bUKmGVeh50J57TDL4jeHBD6tq6bI4oNLkvn+LuHt6plbfQSGUEjKPeqAFU
+C7nmIffA/MUizrD+fwmsLJieT9DHyvh/M/H/zVZrCzd+MP7ffPLZ//8Wn+L8v0r9
+3zOKfukGri9P6iWmFx6lu87c8kxvRDvJAV8IraXTXt+NhoFlF5dE+bvYoS6671ed
+81739AQ8eFmE42WoFtXC8uedznEPr8xgjeV3cvLN8L7r4Hn3RUc0W33wCNuC5+mq
+W5AYo4H5ApNFd3HTPfZPhIdTywdPdqPvSsAD8VYEdUDi818RF0lXngg0+qkbaH2F
+Rn6Rze7J0YuLY8GpShjsrjgr9TjmOU2o12/3L3rZERccAck3a18cd/uDF6dfLzSK
+zx8UN3nZ/svg2Xf9Tg8aNhugec1Ga0t95aei3YchHnf+Evex6vRKvrvjzvP2xYs+
+SOr8bNC7eHbS6WOfWlNdHDa++qvTfNLSmzviqdmCx3/Gx6/k847QO+OxWF7t8May
+LarWzUz9bIWPsyxA0ZV7g3AGMO2U+gJaV+hQxPLikjF06zrwb1PBTbFQRqEjEjRL
+4B/4rTSwY1MvuJVvEVAHoe9Ip7iXYD8oxDO1pAx9lhG+JW9APpkXyEa2RjNboRn3
+glWVj8x0+y6WTtcEjy0kIl3uCLci0M8GlufKn0MQ+smtGcNH3DIcgn7iDSJpXKYh
+AL86FFV3kSDFnwL51UMLo11TlFyKLi6zMcz9Nb2VqF5cUQrFe/DbzGfzv4Htspz5
+f06tobBinu/OmOn6+grBQz8D23oD7t4aDd6wW4gv4A90+2l4LcukxKBFOYOz8/J6
+F7d7qKZPUrwsK/4RECLKLi6d7UD5mh0o0BlRsDxqmj6SF/cJVei0UFxToVPZnAw9
+XGWe57lM/hGIF3YriArKUYC1JkuRmAcCjfNKOZ7DwYTyQSQCxWJBUSTtj9shSHV5
+l7Od+3S6bD2cXolfcwlcvEZHeVZ5VeINi5ID50J5OQvx3RR/U2RqjfHiocVJRWwL
+4mqkFhcBeC+UP0Hwon1SI6dn/aauw79OjbyCNxBaP/PxECL8wYKhDv/e0CD5ZY7U
+2XAJkqMj78uWRhK1hj4zB8lYQFIqSw0LgeQgerTrL1uCIcWXGylBpLYYZdFIjDNT
+kMyshSGmmtX4iEJCDWFCOTdjaTiRrRlB/qV6s2zIEGwFk4Hcps30lh/BGgQqUlwJ
+J++UYklx+PR6kJHWApMqp4pdeTSYlDG0zL1LrQBejtY6ML6bGCTZ4jJdUQSphQVk
+N6aRmpyIVJZlucZ4ZHlyhWnhQVDG6HBC8pVw5cT29jBvjdMT+DCjidDvmoY9Tws/
+CnWxvUyJmpboA6DvJF45GecEC5Hw+a8CDODlArk7Dwtc/CQlwL4om6Pj8iXCHcpf
+E1RV8aKx+tVJPadfIEyxi0EOUpZopSInigeNVVpnUXMXqBc1i+1iTjAilr+LYNZv
+2lSBkbwzxZc5Rxbllar5fouUIOrxw+Z1Km5xDH1L/PhjZIntJXaTVDo3uziXAmjW
+yLfd593Bq26v2xeXn2rkvHPcAaB81H5Rzc6n6ASEUy4vzmQeEaijIcVTFxEKfGu6
+2KRovgqVBcaH91QGI4DUjmnfpsxW4CZvl5i/RU7uQy/xusvYTSQireylarGmTPKN
+1tXiiA4P/MAN/5e9v21uI0kSBsH+rF8RhWYLQBcAAnyRVFRRKkqkVJyRSA7JUnW3
+pIElkQkyS0AmJjNBUirp7B7bT2dne2e3ux/OZs9up561s7Ee2z672941Oxuz+8R/
+Mn/g9iecu8dLRkRGJgCKVaXqp9BdIpAZrx4eHu4e/jKZBEnZRihg0q6cLhte/SUF
+5nj5PEwwjh5iz5MkCB4dbXPsCU9PunBOj0E8OIfN0e304Od5FgVZz8IZoJSjPoBj
+s8AzhkNBuPUHQLBd2CUJNm+MKLXzDOQF5DRK1jwfUrFKKayuM6JqfDI77pOx1qwB
+L9zi3Gu/FydjHiqX83OCom+A4MJV0qh/5jQvRbdnkFj36nAacNrIHwFNqdvt0tUN
+p05cRSNjHZ9771CTzaWgmHpFAcwPMVoWp2QcC1GhDijHsUtgWbdZWJAibYYlkcsk
+OFKg1vnhr60c7BUMYDUYT0TRFsvfY4PdZvWmJWjMQpnikfJTjvCZY4T2Yu0oYXT3
+4HwN7W8VSbA5x344cZwE+CKdnsAKwcuVtfu3CkBwblvt+J6U7IFT3qFdugS/ZW8S
+lFib79EQ7V/7517CH7bYk91nxzuH/Rdbz3a3t453+rsH6tmTZ1tP4feLNeeQDEBQ
+Y8UxfKgCuEZGqJlysqbNOBrGZfwQvCpCCB7OCSMsasnhOrTM1zcGN7PZWRB0j5lj
+nNQdpP1oOg6ScFB4XTUahbUNAF7TqjnvsBwb14LusGoYOZ3Xijv6VizGzP7OLhbs
+kVe4CUQuHPeliFVQ8VwbtTS0shqdgfqidDki2QUWQSWr7oLABbL8xBuNTrzBG3YO
+J2Y45Gw9V+wOvEk2RXv+3YNcgbi8/fXjg2XUrcy/TBKH3AwIiLkY0MZSgeifrzA6
+QaPG3RbVGGusAwc+DBItMkcjLznVsLUDr7VwUbWW6sjRvilz42BQ2E5ATo6c0pOc
+8CQJTvtkQd2oL0PZ7FX6eeNlt/3F689fddx/m1AECo699A0W7l7iY6893Go/ef35
+e/zxqgOllkO06OAjQAl9XIoUEjEEao5f9hxIoA8aTvsQuKAGll2BDVHvXtblMV/R
+h+xHISB8gab6g3gaZQ0/GMDaNM6CS/gmmm428TKq7oC3/Gjil75n+bg+6gyYe8Th
+ZGUUR6fzD7n0zQng0Bt3xWKlWbvysTcaTEcee7y7fYisEgy9jfGVTYYIVbVkqMhX
+Xyc5DpaEns4LV4v1GoS+SzhfAsD2EX7wrmu9wsd9xPPiO2JY9cG7llFytWL5voRW
+pJpEPHrAVleaRbbQboiPhCCUrzZBqKysGHW7x778kjVWV1hb68VVSwOD6u221pij
+ioAoFllBVlM2gaSrvlyHf/Mu5xXPRZsO6RwbZQ20uN09aFaz6ppaWikIFHEu9FmH
+13X1SygmUa1YLDmKT0HsB/Ls16mkY5iOWlzBorXPJZRiQZJx2RwFxRlRlwULItHD
+nHfZqJgPiBP5LzFz2GDFguJwNgryZ47CuIbGNPCBa7oCX+qynHzgKIsoqApjWYWY
+jsK4L9XUsLC+UV1gSLlIEHmjOoFzTnWz0VKZ5l/cKWk4qd8sPUMTBlQraDetul0n
+BZQBkT/yA274NtXvRJGrgTKjEF+W3fdgaEpN5AFOgQuGimTpjM+E318aRPc6UqCY
+Nbd9y2GCBgjhQAdGn4eE2NSKcrJZKLHJy+i9uNqZ56JLmIjm44JJjgziKilrzlcV
+uireZvhe5unDs3hofP1SIudrWwrgb3M8LzLR2FyDRnqbuWsQkPJXaoO9dp1OCjF5
+8TL1zAcNTMaqFq5HCR+5ZiQQgY2WC0HUfQyfBO/JdgfNZjIAAd3pU/wuUoJV3VyO
+YDcC+lZeSwL30euwY3SmZPEJWkDzjbLA/a3ACnlZNw9Syfs/OQTKYJZvaq7SIrVF
+mDBxf8RwI6ElK9rC0mXuJAnjJMzIkkLthhxN6Eyjpl6j9Oa2J3CVu6/TJDk6vLHC
+0CNJgPpFtHKJp9w4N6NztsVOpiCekPkGRcfSJyRIJikoadUpuZa9a4ybv7k2SGFW
+DmTV51SguJpImDJ0cffjVIFyQQXbEsc3l2qNoGvdPMvJ8FoF/pU/vqZgIEHAG7Hn
+ni+rhtxiiUTCBXljib2RpzG35Bl4PBBwhh5S6fLIO4kTL7v6KxoEQ+kXz/Nzbumi
+HBoX5dC4cEPj4iagceGEhrx1h1Oaj/djb9sBLCC3c20JCFh1unN33qlru47rVtCC
+vi5BY0uKfIDXP2BFA/cLsxYmHB877Yv5p32x4LSh/EfOG1O+OFitujT763V6dTqn
+rIOqMrgD842IlyKaxijwpTttbrHYJOudfTbwxmF0Fgtaw4o1oCwZEVz9mWESKE7p
+h1JtheZy4akMmzvbbEcdfkvcIYUfxybhFWZgFYMXjqLc1tQxYPmeEiUuIWIYdDHx
+LviFm4E6VK4lnVp0WmBYjpiqNfhdsL3hM5NWcFDkZfd10QIFH3Jhh76jrAPfTE7G
+UmoY9MEcGBmjaAOzLUpQqSFsQylLFCV1I6bhD8+fAfJNgFNHsjrGhFB1vJYbBBme
+6NxbGT1dA5gP+rqEacthH6IRWj8YetNR1n+rWVYZ04KdnEz61PYg66MDLloEmU8H
+o3jqD0deEhReAWuYvokn8KKi1dCfFCpizkIQS98UXpzHcHaqxrTVX5IGtcgql81G
+mIVAo2Te3Pd8mH3+89Qbn4zQoUY9iYKLNP+VxuigZk9GvEPjutRoy2gJhPjAfnQW
+Tyb0xNXgZGWSF/XjM+1HlPZP3k68VOvufBLlP8aYJu20tOULD6ojD2K9tb2yWtqj
+iyB4AxKhcyHz4vST4pamAcgE8ZtpoRNeuD+dcICgoHjhJRh7wLmsJqmBmSWnICIb
+a90y8JgTksHZG6fFl9jpeBWAZUqsQNRr3YEQH5hdCbtWoAzccnqDdmS1hCNHkm/+
+lxIXiRQ7mFJXIVQxCjQBSlp3sWnaEWZz5Y/Nc0k4Xkr6YAW6xQRtTf3gszaW3FQ2
+FOkDIivBJkcCY+fNXVztzLmLFwpXFNc2lFUc1rNQWm2fQuNm6QpML21brK9j4Npq
+a7Xc1LZ0ugW6Ww0dB/Gfu7h2KsxTXBH8+VqnY2D22C1SNKs4cCfxBYjbXOeYasrU
+Ms8QrQXYRRm5Lwd+KV5T6aau1MgtfqZj9C/kCWLoVvHrrzeeP88dQu5tdLvoEdLN
+v8BfDEANxz9KyHW0AMpzgJayeJHoMuhnIdomKUfgpUxavtHdV3TaXMo0zhpfo9FM
+Xbl4yFuOwhXfPzZe+d/3WisfmhsP8St8WVrGi7oM/jOv6JbO1B2teSW3NA61Nyuv
+TUYPqj3Aiw70/TzDO4+VVfoOldRz+A4v1r8oEepSnrKvUf9dd8XfwH9whGc4wtCh
+ZtVq1uuGcvXq31jBK9kv8UoWWQoj7nsScXbMvU6G17CmRP1MN2u3fLFyJx/TTB4Z
+oq/Q3anvB4PYDxpfUSOC20cxvdiU8nHXZp6zsSlxxGlu262D5Mk0EpHKydHf447b
+KopAzFJvhP5suoBEjGsedmAZ/drKQcMd0iXiznabx2JO/9/XsH8oQxXavFHqVfLt
+zaG9qJe924UeWsdy+qU9B6lxNmOH13adJ6Fibodv9zCrnJgrxj3bd/tWvoyOBXSF
+Gsix6REcfaQ7KoTBHwPRbGxtL+8dHLGAWXl1PUDRaepxQZgFFK1GeqOWIdbJNBz5
+FHAGtgp2l09CScMY5XmT1Wr35W/FAs+OyaDzy3pghrwlPx57wH8ZTQFe4iEGG95u
+CigEr2BpQpb0449uvAXna1a3zkfuVjbPFAoV9S1jgESXdLX5mWcAwbSziZkSfst2
+QKAdxIEILrLFnQG2Ub8PC/sWFhJX+3Bre/ebI1j8KAvbhwF6uqLPf4D+xEc7j9kj
+Yuear6KaQ5YwIU3yAvwo8t3w0FiHwQgot6jX4HWK9/VqtvjaLV7ks8UAhF4WtHmb
+G+xV7Xuq+OFVzRi6qy6v04YpBINpElRXLpNDDEQpQqBqpNA36uA6XjLxHD3OGGpF
+bUu5igMUHFmf64Nyja+xFyzujdu1zygD51cZb3e/2H/prrQHqbFNBvaLIhXYf0hE
+DAujfpx0NxpF40rFdIqxRnKf7yoslyNHLE/RKsNe45QbhHCPh7Rot2Ezd78VzN3q
+h1ed5vfwL//RWG483CDTrfcveyuv+bdV+IPGQg+Xfou8FbU+a0t4FHFABtvfYN9T
+tQ+Mlm4mXht8GjVrsGohpoCGkyRPwx6iMi1OgTPjFIMiDPGgZphKOooRoDD1mEyM
+qtSmvAGTTKtTg7+0bfc0TYDCU9FMOElLrt14Af1eWS05rVMK/GYGTPjLV2nr/uvP
+ie92t86t90yrIvyt0CExbH+IXtBrIQYUnaNsDXxy7ZsXMU2Kt0qdorXP6oqu6nAa
+xc3b4535euyt3HN2CQIS2QZSd/VlAEYh3Iz8cIRAIxboIoTND+0Hl5MRsuF1Wh1q
+ZMWx7wYYPBN4x1NYUF7XuXtOlKCEZdxWtjqMaCxzrQrJUSe5SHWCEhUak5UY3mog
+hMMI9+3y90snHxwnmXv15h3ZHffIYLVuYmjzUxiulQRyMQV+l/+YRiGwmA3RX9Pg
+ZF+ICBAoqE/xilREfwDpfSRJk6AUGLoRGSDhr4PO2Cgxoh5f2jiWx4OYIOvPG+KW
+NTY9upYxjjOChKI98xBDYrVCP7Fv54seqDQDYQ/mNFHRS4g5UsuO+BM5ui28M8mm
+zLk1r2W7ZN9Nz78RnftemF828r0vzZMfwq7YYA3dMDMvZButyik1dMMktP7B9rm1
+T/6KWAj5rgTYOcC5kRU/MZYc3Ie2lRxNVO28QvQELiXWzsPgooa3qzIeDkkRcJLD
+kS8Pe3SdjIC9GiNCvosjK1IRWfuEaQtbhWmqiDpoE3cZJDxl0FmcZiwGtjkJfdJc
+8BxamOQYDf8167pSRRwXNsVOwXFLokHbxrFV9bcK9JogygVT5CK1yeacTRvFYbyX
+xr5IDOdvFFOVs45aT85NW86wtbFx5Nqwygdg9LV+cjb/wy2zFaqk3uqto0XXRlkz
+ekFsAvPSptkGcG3OImQN1oYFly22eYudMCKOr/OqJmwHVXW8LeGxmWCNMWguIAEm
+RDbiNPFMgdzmqtCpO8QSog+IyBnFIYLSL4evnUN218a4KyCLpkFa1gaM+wVGJERl
+G2n4LjEmZ5AAwm7wLUGD9oYBlyTQsTTX0FGvYSJSFFqDEq2orsqY7R2uEeXWQWT9
+MPEGcRawBsbWS2DTgFRzGkaw1SirOMZeHHsy9yFPKJ7g0ZgnR+SBQcv2Ey4d6TQb
+S9yAVtzVMdOkU4zXNiqoVVkxUNPAL0C7H2p5y5Zmyx5KCm1TJBExHuIT9H39MWPg
+U3LZq4pW02vNjI/R1vbNHcNmOx5f/SXCvDGIURFAxuNxKoTiG2SqFg0QhCoybtXt
+FkQQrLSaYF6chVnglrLUK2c4mKLagEecVrUsgcvB2rg1ccVmiGi6vKKW/AqNElUo
+shpLvvP0V/29XPJfO4N7FA9QSRt2o2HiwR5Lpui4xp7G8ekoIG2pRyzmP029lCxZ
+YSHh/6kIiU/a+edBkJnHhTADGsOLzik1BeRojAYB3iRMrUeY4u+UU1n5iJuWp3f0
+khyExswrZiyVRadJPJ04xWy3ArRwdTq/CtRR1RgsH8rLEpeQuqwmYXAaGz/laz9K
+7UedMCbQ+n4ctY1mVA+G1fns2eNN8OIT57Us06WjmIeMAqQJIh9OD1hXRobYQOmB
+A6FTZxSeYETdcTgAdikeYlTE8XI8BMmI5kFHRoicVIOC7npA4LxzM+BuzI4Db5wu
+H70BCbk5N9RpGB3VcRzhlpMAtl6aj0fhuVWQ36ikHRRRLCMXP8AwlJ3K3lCrBwVi
+rYD3boqXfm2YNC9ltjpOocg0O+M94m/9l+f5Ax8aE4XCMSXlUEWHWUjh9rK3cgDj
+1Hxidha/yTxZEr9j29rPdjAO1HvgANFV0Njp18VFbmawODbKeovswck0g8nHCdlk
+Dc5CL3nTOU2CIALUxcedKRmgZWdBJ/ASAPUopN/w3UumKa9pNglIkQ4mEux4yfou
+HI28NgzzOxim7Oxu+104kT8imMEEln0ymqb0j6vh0zA7m54oakG/psCKietb84WH
+EE5dywrvR57eTDsdjBVpjqfJIACyfhrIGcQprLsDw9O3qXRmUgTqIgS27QyBKCc2
+9tQk/ZPAA7ZREK8JsL9jT2HUYJqMOimZkI1B9sqCN64+J2+zM9guosHJ20mYf8c3
+yFMHtHDXxj7NamVxFDQqL4KHsLe+Ayiq6gosZ8i1RbiP7ZfWaojjVBUCLMSkNGl+
+wpa+GbYFtiDErws3Zb6zONS0qovA7B36p6Vv5DTe+TrO42+TxXjnFzaL1V48CdVG
+4D84qvLvDnQ8HU1Ce1/TMyh7EcMuIKAXn/IuYO5wDJq/2piIBVhe5xIPkDDBBCLs
+Tm5Y46HYsuLnBcj/apG1R6IU3yzJePxR1JrssBZfc1FtkfVOsykcwjYvCQ97zqcr
+zqerzqdr1lNHx2k4wVCfEnj0DCcBJBiIoN5YJ3gTnnpGQTocgwRlMaOk/tyBX++g
+/bxtYB0mQOMCiWmcacgPEfrd1h44ej1JQnVmY0mMuRzb3b4NPOhL4an4SX2r3XWK
+sfK5WaN65I9TifFmg3hOjE4Sj2p3ThLuC6A9o5PSi87Dkfw1iUdv9e9YUY47kt/N
+XlYHl7IIfhXwx6/BVH6bpmLmtJZ+oP/KwZIvtNkDbJ9RGOc7dhS9VV1OgD1Ur1Bd
+NEC9jKcmdB5j/PSck78cq9L3Lu+55oPYBcwcrSScAtReTs780CcvcQW+UXwB+ydz
+YvB3Gut6GmexRUT80BsB+6EmFmfeCHrnvLhYL6C25wJ33KQiVx0KEQylt1OnNL10
+WhTtiAJUC7QFl4prmdpcS753W9pUGI4sbjWyNJgl4w/mlfHxX+W3JuvrOprn3oRu
+mgYqydoGGuqdBw4bq80HLLn6azYdUQB/oe+EYhgEv0xNI9p92wf2r2Fp3Wzj8YI1
+OHQo1AnApwbcU77+GM/tq38HqW8LS+K5LBtAFpsXokY62WVWbxbsqjX7cWcHW8iQ
+wnreZo8C8uJwtC/bKOmCXEVY+Rz24uzqL4OQOjnAQMyh7EfrAxspaV84n5S2//zq
+Lz62fhST5497DryR9hgT2JT1wx1ZSvvZoQIBTWPkDYClFH3p3VAb5WsR5uEYih38
+HQjF2PpTbxzo07DWonwlclcbdwdH8j108gKgFih80qcgC5V1Ip13SlF2PElosXfa
+aE8IzGdA3eh9iDZKukAPIFaBUccx5byhlVg5cC84tFHSOroUVbVOlnXcjI5tx187
+txy0gRzweegHSdlyo2dSVT8vDvZa7E/He1s4jSS+DB34BG2032VRGcrm/k4lWyOI
+4D1XKd1mj8+8rLjzVBt6H8bl/RbZcefJyKRrXZ7MpIwguoxirUuJEttkxKJwRBeO
+jpQqqKlVRFwkJbLvDJWKHO/4c/NtlxnwnGbUUtdKsA98zWLVtDmHkfVDENIuC290
+Nf0c2n1RS7+TtEfoNDcQ9WxFbbk57A1rg63+cxl89ghuUA9xk2bKamFFBpU8VLex
+wA7GyuIJiHUanqqwJuPAEbKhepCyvpu3w0/RPC1nloqT4HZfOJCXgnbYLidqwJub
+OnErWlROT3CaFbGgVGV0CstCGfRIkjr5kEiRI5JQXn0QpoNYI69UnR7OrjvxRrGH
+zJReVz6sro60uP8uBcEkSFR1fNgWD+eornurqerqOmN2fd3BTNXX1GSzWwAWbETD
+rWsjUA/nAD4/1jlXpoCvHjoa0N2KcvsYB17lJ9q1sWucngIx9bIUTh+1RvCwLR9W
+TxCrAyHGQ2dsVJcPZ1cfkx/6KUcRWV09nKd7b5z2U7zhqWvdw8M2PZzdgo87IfGV
+ZEEtiIeza6fA3r7RNxfWpoez676L43EfL0T1uePDNt2SzqwfZ2fAUmnekFifP5wH
+r2yPN0VJYXf7fRTe5LHdECSPOKHXrcKx3tKO65ZFH1vaIW/JtC7amxNfL3qLpnsg
+awSDcBhSNlPNphA/luM3Ono3JO7z8wN/OL28rZOVFyxx9XaNpChk48cRttLlVJGr
+OeRGVWOlkw6/DV2jlmVyImCRSbRytdmMypQVFFFeMj1U85SHBUHVVM5FegO6B/RG
+JXObMUCdDutD1NidgmNakeNwN1h+thsTrRg4ZvfAcStGxbHiD2ewQwKBcke7jZJE
+KmZnTlvHqo1IqDFrB2oR97Ay7URRtVmxH0tMQarMYk6Q0n28WYzezA2bxRBiyd2u
+Kw9LzORNuJaazVBhBUhRrM59R/bw7GMHQIbjiPy2fW9GxAdDXBIO/sZkg+EwIITp
+60WK4o8KAMBjTVkCkP7WSOuLlYEQHAbjGDYAIIqvTLQG0+/QlIL/ZBMvJOcXyyS9
+QWaPpBcchVmsy7tNIQ9oq1UQA5103FoJh61PQcGr1hd3pq/vicX4fkBV8uNSdt4d
+tPP29UgyGDsRigFNLB5L0CsIUA0eGpk31mQPMO2hOQY+2/QsHKpiRQwWqGvjZTjW
+h8Yrl6C0MdSPOrd4LqS8vaJSW19lLiz5Re08FaUrBIrbRFAyaiopEs1wU82RVvNb
+M/CJUMNUstPuN/cTHkre6MJ7i/HiR6Mi28y7c9kBf7/EfSaZVt/0R3SxVPM0KMJS
+ZkXfyGJljDeYV2Z3umx3j22x7819b7t2miTmLPB8hiD9LQJk4U9ugEwNdaihPGIZ
+hpEv5NGl+PFttjXN4jYw9Wjw24i8mOFNdtB0triFyYyQcmLgvw1qFiYP6P7H9rjt
+s683wo20ToHpndUfq1sLqYBrYBMS12yxnhpq8m7UxmqxesuhAijv9Jgw2segueOQ
+aGduz4rG7oTxH5xVb2glbKvr/A0pD9sci/h2gCG9DdLSojBunHRJobmc4ZUqCJ72
+h7BhkBzwFhRyz+/pYCr44jcGLbNUQRcJIFZfGMKLUalRmOpMvT2LjOt8j+lVYXkI
+lallxSXZwOPRBYTTVhJ8h8FaZMALMco2cZRkHi+CgaA+F8MRCFcM5fXVqTlOiRmT
+N6DuPCUq6xtbvI0aeODePSUlANzO6LIQzb28y+BVlCNii9nJKBXo5QnQLT14qsXU
+n2KgrkHadtJb+Y0nesiTlboH3AW6g6CB+yT2Q/TmS7jLxNVfiKgxf4rLjC7EgcJh
+Mxmp7s2B0+u4E4Xry/nVFO1H38xf2bDXt0Cr9LHE4zYKcsNShNKFvgAUithkXKMU
+HqlCwlVFN7rWHCLeRgNxpPeV11TJNURp167svSWl9QbFjPklRk0h0QbZGZ/mmzjG
+4BEYDiYeYdBkT55T3szMrzLvfHEcRefF8rJ6cJgPzrVLAhIbRU3l3GCBmQfF7ken
+YXSpQNxin/E0536jnp/ij/b3j+vyjsBqZgi8y4U3GlkXVyosUH4CAK5bVzl8BPJd
+HoaIohlRbOWi/rIuM42ingT70O75VBgbflBTkWsHytGDdqV818i7Q6vb6QQ5E7/v
+ZfTWwaZohYmc9AUzT+U5hdGjjCmOg78vcCBaWSXf8DwsVEEwObnoo1+FKs9+rYJ2
+Bj6UtQ0fww3WLQ1CR/W1J3pBc4HFbMQvrVweWU/eTsmW59IHaYH5NPXLQ1bfotSE
+jb2tY8Y9VgCh1leFryeTmNukmIzbQUqMom/E26MrLkEA8unqt2R5N1vb7DZFncHU
+T7sHaTCoalnq5uwZFy8itR6Qf/5WLWtF69Jc1m79JzLQzYf8J26A22JPnx3sttgR
+maI+5qZlVRNAw7YFB/+xVqb5oI92D2Ap8d8DNGgsjJOGKagVD5E2mZaHSGsxCqmG
+Frhw7unUrcX+7mh/r39wuHN8/Ef4s7t3rEIklfCUR1N0o41zacIlawj+0TfUMHRs
+NfAY21DyIt+xH5rEUeY2DIfClku3/mLkc4npAvw8A+icpl66DhLBpTzxnDdUmokW
+0z5uC6+8lmF4ZdSyzbb0TSgMqZjdk9MOSztpbAspVbFgYKVVyu2drN6c1lJaRcPK
+SK/oMlIyQFIACHNZT2ld6cZGFuxdpkp5TWlDZIDSaYGkEf6CZZBaM9uuSCMN9t23
+6ujFwR57It6wZf71KSCwXTu/+taHibUf4xu2Fb0VJMquaVx8GzUP4A3bglfsKaUB
+4ZKH0UDh6ls1QIZNfxI35XYN47bbqLFXDJztvODWqjzO71u+3To8KNQ0L7b1zm6z
+50F6xmCuBXCal9k6OGPxQrfaMisrgy0DZZzmXnnFwgW1qvgtPt2aTOzSxn10jpny
+6toqbV4/y9JPvEFwEgOT9FxdWRd6Ma+dBUmQnnvcGxEwk/wR4e/zoz27Cf3eOYfH
+triitgrn18w68I7oRtoqat4qKzSK48LktftjrVHdOm4XPcWj7Oo/R0FsrothHsdK
+qgvjOv0UlZbIcCC8pCOCm08fFu9RAGr7UwygYURXfUGhuIrJFDA8zijAkDn5OdgQ
+ghHJv+xzOMzQfVTIpVqkXOTyMYIDj5TrlQboUBKa1N/kEUenJ30Rb8MUx/URaNFx
+PzOl/2maLJPCjmfqLOiJ6iokj6oke3SFBLPl4iVHmtClZJCrOkSa0FnDcGYOleMQ
+mUNv9zBqAHSIcawGerhg6PAzO1mmg6fi8AOmiHQYqm9kkdCBtt5SatsaqXKwLz2C
+TQk7VZwMaojiqaUJZu9RFSxua4C1AjaO5tJtsdWm3k0x8hGHtamVKZ+GuR34iuVY
+/jThDs4a2yXsPYMWiyeU2WpEntUtEZyuw3bGTCbVIeVXS0XNYCLmB/FTmDcesz2V
+YnmJRhVXh8eDCFHuFeoXuZiYpxy9z84DEorkuCnNlghi/TkmfAIuREplcpfyoBBw
+HmIILFlxgqmp0LhEaMzcvPfj/b0nxHljbLZONp6QGp+XkFz74Gwc+6Wlu3fW1tRS
+4OhKSxrP9UACCiRz7ESeK0nRIOaFkS9Cr4hrVqUlJpLRQkIHuAMEledy4X1pmBGm
+8Qj4/4Wp0JIYApnauOiKSHCPUe1k+G9HkGhVHP19dZ2jHgFPIwKyV0PBRxr5SjIr
+YGgrie2a+TbDY8sHRi2yFtRUgoqzKH7jOGFcm48D2+MhDRoeJWLx89WUadasRSwN
+UOMcriE3XeusmOdEAJwmLIG/y9aAdCwpbjus2dKunxjgZxLHGd5V4mUkY+hYK6M0
+8Se+DNaLj7BLfKwiGX1PM8bLMnk0/ZjHFfReeVRJ+k0FZ5xecx81DbFLmx9x6Jgo
+i+DYJIBohwbQVZ6uE2bALz8kZgJGCvObeEI3ghqbVOSDPIxIF0+ZSklVhsAlGv+l
+hBuXWAEweZLwCZlbFLJ/qfsLY5j1lh7DeprI6nqmAS2jE702Lw94fHukcl+deGlw
+Z01GvFfljbj2dkcN1YCiZkgYRVNS0yPKiEyYaiAYb1hW38ifGxsRjZnKjWSMAK6v
+klfR+1fJ+1cRj0UoRimsqIxZ5xF87YxYKmsDcpQyamlWRb1dcV35sLnVR2ZfwXwm
+1t/MaKgqKHq8u/f42TfbOwY4ouCiz1FAzsDi9qid3IvhzAPpzDIXFddAqiGcCQeG
+AllVeKxyVDRalUFv0fcTVtfCiLxg08AsNV7X3ZULcMAxAJkRnpgU6DnFhG5RgNpB
+LTsIpphIz05iL/Hvs9Mp/MFnFFlNxlUb8ZKFAGr5YVEWr6yOLfSR3AlbgXqrfAfr
+xTgaoZreyopkYeWcjbmim1UuoTlkGkAhQ7tjSfJl+XA98U5SQB7f88dgrjZd4YUr
+8EtF5eMlXMLG1V8iP6RE0MICEG+YlFaYp04gvnxy9QPik+F7JoKBKSSsli7Kr5vF
+bL4avwGuoQH/5Uz51jGQjO2dPwA4unfX1w26vYSad5i2oYBXrQr1+zd7O0ePtw52
+tuHb7uP9bZ2N5w04gzaXKP7VeHThA1vRMOwrXahwlDfnJddLS5wSJ6TRkJmANtgY
+1TF/5sLA1vZyIccFCzSPRJQw6BaBXf0L+zY4efrNbmmwxLJMH5ZjIsFKvXJlx57X
+a5AjrAhSahpzyGl/DX+RwuXaxcYWn88zChkGHJVm1zHb8EnGrJzTpklt59nmRiX5
+U35Mu5X83JhtgvFflPkDHJmP6D6aBS4v2YbUHLfYdnzcYnhpvL7axFNxFFLaZuS/
+jG1n9Vu0qhA+xjL1nUzn5rhBN61SF7S0MJJ936z1hFXENoSgnm/OEkI3MrCMIAQo
+v5Zqo3zvH3j8DCrQAKMzl52EYdPgsovo6irqH+GiF5stkRY1Ek+0biDnu6FQNhV6
+NHgvdA8jMfXUus+VV9dk9DDKkrjDnosDo/JUkFb9kyDxA4z/Kwp4Pl45A4dCWdZ5
+5uElYd9J0qLgc7IprgtfHkeE3lIBUqbBkm0aZ2/ZuSt1OS372Mgv7nWqWaEINPR/
+P69Rni3PzKTpGvMzj2md2Fa6J7ckU83mnDwknf1D+7xH2cAYcB53uSg32NIor4yi
+FCYvBq54QbHC5TlXln7cD0Yi/XiJ95heqKRjy37VZbWKHwoZP2IiZ3nRIHYa8byz
+IqW56IrSuGu9vS512ipdqLyYtmSi4BxMAO5csYU0g5Kf8cD/sU9eJ0rrHAaSN/tA
+LlNHVx/j7pE28V7EySfb3N6ih759ZLtOfbvMz33s/yIO8ioGFN+XGXQR4se0xU7C
+EfoFxNbxrWd/9fhxzXU2RvKXBs9WAbJ5Eo5PYjrQiUEAfhdOaoB2Up5EFBEghQZg
+ogkqQfGNdomXjyALJxhxWemAL8fo8HKOwgA/7mFMMePKC+ZNrv6a8mSnyfKI+kdk
+xdSyeKrLcTSWzjEHY8Aat+md7cSVx6M5L9CNN2mcZPjCpIlG4h0MJkIN40VlgZqo
+/X5OJw7xL+/fM/GTnyZWJlutB5UD91xsyPLLCqW+5Xu+yaHMs2uVTzkpTFmcEsnL
++gAahH1HLvbwU2xD+VMsuvwZ+sbJoTk7wli5zhZhhD06NERAn3naYrqEMNDzMbxZ
+lnIgZh8S3B/e247QFO40SGArhUJRFOfMWanWAegdVYVlA9YWMwK/neAfkcaCUiuk
+AwU117mKiZYF0URQCjpbo2aDFDMj09eaUhqH/mV/SFfPfNWtRZOnsmrhtfhae01L
+CNXJfLcQoEbYrHovaziX2muek0r9FElv4HvBGVEfEf4wUdzy2LSPd3H9ISDWtEel
+NV7GNJnciGPeL/NGbJ6kClqbZj6siqLuTe1ia7TXBduLJfepyOFPa0ZIlr9AZOMv
+CO3yF5iKEgQgeqcuIFgtR0ztoKoRhvJm6CtdLzYU7jdrRlm0uzPbff++Jm//4MAa
+NbotaZqvOmM5iwZ4rJ9xcyyxyOs5z+IyRFGEYkmObMttTo+fNGf7vPmy+/yKVuy6
+Os2yzWdUXkcUL0B+Yg1M8IgJGzHv0/naMvxzpynTOlIaTWnyTNRs4OFpSsfqZVaa
+HJhHOeBB0jFcQ6bIFDcJmSMMlh4ogepTcBDHGRFOECUpzTYcWTyuBGU6K7r48c45
+vFI32ZidrY7aMJPVPQceSmdM0M5IcLh6Wkzf5BhUEqEyKI69NwGxJY0lcY7lpwCF
+lB96A/yOVvwxJg0lePODIQsjctaQxwT8HQJHliFLIpQJ2MqE6qKaGe2F1+7U8htp
+B7UIfdqeNX3bipHRC8UIyOHOQU/URPjbfF5aET7KQTwSZfhvvXXv1DEy7xREu+Jz
+bnMBsOGvwkh/+U/TcPCGv3iLR2T+hkOXj0BA2iB0EuKK3KklcNHDmq6dQZMHsUx5
+WcHYUGlbrKwRaoiTPQnOw5ReAk18W8N71/LXjabKQ1/LQkH88QtKVTVpoGINsVag
+q9KygBbCVJIkL2tquWin0a+iskRgo11XPqe6tAZOIw99+x2F0SCJI+S8tJCT0ywe
+X/2QhQOu15Mbcpk8oTQGDDVwpLyT4p1U4LH2A+FEMo+uHH1dRZI0vB1A4VVqCmPG
+5XK7F24zAb3ImytvEmCGvRn6SK5LtBXxLBBXE6RFuPrXWFNYNMUU98iecIB3lqKD
+yAMQ7LVYcDkIgA5oBEz0hoaSCeo/r/4lVWcGuUeGdKU2ZrXTaQjkKpLkvtbJuyJz
+GY+dYPKWtCXSzlN+bF/rHC9TEkpMziJy9eZear4nBlGqI626EhAcbKuwrnmYZdjr
+ScCv8WuCMAMmSZWO+Z7noix/P83Ckf7WZsdzxL+xG8I5Ij/WK6N6F3DR0KcsKjyU
+lOeAw+I41FmlgWIWii5RP/2CQQt/qXRkfl+mWSmBXl4Gz5e0oeuQNGnB0WAxCXmx
+RxVLN9Lvat4Eb7k+C59jBHkk8vzJs629umnBtiSb64c0QiUl8FBAroFJuW0og70q
+1rlVaxUaVPdjHDxZ3AfWSePFGCk6zlGTIixnshi4vUZ+2xIIUia0GLj1uQRvNFJs
+58nu3tazDW7OiyTSG/OQvOEY93lO7/R7FT8WKSIBKYpjVRea7Y/+yJZ6HbZVoLac
+FpFoj3lB+bkeS7pI1H2SXP11giRYkqIbHhqBWTJqhVuA9C1mg1y+CE6g2LI8eilx
+SZZNlGKeNwKTmaMNKKWbF2qbQzZiJSTJm27og8XLCzEINHJaW1slI6d73bqpuaU1
+l+eHsXstQULRNezEqKVyDZTQDJdipYYqT1jk/ha2RCRNpJ7BvWM0D6/2xeGnW5R4
+/Hj2EibPKjIDSsVJJ7Yf0EjSphlj0lYlJQteAWGjWwSbpLvRW8HKahycLozbs1Gb
+XTDj0EXvbpc+vZ5bsWPSNNLoDFXgYfhqi79Ed9ClFdqWHKEo9lKQutdk6mk/hBnA
+9sni6WQSJA3Ri24NqAgLCWtVItHnn8PaIEkhekcNwYNsMMHfArpmCFB51IilJtg1
+0mA0bCIGIB6bwozCebOZmqAVYt2/V8D4wBrkLQuPZNUPzVrTQHkgDhq+IBvEUpEP
+kOfL1amg4LcSisQWDjC1LpX0co4MwDgOs5AygnI+YvH9pNX5qN0Ek+kfCV7Q3FJa
+D9qGCi75LplnZyGkyneTGaMx30UFYlWNWmqbdHPUqkF7NYlYLnRybkUdFM2fAgsR
+kdTRNBca3tzxuYLm8kU5SeK1P+U2+FpuSm46cdOnJTDCGBdYxTGdK35GHkZaj+Iu
+27vw8uYKARgcQaTnisDgrHdf7t/+yVs7emVFK7K82Li5GTG2xFsgI9Cc5UcFvAkp
+8UTNNWexCI9SyedwPk2Kv6yxvrKywv7w/OCgxdZW1tbYmLz/m8BMMXi1yvau/qt9
+RkmeNtA+W4l3MYPqo4AdTFM4grYO9lK0hlmI3MhB9HGEqdo4LXPa6gzFkWIhHKZ2
+jKLmQ0xRn9jz+CREMcRFbSRkHukJJoZeeIlRT3CW0hNxA6k0vUh5dmd+XwnS4hnR
+OZTZpU/1MvkUoy82azzHMP9qBTFDfM5j5zqi3vrdzspat9NbudfpLvfu4uR6K190
+eqtr5rPuCjyD/3or8GylK5+trPQ6vXtYDgGjtXtvvXPvi85K7454BY++uNNZ+6Jz
+hwqv4pOVLnSy3lnpqjKr0Npq584a9nuvpuuMrrGk6Nhvnh8NY1URXSXaE5Oh4KSv
+6xMOelgUhCjP25zyKzi10G2e3N2xDjMWn5tSatRug4yPY+zOl1qfFsf3lN3rLgMH
+zMGRR7L9iDC33NhjkRC3ej0HPSiOKo9gja2RGZIKBii7X3iJOdyKezYfmNqx9whV
+AWyl2/WksAjViyai+/Jb2VGAVq1EirYxkzdGGyQZFdU5FHhTKhluICUItUS3B5gi
+LXQn39a7+qgMbBHZf1gp2HCnOKzCSEXTP/eAFYciLZDWnx3vHPZfbD3b3d463unv
+Hrhj6uqT4bcqUL3MMMvwGrGDVtmoeK2YV/qxNzcyPkaAbW33t/eOENUw2Wet5Rjg
+Q2vtdGwk+xVg1ANS/S4DLgUUBOtwa3v3myNUZI49YMneVWAmD9QrN4CpFNeUNTN5
+1i++MMUhHgq9gm3NxcqZbG2+5XUOtbilS1hUL9Yopjo4G9/nzX4wSSVywmR8zW+n
+irzrlq5zj49Z4x5aq0uGU+xnT/PUsSLqoGd5iBb8Yy8ZwMGgrcTCuBiflWlZF1m/
+XreH6s8AM+UWVnB56l93FdV7Y+UAXMXF0kG0d9RGO9n28bMjDtya4Vr0wVBrq6P5
+2rNf6a78hLN3MJA2MBSWAsaKI8diDzn7u4wcpQUcHTKCSbFuoxcBzWp3tQQ0Fkzm
+gYtexhZbTf7LUbFm8LzA6eSSgOBziXctAqMQMda8MctjE1KwQisUBvkuNa0NqtHn
+QkoswaXoNLtoD7DICqx318pIqwM1P3YZrGMpx9rilqVF4R4f6KC0HSYBN/EgoCIY
+MWRcQm72eEThGx4vD7iesmXCT64etC8mdGMveFfI0kIPC6pBh5LxJZV8bWoL5yhn
+KxBxDCbjMTcS0HjzK4aytNoK0g4jCOO9yyBC4NAabGP2OYHOsYa89YI5xLCkZBQn
+fuKyVDDbM20n+EFaUtYsWY7XVFgzh5gHz6mObSVxQ8gv23aZVuxcDsiHEEmKfrRt
+bS9TLMjvNVT90Cyb7Kdni6F/qn0h5kPtKrSuRum1CpSeD53nRdK5EXRR5CxDzCjO
+csbB0NRytPkQTuYizpmXgFjOi/RW7na68L+ea9zcQ9dozz1aF6pbnBtIusrSycJz
+zssw4ueKzUN9jNsJ+N7G868tMYMffcXyn+7mqGA+bk7tvdrBWIiDEbkisPK7bNbg
+D/MlowvyiF+y37gWfDClgKN9IdzLW3plRyrsMl6/5MYWIoOnqoZUo1AHrTO0CrxG
+jKlohf+EI7UtZqiBg9z5Vrt/dI22xCtAWP6LbfBajxihPW5ZJnY8LkS3wKkYw+dK
+jERDG2dCG2NSxTq6okM2D6ArhY3jXREy+YIgWKIyuEQlgImuDxnoWbhGzA0YdxV9
+Cy6Jlc41NJpmy3bFMdaIeziWFhbuLgFQ3IbB37e0qz8VOopOx4XGAL9njEA7cVUk
+ax76xJozKlONAdADQzvkCFhWtNQq3dPKgMgNDgONDfDcN9s19r3dqLbmLZ3bEI2U
+xlRIldUm8me6EZBprCnVPhJ4uk+kJJrbQZJMTyjyaXBJqUdEejY87oJBKG9a8rsY
+/aLHuHk/saRbqSKiu0qnusO6iXDobPOrCa6F9RN7s40vKHJbncdrmwwH2Yi137Au
+sQrd5S7+qDtitvG2OvBu5cGyH5wvcxfOkk1X4n53WIC7tjgIOmUARpbKmnbsIXAL
+CJcanNU1YqDOUf2OeaQ6uZ2k0xFB6OGP97e3jvJTc1mYF2rmu7F1agr7V2Er63Cp
+L3Xwc3us3pA5qNvg88eyiVzYs8ttPWmmHCwbXos5R0LIbCD80ptgUjjKrOOMk5Sl
+ycvu69f4p/f6dfGgtw61hQ77WtMdqyg/pEqcw+WnGNMt30jGTEtOft6Ja56bvJ5h
+8+kC2dwOd/M52kl4qactLmaXnvxVECpC54O5/hwqhi9StSecgElOW+d3yt8gP8vy
+84OHsBG3fUGqe+u7jpN8xK6YYA6Sgu5HkQoM1b8IIz++0KLSLEXxhStKFD122X/z
+8lzMMSAIL/o+vQQ57twbNbiD+UWdd5LzM1AOq0NBXuLrjVCW0WDcyBtEDKBrKf3J
+neY8qYjziQfBmwCjNDhvQMoZF6DaiZkPKRJe1gHNwtUX1cnvNR9usHr33kZX2pQu
+wTgYW7BNNXbZYk9vcdS/zjhHgC5n1mhVg9cZJG9QH6q+aeQgP+MhLJEn4d1oDxRy
+PNjMZ2W8+FLUmmv5eKprauTLTQK8o1rD7NXdJ1bV0R1Yur8DphJkakwd54EAfY72
+WQwDX4deO4pDjDIcXHY22MoKrBQ60XTvwJfmrVldS0w3uy7d3mYyXQod02K3tbxS
+2rYW2mZeqtl0AE7Pua5lYaYKr/MaOdUtS8LLuxAc9hyJdiuT7C6pvLiufLrmbVZx
+9Lyyc/QGLRVgcEO64O1ZgCo+VV2YcjS8grHDv8DiTUbeIJABRTAsLBqyv0roX/xe
+ewUPKWAcfuN/ImRxRBBV7Eba/WXBGEFvRJp9iW227r9KX3+OoWZ58FQamy7Ulx/o
+vFG6PzESB8NPFZg2zCygK9vqYtpN3h8/c8PMrYSY7dNKjZg+rftuX1UeB4vxpI4n
+4rhVQZXJOzhl4+kI7WfgIbaEei/6kbIAbdsoFgae16fJlHyM0f0MdnKtJ8Wde727
+Kx20PUNDspUaD651APJYSHYEKc+3LQzqVHPBmFxw+WDSq7+2QKDD6y8y+ILKQToB
+CSEu9SajgCogu6ZZnAQGGgoA5lGp6y037iprXYERHJzC6VoMFGkVOU8rHxv4AXvI
+A8lmzBA/aLQ0jeaMoWLVqpFypF5kqM9BriLzcpD1QPrdZHsxalkbmO0KwejD8LJA
+AbO5IabFAyPW2Hv4D/W3hCJk9Ingd88CbW1SsbMMH/GqwCHF3fieb0VjQo7Az6Py
+wM8jcUgWVWAyKsiocmdhuTLKxic5H1q9NxGrAJ/Sg0p1sihClHRRdKzdphOH7cuo
+aai3NoJg6iQC8XqLGxVvywD3pklUA1NhYHYkniOw0sGzPBeqkQqgJLSZdHKSiWJK
+iqWqWJGHMXlWnsogOs0H5PKokiHS+OBVURnMvqFH2fosj3RTbNy0JXJ2bmyU/Irj
+IAnQFxhIjCo79qKpF5Il95/b1BYqvsgzF3UjUa5XifWQNWkhZg0TAclLh5GfeI4h
+4+aMzwsmG4K3iM81cwAtFLv2HE5zNZiyiM/FMfKtHJ+XaMfMWIELmHaaUfVpwV1e
+N2WWmlTBEhGoKW4iek2DTyEbmGshB4cLAN8L4PIpuHzeI/EFYoRU22FkkXO9TVc8
+fHMAOCVifgrWULI53Rh1AVvUktWuMOTAT10An4dsiMfu638qGU7qIvhERSHNvVfT
+UWxtLyPpe042oJzi1Z1tWNDFj6l20q1pjb0zD95iCiJCoDh+M5WeIhT3vWgXFZz3
+eW56hzIPP/Ou6NKkILsog3H9wyPdcwGG7+e10lVWg+PaNYoZHkZttCLpeMnEq78u
+Ve0V6/d4fdStL9xa2doYANI9uFXPnD9J3rnmOC9oJdg+YsMQOBbeNPgxNk7yrnxL
+UOF59g5v1bl/Dglx4/n3EX4cSIafDwvsMP6vprUzD7xN13E8S3GC/5bmZCgyC2af
+JTcqLgEBgy9SyllB8htL9AvDPqL+QoSelG8NlQamEhGWezyCxu08XYClzFzC8TOe
+uOTJzs72UX979xC30DJuKEz8QTH+8751rsdI/4ANVbBe1JlMCIMVeQ3CdkDxp3v7
+hzv9vZ1v+89293aOgJGm50d/v3vQ33l+cPxH/rzAm/AWSVaAb4WsLLnEgG9NoUEc
+e7weKpXwGxIQ8pn5bUGWqNSb+xWnrqPvJb+onTUVVegBp1RUBfJurf7LJd9N5Lhw
+RLigkpVAxzm7qiWnwAEJBk49xYbd9pZGERKwsJeyGxe5Fd24XmBSUDUmEZT/VAtp
+KM7yl4n+toXnQaEIyZ1Sv1T/7T9SXIOHG8vLvw0pVoKtlSutudz5/dJvF6uy8cr/
+fGYdsocdxRdoD7voNCu0l3kYSCwkeXHVxMXFRafuuEfSxjU9gVp5lbWmvqlBTnlC
+4dhZEp7GmCKW65ESbwCnGqocUJgE8RWN2YTOCeNrhtF3AY/5GnkyIYSWuUvJQOQX
+H0ipRmv38MljkdU0Fp2gLIzkCqOcwKBlrpeUNUZBlqCayr/6y2mYxfDt7OovwwDp
+5gS2dSxqkMpGNXd0+CK3V/+MVnTsZQMg98v/2Hj1+1ed5sOXXvtdt/1F/1X7Vef1
+50vL2uo6zpF8JRTodhEugRwEpkEKBlO8hE95OKgJrHdA7zweaiVmo5AAAtMvX9RO
+R89yJWSwUaDtrgdsBV1tZo5RKkh4PTqt3FfzZrRguXvnTC4kwdHrqExveG9g5ClU
+0eV5LkIPIwIHqCmk0AkpqRJRlRmEGeYFJYFXR6bCkWUmT5wnK05pdP7dKMS0Bo7Q
+/CJzalWAfjn5lQ67+udRhst8AuQ5CNHfGlPWleYDlqYtYSTS+7ZYFEwB1SmILaYE
+VpeqshP4EHJHHFxkdZOIfCi+R2FPMDDyOEYkhIN64KFatjrhq7ZLcoxwZLqcI7/g
+YzlTuhLOvUdghiIV7J6aICo7clPNfDlofmhpHJyi2Q/NqaPfHC+8vIsksilocVY7
+7EWQhARKMlCSc+JZUcnkBnAZGOdpxv1XPeVJwzcRHNfJNIoKcb6WUnShcehatSSS
+aI2ExTD8N2uvsfaItSfoo6OZGwG3dQpnlUzuSLcoomVHxED1yrz90MeoXyBJMKx1
+eHpYFd1OGHjBv0ns48RbLBgCtcEFAzJ/Sog3DsZXf0XHP1RO/2nncJ9t73+7d7z7
+fAeoHiraYa0F+mq+RdpgrCxl5TlGuYdNvVma18zKXMcpHv65+rfiFg1oeigNebiS
+gDnArwaqvrAWK8/zyUfD2gP2vRzAB9mltnI6Vjsu7yTs123YS8JBtysA+JDTLwp9
+PaSv3KCOiKgKcso+MkXC7PQI3Ci1mK3EAhOMKD3rTM4mZvtlUFXFGfBjb0+8wRuW
+ng94Cukkk2jvgqtM0mDJa1K9vusDlPjOxoRenPvQAu5SHAHSlGu3Ms9RhQtC2fbX
+jw/gtCJjuVz33lLkAXgkrp8n2bnCKI70933J/HAdAkp8gHC6gl3x9vD8JRTSLny1
+h4KyyNYYz0dKD50GcoBd3Q4QyDBOMN5wwJ5f/XAJR9hGccp446BZAYoUlHSBoQJl
+zBM80QwSJBVkWmt1U2ZRYmfJrUlZG5qp0RzypuqpTOaUQ7flTsm84YMWFzwFM+7W
+xeoMn6izWZ9hMsdVzmeIGUtnPEy7ptXbrIvkoy22UqLa4zM6C4VuDzBFiyQhXlK7
+5brdHMcUhHgVt56nDDX1z1yaHxQiPD8ho2KA6BlaE/PEEmgQOvEEf00ZhYeJh7GX
+psRBUhLsCMWGrQP4J70Igfmnu5arH3wQKwTSUi3UA6GjIyXwXRY139Mf+Ds9ibL3
+0wgoxfvIA7YsI0el94B9wQnskfdemIy9y/fj8A0wGuGb94NJ8F4Wuhh50fssBn7w
+fYq5jN8DxQ7j90GEouX7STZ5PxlP3nuTl+3+6/d8jM3lMM+EjoMDvBgR2dN2M+e2
+nwlu2ec+p5j0CskNCRoa7y3IVIP4QP9sMPH5txP+o8PfKxeYfbZ79LhNBG7ovQPZ
+DdMvkh+/Tycl5Xf9H+MOFBxS8latN0R6CqWrFWRjvPMCtoAOpSACiuoLDh83ayc/
+mgo5rkoHW7dohEw748hVOrMlt7HHSITbg42SC499WApokGq+Sj9HLRu9/KcpsJic
+dteX62QR/ir9/avvGy//8cPrz5uvPiyTNnEkErgsiWxbRW/YIToqLYV0pUnqeFny
+Ze81xr/s3QesQHOqLn5pt53aHe6cLQCA2h2tEdiLjq2IEzdE5MEohLpteZDAXGsw
+lxrMpXaf5GSjD5rRWVRFPSJf0Q0sitNxUw59DbBapfbclu2t7dxis5ug8WkHJtVw
+D01+rLQX9qc095Y9cmlWZOxyGGxx388YVFGr7n46L8UFWfaxyOnMyIfDE2meaUcj
+KSbqoNkcNHgIU9p5uLsESUEhIE7QaEVQJlvdJQHPGfcCa+pq1N76nLhtMmfhRtnu
+prcv6/S3XtSS0l2RappfIokLvGLlsrs5rY2CPYw+KMHbjV7iTY1IziJ+yPN61s5S
+83pZlyDl3vyCmTEfb2iAMHz/VWn1bMO8FLeHPvdOXSJbbUBrqV6t3LDlqM49uWRj
+v25s15Pyjb2qbWyUeCoMihpCkmmaeTMqN7AZacLIHuhi7Qt+Fo4KtHPOKpxTzvRd
+c2buGn1MZ7xJx17Hj9xHeTH0tNLqSjMRiqTM76u1p2Xb5CPPpznRtwRt50WKNQ0p
+xkrsS7l6R3iABZziR0YKFZnuDfYE8i2cbW4uhCHEiYnV0+61rLfVSCNKyYDJ+NOF
+L3qEZCjysk48+gBmXOjfWWSGsYCjCs+ZUzDz0QclkDgdI+Ki0YPEZP3JrEOAUMU6
+CLC+eRJYj/RDAN/oEWC031UHgA1ZwmVa5Z+HJWMrs2i3c7Rl1HrGAH9uWn6H1IIY
+8BKTRKLGccrQTBgvAvhWXNZEZNzCqEpHbSElRCKd7GDkJcG7cq6sLKzTDFjpi1ej
+c+b7JQwvR8q0763aH5o17VLe6dfubk6vpsPG1FWoyobxhqGYcOsE9cB13BFmOmby
+VhKvrQDEg9LkUcSGcstZ0cxb+3KcUwpWsO64r0n4V/915IeDgFuMDrzRYDoSmax5
+ahyur9a87xrJ1Q+T0I/vM+6nS1G7J1c/nIbkqqv8qzV9u9a/ZmVQuGvbOu7v7m3v
+/MG6OcAwVOwrSlbqB5Ss1CGDmw0447Rp1Ne/NM4K/F30u9CAZiYm1A3EuSzzRGDa
+BjvHmzk0rkWLGACWuJemix1YVwI1rJAvbti4fVFSCSszN4k2qoLh3hIcCm7zrrrn
+w+nbyS6zunyENlgYNyy4+ncMj4rv47ppvlU/9cZ46X2aV8RaW5OYvDNus0cBcFBW
+nSi4SI2OqM5enF39ZRBSLQpOExYqUlCaUXsc+KHHG8CKzynYdMqO8K2jEl6FGf1h
+pR16HFBnI28AJKhYMQOCPtbnhhWP5FOo+QJ6DlwgMQDC6/1dfBpjb0/RvKDQ1Vk8
+mRSg+Bhv7wkeO22glOMgGQR2zcnKxASlqn0cU9QQmuHKgV3Pj8/akyQ+B747SY0J
+WgEy7Yrnk6gNxDvDAE3mcNGW/4l4w5b516dAd1wtDMJ0EBeQDVt4jG/YVvQWMC8K
+Bpmr9sQbxR4gY7H/A3jDtuAVe0p3DfzetdDIO6DG7XcpELMgMRv50/HeFvsTf+Os
+BZNL38STwIAZ1doTb5zVBqN46g/xqBMVVbXH6g37duuwsFBUG9Ni0phkr6r2bYw8
+dIZ+FE4wc6yBTaNXJDDH4gWiRxJfhkWkxAaw9+JWhQZaTHRfUnmcnrZlTHsTwjLm
+hqtGFozwCBmbNY7FU1cNDNofRKfaMmINGcYbgcNfu3vzxmk7ffN2oi/K83CANkjD
+jB3je8DkIywBf58fFYCMzfiIsYmvgQmb2eZPXRVSIDhvCsh/hE9dxd/F8RjmqW03
+Wn14iuQkjk9HAcwzKCA51o2zM31/i7rPgyj1ToMQ5sko0HmUXf3nKIiLqyhTIhRG
+qzdxmz2GNc3tcJ33XnjwoCwyJDNgsvUrHKiVpqRLw+ItVrX9qGq31Gq0xDpU/zhv
+7kqFZbeHmT1spfiSerbua+5+VrQZNVrXTCZHZSaT8nNNpr7SDtWwKdQNBvOL4DpF
+kkGjuxRzH1D0GNg6+1OQDdJ6XrPETjRnjbXn+X3T47Ng4GkMsBfyQZe4SN+cd/Qi
+jtHa2Cclc5JXkaZ1wCzYaTKCbg+kiwTcHCbyuHssmQYZLLdhH+mWGoAJFkKDsBEu
+kxmkCTGJMYbckIfnzV+7WFW7hSK7iuJsiFEsHKkv8GNaXZnEyzAXREVNxyfrM2UG
+yG0Hq2o5ildTOW28FOeJDN7d8fZzwsVLVVKurzjpGnDj/Xlpl0FrsKVSjcK89gl2
+68aFHQ9did4tG6/S36vLuuUwtw5YGs9WahhY8VKzaRZXd3hv16x28MHP9XQdcmIq
+xYU+GBi7Q89ZRUm10c8gqpVU1R0/wgSUQUA5aD5B4miNeVISNEIni3nUCBmX4ETc
+74+EFS9SpClpiEljz/YjMqOJhDUq4SVDvQ+/SEwZ8NmY9fx8rYk+ydv8x51SCynU
+I8TUJjftadikUH9ZpITGW1cOeuVDrhU0IGF3UMiA2euoa1AKwRboV5FeMuln6LDa
+yLUIVfecqrx1zYnPhY2Ds3U9m2q+7FKlImu77A0E7VEdIPmhELBOokjpbvh7VFC3
+RfBo7s7YyF84HGpVG2NvoDUCv0pagTcVzRj6yImhMYKKMvJWSJZW8KDF6mEkbK8D
+3WmZ2EAcEnGBjbxQs5QhNFBCKhpn+bryOqQ2oawa5SVx3sSp47DLi6ngzrywBL16
+KkBX0QLfu1yTI4bnLLyQYyz/V1O/WVZKQBTIxJOMOwHrWNuLWOOUHAeATIy5BSJe
+NT1JguDR0fay2F3CYivxLhDvbZblKxHBsdC0HpmxpaoXSb58YbgS8EbnakrLCl3R
+omYdIOZRdtwvkxoHzncFiA0GmwNjs6ysde50O71uE5hM1u1u9HobKysbq6sba2sb
+6+sM6Gcw7uKZEyaUBpX1el/cA3YVmCg/ZS8DFEyjIHtdYI0MluJVo/Gy2/7i9eev
+Ou6/zVfNV+nnXgb/UEmvPdxqP9l4/X2v1+rd/fA+fwaPWisfGg83Nuxnze/XPzTn
+4FIE4UEGpJSi6C5Y45crLgsjYX45H1VQERHs3V5+YfsJEoafmwKsdtjRlBS+DLPz
+nd8hbiDyaUvlWxofzNrSopJrH8Irh4GxfFO+A7HJUoNgyb0ZQW8A2/PQU1TNYSZs
+sXSbbKUEqe8gVlOxl90SzL5joTYv7TSg062LoW3A7g3Dlcw6E+9Uor/pMyc27gY6
+ytF2xfqlG8EIKGLtiTvl+4emXCw/p1P83BuJSuub6c4sD3rzqOUrsDLzgKW6824x
+/Nys17z02+FWuBfBCc+jzpArjyfckwLfpLBbkkBw7kWe92VdJU2o50tRgHYO0bps
+vt4qEKNR3MWnDqBId1mz642Nn6JTnWb0j3YOX+wcvqwf7jzfP97pb21vH9o+CSaK
+umvMN2oZXz6FVQKRwDV4L6oevCmxWYKMHvE5i5NIaq2CyA+SAL2JKMj2JBhc/WUY
+DqQWKxZSHPoSkv1AhcYKexIiWkOzUtEN4SZOcVoMteAwYop7xr29QVL4Wawz/trz
+lxJKr5suKMTs+dZjJuSO3LMAdXTYL0LJD9NJHF395TwYVQmnNH1YzznmXq8vPnFN
+fjdmR8IR12EXn3NZRu2IylI2BpYLx3pdnefVZqepSXcus8QL8bIdzhHMwsHtyNAg
+gFSjqaUbTdGrlJypUgyjMKbghUcBHs3jkEKcdjFQFl++LMYKRtvoUEhFuVFE1ZJ5
+Uz/M+sE52SaI9jdZr9tVPvRL/KXNkXCzkf5ZIcLkUhoExYeyZREzmP9uKvuO2pEc
+clDjzrp8/JQ1EfP6doGJP+fGeLnbL2zQeIp+k9K7chmANUEjEJGFPFd+5JATITLw
+5wNoWpupMVB6oy/tnE5dS0CkeCbcQiQ2Rc3SZSi0LGzaWlo4Xmie1y24hRmJdIVt
+WtlLMlQzvWOu/o3FuYsKVqSFR6dn1tCQcoaBjG0Js/XN9u5x/9n+U7efWkGRrrOx
+yMXihTJrR5RQwMAMwPcVnk3AkWvA7LmQc0DIT7bmTzyc5WUiSs3pX1Lwk0M2rYwd
+1R3mdKe4YrO03SSJNN4Qdjjf8IhpzlcDSuvifEX7V2GLPWLLPe/9LPc8arKg6H0v
+l6TiLrIgJawipTafwu5dr2SXqVu+FlKOqLDX5LDUi5d64lDxypB0ejMgble1w1dD
+HGS8xqrmcpA/2XAumWqHls5oZq3QzFplMw5mWtmGmvqPl43O7x82X70Gie/xs92d
+vePNxst/xNDDzcbDDXj49f7R8d7W8x31uPkQnm7vP9/a3bOKPt463nm6f/jHzRq1
+WWs+NHQeXvnVjL6+3rh8tfSF9Uq0HzkEJamFkvoyiJ/lwJsHH6CRtVJkEIig9b9u
+9r9e2n/JZdEcAdjw9NPiJOp+uxh1kCLxlEexlB9Fu/B84WGOx96IjGl9bxn+fidz
+GJujrtRc03h0Y8dJOSa8Cd6iBSxgxHso9x7r1sqJixS/kTN5iXVniN15uZnXe+h/
+42BhHbJARRucw5o74h0GjAcZaCxi2WXpTQW9UybxWFx5fETEbMBe2Zjpra+YwpLc
+mKonTQzMITiX9oAnDrRqoifKvmgSdsz+cEjfZ8X4mzfkJpWWtssGcAaYg+sh38ob
+c9g8F1Nmys8MxwLFsXa1c5HjTZMnUSCGWokp/NVN61BWOCupougILKDgOSzIn/N7
+OXqqe0YOhG8NyiroCC0M8fHvP029ETCbCePutvKGA6PrOLlJeoPsaP6m7hwW8teO
+cSmWG1nQPsETGhoD5bb50NVmi90hMcFOVaSNgfSmtpVFMbbgSJhYOHg/gO4Rdx4a
+hAnatiMokDt3Xv3I5iujiwxono44/TBsR7Ad+dGZdKs11h46k3+JqVucOHvPdAZf
+A3UrH4VDY6w2lyziZr1t1JBp4NSL8l7wMyu50gdjbY5RVufT4cnFSDpHAORiD82v
+BLACqCXwKJN0SgCL7JLsrMSrV70uhvaYB26O1t0wM6Ek3QvYwdcH3MwxR9eloepW
+mBGNNDOiBQNnyunKRq81S2FPMgoHgWqoxdrauuisWyEKqzJpki3akZUOg9PgkiXx
+CYZj2dDftNm2h2Rw92if3bvT7bHGSnflTrv7Rbu7dtxb3eje21jtdTodjJ2Tv2Hy
+TdPVFtAIoBhXP6RpOEDvl6NgwlhpHXR92sDmkei+3SAXKPiFmqOD3W0W8Mhd+eIl
+NBeKCfJwo/HK/37tQxv+XRH/vjwGDp++bWj/IsPfeeV/3nwI315+3hYlHtKf939q
+Pmy+b7zcav/Ja797/f3qBxAOoDD9azXUbIKoAG3gqN/TiJsoSsAT+sG/DpN4DN+g
+1YfaHWxng0seX0HT73kPJJs0MOQh9I1RDzttvMHtPKRwI2rORdWAWug51AOWakBW
+dagH5lYNWGIZX5OZt8UkNClzEAqe8ZDfHgPHQpfDZWqGJRSBHC/xspALP0so35Tq
+IspMzUT9ai2JlE5oKKiczW9ejMd4K4IP8u1I+jeuDhaF1DO9HNe1meXEs0rljLL/
+JVcpZfKKaj3hZsbd4djVv/DIhcI+TFfxktbXOftZBrC/ikSuz08kEv0q/gjx529b
+0LGb1m5yRK5YLXovesPyYMBJ6I1Ryy4slTDCLXDMcKieh+Ll8OqvyRhYe4wFMwGa
+FI7OMKBpSWYlEi6CEez7c7IxwONXi3W7dM7s8MzLL19ddrvtV5e9J68u7z7BdERT
+lH+YnpToXEo+5+p0ko/ExMcnfRkqGXru8s6Nq8OnmGmJ7k7pTgYvR0nWCxhdK5Cj
+cANZiowKgpgXi7solqKNbsDzYMGG9aKz8pCA/HKKMm6KDSYDAy9JZCPtdcuK82em
+41ksK0FZqHwtdvWibimlcZSL8fihwQQ3OhGSBr8hN6878ubLL2Ok03IavgvsVw+0
+9p5v/aH/6I/HwFXrhn4JD5Vv1LNGQbkpevmtOwFIUHxlg/1epRhSbfNEoH9sj9s+
++3oj3EjrGqU0iLFc6Rxkro0hsaDF7nWbM8pKDGmx3orIztikBNGvopqB/iVRdTVY
+CI6LBJStg4OdvW0QV57tP/77/s4ftBsSfccc8DC+bHD159F0xG98Hx+9kIF48yDi
+mDNWkonGzuUgGC0/C0+SAIg6yCmlW2WQnvdTbxjgZtYJRL7tc8SBF3kqTqH9rW1+
+3v7qVUaJCJfO8eLEfdMjYFSrY/5t2agZYftcnzeaVIxFDOwTL4qChF39mQdQBQKJ
+7OwgTJGXSpCcQGkKXyjuSfk3CqRSfoNtXH42tFvaQq5b9crlBDTf7a5Ade2CofQS
+VjfWdhhozyZL6tmTZ1tP4feLNbfxnmu80yTw+/l9s7CJV3FhKJyfye3ZcWGgiB5O
+yHhUFYVFYkE4KVesFHDGnALn1hvGiaN7msnbfRYPphOy0idhNQUisLy2tophvwWq
+kZUApgrEoPgh/EY/XDi905hnclSGQLRJuBAsQ4bDwQ07BD0ZsJGzeIqhoBC6Izjg
+SlM38o77vNwgywPIYxzv2GUVwHWSyxfByek0XKZigxhVPHVK7KAUlTjHOepDKd2k
+QDuH8JV5Ty+abMjBIVEQnSJLCbAkfvKezD+c23WLqlgB3pJAlj/Bei6asSXXTbkH
+8vDg31PdD51asRd7XJwnrISAD/TkZBRg+QRTNaDffdO55+W49pkoCEspQsR8fXx8
+kJuRAJ2igcIhowc7Nwdsmv4ItN0SUbSHAUp8G4B6IbdfqXujC+9t2id1Hmq/MWC6
+C2/hl6CWZSgXDIcBpTgUpNCjAoXchEv8eblxCX+vR78rLQBIkZM7zZ1W9kHHizFD
+pCH6S6266dwjB1ns4EOhm02rJeylaisWc2vKRdPH6jrTeIcGCxwkXjFcOizi3tPd
+vT/gF94/0Zk226Go+CyNeTzyiIwNVSHWiGBdSS7IYgxh46X5KYjhaLGJA4GDGy4b
+HbIkP/j6oP3k4DlrgDA8jtk0nV79kISaPZQRnxt1fZTOAUeDwfCDzOgJtjFmtR9M
+U7QRPAMMTc+8NwE7fnbEY9Y/3mIYMmZ89cM/TUOKL8zzCfC4OzSb8+AdSQXnoUin
+EiQ8ppAfi76e8SwgdBUEzaQhAPJ/FfKBuAuaQWsjgMUlLXNjSTwiWeEizM762SgF
++eg72CBCb6G2wwCzntd+SwuJZmbTDDjODIamRYzXcydEHuxjkEcCxS9CEx1oYop7
+NInjjF2cBcHovv3+Ik7ewJiAlqGKCNrrFYoAuPjlWTKNlrWko+moA68KxSnfBPK2
+2k2cUQlfXXhJVKzJbfm+fxXhQzGyAQ9xAsBN2XpvBSp9sOshNcVa5lP86g1wVjSY
+eDgsdIhfeU6Jfha/AcQrLeUHQ286yvoZRrnA7LHLZ9m4CE38yvGiD1Jp/yT23/ZR
+zmG9N1VlqRxqifB+Zj2tKnoWeD4Ot7rwmyCYeCOkujMKkr4CcPCfKOEee7V0Ansl
+wRiqwGgEfbQBZPhmM0fpjd6YJSDabK4ny7MaFU6naytfQMFy6LsXjzeFuVfhEFZ7
+58PGva5aDl7dOQhtbUn07peWwmtEQdeXh0AMAOM6aGH9vSSwK921+6yAda7qSXwS
+8zhKC9deLgeCAVN7OdjJFITyzZUuEEo/GHlvS+eJHzygXi0hMQvQGjrIzoDCfva/
+Y//YeLpz/P7rna3t5qulZj74te56xeDxM/TSbHAa9ikW0jQKLzcUrZicTdrDybjD
+yXfluPJWMPX50ePD3YNjileAdltMu+29uLjQyAkdr5hzYvHGecMf19T2/uNvnu/s
+Hfe/Ody9sbYO9/ePrRkv0Mw/fLNz+Mf+0fHh7t5T9qr2qrZA3cMdqH103H++c/z1
+/jaz8eQaLRFcFlkbctDoHxzuH+8/3n8GQxBbWEoeC41BOXnQVBRBW3w8og0xluu1
+cbB/eKzNB5iYxdsgnH1FyqIFKqO40EcbyMWromrp0dbe3s6hgy8or/Z063jn260/
+9nf3jncOn2w93mGPn+4u9zqLtCGmfLT/5PjbrcMdRozUQsu/vXu48/gY9sLW8TdH
+aDI/Z+0UmTKO+Py0LWcL7MoJlFdHbq/rPh7tSmkQLV5JsEWq3mp5NSf5zh9y7ZPJ
+jprBEqkSZ8oK57WjP9eZjZoP4P1KD25HMyWHt6tkOhLj7ueCQByV1snn/kEHS/5Y
+RSPSZaqjQRJOMpYMOr4mQLEDFJil5KQJWFoOHuLWD3a3l7VcH1w0Q7Xw7xkXr2IK
+YcQEJw7fIlt3NEuvkwz6KQ1SKXbERL788sv6zv6T/uHj+q3ffsazlZ3dMrOvWZKh
+Ib41Tp1iSPMWhhXa1M6qIBss00a1WH6c7S2AABQuFSRu3UqzeCLm0tB0oy/RsKu2
+hNVr7PV9lp0FkVpWeLq51EALR1lCM0UyzNFeomkTFYJWUBh/E45GrN2Vz7R6Vh/4
+4YX/4ZvdY0d5VDGh+GbUSEfAhLNerhLlcbjEnwlvEOjjc5oeQW2DjWF7Y8YwjgSs
+8/siHMt7TsYapBBzKfOWDVEBTlw6BASaXF+GGevSS9uujobF2hnmSJN1tN5XHjyo
+EPJk072qpvN2KxvD6Qy8NIDSvRoL+eIgwuRrrKGPenZfbmgCRXVZHVp2A/Tu/e/z
+Bn7L9jwtoZtSsAifOPSAOw0iUsPkMX9jEolz3dkh7Dw/TN80Sd2RBLy9JFe1od9Z
+HE9MNCYIAL2iMQlcpkXVIDx5I7JIJiDMYE42e99YK0IJ3KBY+58qW2m3T1CVYGDA
+7V4B/QWOLwroIPUGtzidMghvGOEAKG1eQYHF9hDwHl5XeEr3Tgk9LaU484XZWEo0
+V4GY9PZ+kI7CUyRxdBUk6R4ql7pk19NlDU0L1yylxOnbaGCofuw7H8z6SPnwTIXP
+DV8B5Vonsoqbj0BLp1d1jDjq4ulnVU3PpF0ajDGS62pb11CCUjQTUmrbIKLwSXQX
+ZRJrQ1E6U4Fs61lz38J9lmpntrigIRf6EAN6YoTuDUAdjJOlEKrFglHg2rwRlADc
+VyDK0zZVncPaDZtha62KkNmXIxK3XgI1w1qXxn34+I0fJg3XMtVbrHt3fb0QxLt4
+gZz31TL6yeuIzLp6QWzbdGznKV80HLDNzQ0I5ChasO0SGSbrglFx2h5r4EH7YyQz
+9YI9LA19irZHb4wOda5QKOBd65gr5+8b88gr5TfVpfcRdNVqXCjYCGtPvyRp7yPJ
+l6VkoIe4+70ayQf2SCNaeF0j6ZZH8Vz4FRGeOaPwBJk5z8jVm4PLZfzBcV5x8wUS
+5L7klsFh3BhKq+FC0QUw+pZaQdfqlWjeta6ARLygfMeFq5L73H6SHzZ035VSaBw4
+m53CRuNLBtLtF521ZgtkgROe7kFC/R5nrZayMbnHLsNfB/XtZMCjCBLs2KJQqcXn
+2lRkmqF9L/9Rlp644CihM3SufQX9SIv+2z20XYKWiSpopAy7Rszv6nFqlGUNE7Wa
+GAzDAawyN91FF9KOpFeybfgaIn+VquhGrmHdlwyByDUQ5cuntkrugKpAcI1s27ak
+JbNubzA0W8nh+J7VLTcAWosu5g9tGue9onG4empfwNROAwywaUXG/KyMDpcdRXoR
+Oov4V83ao4iveR0Tba2h6fEsxZYUVoywjSjnuMcwmxsxeXjnGKLd++OtZe2uLtVg
+iboukaNamaDoDlhESnK7JK8z4BYJ7pdvgrflL9Nk5DZidZWnXV7aFb6VfZWpusVY
+uZlMPPIrD1d8bx8rCknwpU36jSOcy0qO8CJi3cxzwZk03Z0m1Cn3WwE0I7xu3GTo
+6daki/7SVKFlrWmIlo+twRsWlruFyJ5AwcLLPsrkPDf5V/kDXhP2nbnnOCMgEBk2
+zmeyM3021+BkhKhqmi8WFuDDrd98Oh8UE3mYDiDN4yCaoqx4w32gj+OdtTX6Cx/7
+7921te5veusrd4BBWIVfv+n2Vu+urv2GdW94HM7PFJeMsd/gPXtVuVnvf6GfLx/C
+eoO0jnJ1AQ+4JRvFcEH5PVc5mjnq0OokZVhJz9NOYvYtsr1Igj7mNW3URKUwGuCx
+bL4DTGxPs3CUul+TrdIgkG/xtFEWiaTkaDRv3eKexGrIE28QZ8GtJfj7Bjjc1B07
+B8XJUeDLQsviizIyRtqxBKPDdJix6TZSQw13DR0Xaoqa1fjBUsOjD8gUf9vrrHW6
+8g2/Wecvjii0sHxDCeH4C12/+21wwrbIHAITxcPYEllBsb5IEZHYWoPB9andQr5i
+aYgR3/swj5za5w7HCkJkyIn5pjAEn67hkPFAXtZluju0vFI/uWSk+jVtr2TrL7Fp
+SuwgwanRe318Gmuh2La5BmB3PY1EFBN9ABx7MJYvJiDwp5TlC7/l/EqvsypI+Idb
+/GBVw8sNL2Wj1ow+3BJIls6PZH1gI6dBmo8Uke4Wj+yp0JnvMOCGj8RegJ33BHbI
+BTR9a4m/nQvDsaiB3reWuMeBbEMJI2aIa3qtjnwt9wlVQ9QZ26yNWLWxsWrab75s
+Ctm5xaf1lm8CJSSjgbvMGpdyF728lylwdq+bmv25etgi7MANYUgxBV7L5YqskFQD
+E1/28X2FJ7cKb92UQk1W0QNuIyUIglhb+RLGzl/k/BKSZvk6i+NRBgxIcJkV6YYb
+ZPjrKASRVRCGmxi1RMOfbNRzbDGB5fr8xKbi2Vg54WSP4eygRISw/dcxUANABB71
+oa+xcz/h22V8a54QVGkwRga4trB2viYbIDKTU2hz/+XjcmxCbdCUmqNkJw5e1jFr
+lhfJlLDGE+GtKqZSjPCgD7HorGklj/hgkdC8dm4rqQbt8siswWpMM4GAv19er+Uy
+W+0snoqT8vf647HvvXU9hk195nh+4S5+cRaLgxS4Pv2FABS9VGCi14LnL+Clji36
+AvJbkmW23tFZrG9DHxCNEkV76dlJ7CW+mQI+YN9d/SDvR1LgkK7+LRqEmg7M95q3
+ltBy1Im7wqId35vYi0/6BbWDiX7UqgPzeG+IdNO+5B2mZWlNp9ZJMDVpveeP0XVU
+96eGEukA884JfM1/8yp8TvUiJYfhAISQSkOVC4JsimmvEWzoSC19aUwkNgaLDRin
+CT1pmZxOZVQrDp2XHDSvy8axyRJuGS/bb9VJpGypfjYG8WhlIz2LLza6rnh71gIW
+N6fbT4ZEYb2uPocCMpvoIxAiPwGXcLv0xQxd6CdeLauZt/j1Ecc0FVFca8UAvv5i
+1hoUxu7oW8DcarYa9Grj3ukIb1XLUj9Ae88JHiiDsyC9RU6m8qZPO+fwPIKyvFsZ
+YhU1YjUBDVvPUTPFnVrTnGkuBtEApcaoRiprIXfRkLB98y2JeyXvkK01398KBmcx
+qyHAj755vHN0tL/BDr95tnNE0zrcebp7dHy4tb2PS0JWObz8c84jontLukHPtaNL
+Yz4NLpJXZe0H7CW5BY5x08jLmQ6rvWbysaAh8Iw15DNi+/BRk/r7kI989odqPHzw
+KalqfpSPZERgn0wnP4LuBz/V+p/VFdT5oP6nt7KytrraRf1Pd/3Or/qfn+Kj638M
+PCDdT5yh+w13naVbdyJxLR7jXpnOoJNNqhcwbOjIT+kbHsEkTkRDaHrQQpNz9YsJ
+zxh1vZ+gydrV/xLFY4or3M6LYovYKGPIWBujZmSr0D6dhvAWyAZQYiDxeB9YtCXR
+vJe4f6Z0mTr33oWo6CE/JlGtWd3hhRfxDlMv5Fnfr/7qh6cxW8XbSJHjmnncIAFv
+Q8JT8rIS/Ucwkq096hCEnVP0ZvGDYRiFPoVxcHYs4EEHNXTMc5UXHcdgNkl49cN5
+EKYbZBMMHfWhz/7R/jeHQL65A/7z/Rc7+JT/wtdo81w6abVwvG9Y/qH3jmVTcjXk
+Ptlc98ate+KpqTFcVDWIakH3G+7s7HzXx+yq/T7Sf00IFSVvnVL6ZH69FZ6iGKwc
+BJe85PQcoxgJ5jC3FUIgxFNUNKSn1hHFxEmUnirPf24FxXZw8QO19qaSiYDFr/XP
+cxsoiQ/k0KkCGBJmjB8a1ks4ojMv7Y+CU2/wFmYY9XGujQKTXmDFOOQIMpokQMdv
+wfhDiI7JyzopKC0FS/64pWlyQJDfImNYzPcJMhPZ2IrpwdwEy9a1WeZCrjybYXUl
+zZP3jujfSNZkwtUPgWuCG9A0JP9BYc5LCuvo6t+BA4l1QcuGcUIdABsH2DXBIFlB
+niRv6QwzMYPUb1+cvapZEn9+44VVEBdfERvHDMSdr9p99kFYPFuXpTXrGpJSsnLl
+C7PfrXXX6A1f92HlvWTR1mcJrRgcd876fbFsSiLLQOfb1Xxmhf9eEqmnVEQaDnO+
+02BaGFti0HRIRc56FRUct+HDkqKSGNS+xqEQglByi4B9vzT8UGvOI30tDWEFLIWR
+XBd0UtTM/M21gALm1WvZUmBBTckeFUP7fMlvMB+Ew1eNC0CW+OJVR3q2verI4Caw
+PJ3fP/zy1bIo/Sr9/XKYUkAACz4kUUYqDySJ7JGwPSgEyXeAG0YMLUYW/BS0D3OP
+euQRLLhD5Q9F46gPFp0wbRBsEwSbRMPrp0ESoJoFe0StpG7AUEIqBEXGfjRS4TTs
+WAJ2hQrOjsKQpqM2lkyCoZnfIUjcEje+MDQ9VPxNMCnYHC0NvH4Y9UGmN0eniWnU
+iVO5SHpFcQqIACWWZp8dHT2ji4sgKVjNqRZgWqFvtqCA46QLOBGuiB/wS50xm6YY
+Km+U2xOTDRhfFQeB0Cbtjj6nMG8Lfc03kJXUcMc9QRHMoTgahpF4QzZGDtCPOzaV
+wM+s8LEWHhUHXXmBoQOsxCKiUgMk8InaKSZlzMFpEifPjZteATPVGPsDzxXtVs9E
+LVDRGXAG389CSHlnAeTAmYW0Eshzr5SYjIC551oULU2FKM2PQ/EMZuq6pLLWxZOr
+gtXdrFPZIisMn0EXSWyJFclNZ1DGmoEfDjMYnSSL21iSNbnoQGqpZVKfCyVZCaWV
+ujOyLZfzsvl7Wgtgpgrxvss55HksAwgFJwV+OZIq8/x6mqexkxHFc9VlS1xaC+vW
+pgOraNzillkH6ULXzNSIMjAsXPQuCgrrCrnk8lfBYVwCh/zitzXjnrcSQK4L2Tkh
+JG8J1f0g3/pJXEg1VQ4e142g+5xUbLB+5yZAUtcvBE2O2DFlLOgg5LPvn+Qc9TtB
+qvRS3qS8flknDT8X87Trx7Ji7tSfZcUNG5NpQai45pUN1StEn1sq3tZUCxoyxxC3
+yuBCckMlHGohEPFKqKXMELFnLeiC6rfsfgLkNqegUgIsbrFSfm2kTI5brsT0OV7k
+34TkwcE8zw2NEfLr48D8U4N3nksgFwS1O61b6UWY8eztNCCcDvdmrCvVX53HYEfr
+M5ib1OChNRDlrcGv51c/oJ14ep+tcvY682SBBDeErNQwNYQeSSBcHSQyV6COJ4hU
+jFUZhxGmBU8bdYeKT9nVCk81Xt9YRJX4VrwVIa2iOApsUy6+gLkMD09SEHfgCM5r
+a3SK7OMdFdJ4mmAAQUcdLbQc1SbjdsEMiQc5e8QxaRqFsKAyoVeBXRryUK9Hx9s7
+h4ctUtftC4Cjni1fHvTLEQNCl3JrK6FHbGPF6XtDr7qmJ99slz9jQTbVgpRr9eAl
+v7MkbyUUjfClgKXF6RoLR+NbNcanhmygM7Qp0Jk0mzMdq+xWxAkr2sBQ0tMJYLSP
+AtY8jIXqUFxayitipVDIfQ3RSGCOFqvaMpIZPg9PS0KvDbxxGAE0cEHgZw3NPDH4
+sFA7orZ/EmqmhIus/3wzKA69KKX5waiyCQ1xc5bfmqsyhixpQ3L/HmuMEVyY2BG1
+1GqWzZztV0SRTFwq7j3aD3AK5xjfnrcmqSGeDFd/GYQZeWBPWRREZ9Ox90lQwpsg
+bLPolGMKdEnE4cB2D5YpzRGnXnFnIYpVRkI0noLcwfhIHagj1pBrN2AV0fsBhg/L
+bHlDtbR2Ct5YPwKtE4z2vCvpArx1aVOCuB22jbd0nutejTVUdobdA2BhAHsdpTZx
+NGXrtupcN00TSvdJxUvE5OoHbZsivnj8JkYulWOPrnbY1ndTmDNJ4JJkc/4j3zEa
+NYfVyfNdvKwTMcgCv3/eW7MkAmh9WySzoDtXcuNOPbqdCTDcj3BrjclRW16cYiwf
+eEfkwGMXZ7A8CFCKlIjXmVp6pIuRCppMYxlgWpxxX9WxYibTelsOZsCmBSGMhf8h
+/TdFyrWeg8zWOUmEI1fBPFLgHblUwqBaVKTaOAyG3kEHJ5wCp0I4UAyDysgKacmv
+ZubzjeyY9Ca2f98qZy4UOrW+hd10X1+tLUP9jfaGGWVi5Hdr/B4/85YLsW39XOcK
+mz3GJAZIyGGDUEq2dCAzgKeqN80HLINREadOl2B1rNnHTT+N3kTxBeVnx5G6KNE3
+BrpuqNwpBrpJpVU5RpkKK67QzDHe1GgiKMMozCiESOC7IDkb3vn2W+vw2KgyXNBG
+bo4gI5ljgMAU9so5zKbDjq7+ysbBZUC7PjdiwCg/SW6YoY7PDj8xCajXi/fM68rA
+x05mbp5wyTn78pBDAnE9igVA5kAHMa58Ks25q7pG1LImpjy0uSsf1rMuaxaJOlAe
+ceCjow1Yh5yL+ZFGHeilSU3R/rH1LVFwIVGilI2SBiHY0kNYsPUuhuIuKmE+G2CQ
+VQD0KRxfqmWeHgmdQvPOvmQ9x9MH7M76+uo6vsl1h/KtUhre6yJiUjBwpRQs0lYX
+LyXnkUt8KPDJDhwSH34KPJRJfmnuQAkEa4+jlqeKUOagao/2RN3O2GsoSefekAoQ
++HM+YJRZ8ppt5yvmvOyYpUrNRTfagstyu1Klk7dC3V3VibXtqoyYJfgWD3v/o4V9
+nxPYbjJkRXr5CLDLRk2w24fnNUFuc/+CyxSHKo+6gMz/3MhMJrtBWaB8FTDFuNQn
+4cECfH5NC2SLjj8zxsq+HjQKOeQ8blRDBY1KwxHeZsWpisECrF529ed5o7DkB/p6
+BwOQT4J3xKHnAREkO11qVHTffm0aEgiFxUJowQsvd+kGQAV3KTNMx9Uje+4+UswX
+O4dHu/t7uEob0jZz4MXL0gIUvtc0LcodECO4ISLFHZQBmADI30Qn6PnTUuHRYCH4
+/WvTOr8BId9GAzVVHrIjR1LnzeWhiL+G0XPyu/YxrNfpFJ9hUixYaFzAlAekwPHz
+aG4DL0zucxEJJb4oPher3ex0jDXmEQH6J6eNuoxrI8cl6buh/5sswmXhufqxxMxM
+rSEVdGSg+O3OI3n4bZKl4sTIUGRr8ZSBZ67a7nXkXW0YDUZTZLe1VRVJrOB1koQ+
+pjuVMbkECqApaAhtp9ZqC2rY0OMCSZ0RjAA99GaJG2hiO4zHKD9e/ZVb/Y2nvjcW
+ckYFL0f7h/M+Nv8Ia9Cou04wjbVz1ikILkLvQMwuGkOpTiUvrBBs9mGk4QsZx8i2
+DOFE5/Krh2gz+Wq/aU0U1Csa/ck1jo5hzqLYc/IkNqOfbzDH4prHlyIPPO+EEEZH
+GuYkAsdQUYLbojhz3FQTz0+AaODG0oZDniVFmfFaSOGs5DrINU5+AbSZJYtVqJLn
+aOj+gqtxOCMpThJYh/7iwHWKO7YllzzU857RNktoOTyuLdM1ISJjE7ADGtpYcXWN
+A0N1KB8cBtBzQC78BFYQeLb8cw/EVJ++joGEikAPPDNQq4QxCtj23hG8Owkjv9lx
+qvMEsRbWMdy6mQxrWjyQQIuhNUBLeKC1mBmVyRMzNu9CbN7ENL2ZybpYr12MzxxX
+Gdq979x1tNJlfE/uw5IjnssPr27625khkIq+eDn+isRsqoihJChhcBZkOfJjXATr
+5qe3LQp/g9hf4cryXgDwvWIDcsmYuug1P7EwRr9+rvlBa/Mfuw8K8rS+Xhb/ib6L
++E+9lZXV33R73bXu6m/Y+o89MPz8F+7/Zwaq82XQgRv1BK30/+x176721qz4X+u9
+1fVf/T9/io8R/8uNB+QJWhmNiqt/8rhf7ABkwQAzRrAtmba5xY6BfSHGjq4YhXNY
+wHYuidMR3oqPj14s/93R/l7T5SMI512Vm2CZ25Ry+uNSrNEhpsqF0YgQHDENTVmg
+8jS5TZjzEUZzp4RywJkdx8AitRhPjI4XuyIvevOWZlPZf7pz/LIeUF8q2IX5kHOp
+g/ScRz0qedlHKVwxGV+FEWYdAa53DExU8rZPo0IZDmjnc8kNfIUSA6YX4a8bq92u
+Mm0V6d45N4K3/fp4+UueqlG7XeCXq1YRytboqbyGpP/PtfZGN0pjjcVbKk09fhMp
+5V3K68JQtd5UyNGucNQVq9MCBgUY0pD1ut3fMWRleSbxVA+xwAEhUtbZFjo8Nzh/
+2egaWihrPLhAYibGsFXDRmgvw+RRlMntHPFJiS+kDIsRnL+U3b3WZWHDdwI9qkS6
+8loCAgzuvbgvFZxpnzfQz6eMUq+WPbv/dZhypWwHcE+mWslj57pAIJfwR4TBjYKA
+j/daMNCnOKufDMmEBPg1O+XIx1MZNeqPuZdc+/jtJNjgqQyh7H1g3NHyKNucZsP2
+PUkD7ErbYYqBURHQIPpmmTc4Q4HyPpPz2KxhiNN8Wh1Wr9mNHSTe6djbYFHcpoAg
+9nugrUCP0w1G6ke5Rx/tP2ffHD9p3xPWXYzoKvNOkjDh19YDGMlUkGQQC2HVPU15
++epy58mry0eP4L8nNUnHQLCeUOTsYTwJokYdTqqN5WX+lK7c5NiG8ADA1BA1FC3a
+9kD2D9jXcYK+M/WdCGYQDDB/Kv78Wjg+4vcjngox8uCc8OnJrsokLk49fLgdg/wO
+xwY/P4DQ4EPlwoA/tjCM9GFAmnPfQ6JXv68AlVvOi82DRibmjpDbD5MUbroJA+qr
++MlEemBxNOlmCcF5P8Rg3QXBNsfNYRhpWb77MDJMPY5tzyjDB8Oze2+QcknrOBz2
+xX7JRw5D0bzKHzLrETTSsAqP4tMQjvh+6Js19Oc482dkw2MpNq22MHCziCqlP5Gx
+JCOnp2Keyxxn0zRiVYlWYCFhIMPcUR616oPxRNVqMUdR7hDvtBPKQVdH5/nZRkFu
+pO+PvYm+zshepN4w92gyTQNwLZGLAKwbw5K2im9D92PpNVx4meOv9ULCpdgWv1lw
+djPge+ut/bL+6Nn+P3yzs7W9nytJm2qzcUDxLTcYxWkggaRpOGSQpxUXu4hbOJ2O
+yUNJUVWMJdAQLGEwL0dYyvP5AQWBrP/K9rnYvsVYtyUBzFJ/rgp6SxkzFKZrtAyw
+Ur6RCKpbfnmZfJvjqE4JJV9QRsXF0HMA89USM3kJ43pdDMegvy0GU1SbA2ZCrlfh
+pBgCP9+5VKRqL1NxMWDenpyUo5xY0pF3Eoys0iUHlqORsTeguuai4/iArg2Atk6a
+jlrkJkL1uo63fPFSei+ww9WGOMSDWQVHXsp3YA6/UgKaVxAYRFXgu1HKfeulL/VL
+McXXn39+v6yEnObrl9jBawqqX13i4UMMzvI565W2qQEFKsEvV7OOQrNbltsA95DC
+k9LSBm6ZdSqZIXEGTL0UiK8aty6OeHBMn7iSKZwomLMvcdE89Vs0fR2x0SJTSkxy
+DMwnMmULiL5JQgxPuBJpxdeOr59MNrz2RG9qnj+qAOgC6X+50p9TgCPofbT89vEC
+2/Otx2zL92HIFMnmOM48UlrmmkpDgmPP0ZD9CSUYhubw3TcjIO8xU5IfDo3LfSRd
+0msvb69U4pNbgvwKTB4EFlfSJ5Oc6liPmRoxBBCILzNK+j+u+OcvJP/5DgHQL5cA
+/TIR0PVipgzoF4VA/2akQH8BMdBR9pOTA/0SUc+vlPXorXk4zyP0GacZsnxqicVP
+XNi95a26qztxCluvaHe4iuvcl3P4OT/3+iMlyVVLksRLDnGVwOD/+QUE6sM4/bqW
+9PhdGke/io03IDb+RBr/ai1/rtr+aXXwlXp3bVBSF8vZnAHlVFV5DQXTYzydQ+g2
+9XRax029IxB2OEOm9yMlIDmuWSr6efgx3FBS6exmxbwJmTwj+Jax9E/BkhFfhZ31
+g2iAXrYW3a7zJLjoeOZx6VebHft6I9zAkDp5cY4PXAQ1N2NeJkP+SOwTKiliMvAn
+emtimbSi2srp5cTSGQXz5dRK6iX4d3oHhAAJaf/gcOf4+I/wZ3fvmL3nz77Z2zl6
+vHWwsw3fdh/vb++4qfJROJ6quMXI+6Hj7zbwsVmMDKTKw3BryRsFSdbHEK+bgrVB
+Z0k91iiZDmIoYUyhDv2cYkBfNknC83B09edTHtTIDtBLRoUicyUV8OSdefMWSMxR
+fxz74RBod4wdf1bg28J0a4SE1z/gPmLoPKU/0g56HlnovszHYbaNN9SSvB/sHyHx
+JtBkQR/zm6pzUvSgF8QA7omgo9AU0Xu5pUUKpsomgQ8qb0mQEx36NbyPnwTJOOTW
+/Nz9hKCfCOjrcOxQNF79MK2cn4rWmPa5mk9jlChSPS85oxnD53hpMAoBaXkGXknc
+7OqcbX4oXJndbzfQiuBo5/DFzuHL+uHO8/3jnf7W9vah1Z/GodIkzJPSAKX0zVY+
+cXGnINp/JmwXz72kkU+lxZ7sPjveOey/2Hq2u70FI9k9qOho96CsCzNWYFY4oDlI
++1KVKueUc795cY453N5RHymv0qL2UUDcff7Ns63HW/sUcEfYBfAA5JSBRDxJmoZ1
+szEdJdQRqnFrFo/Vv+c9fajnBgfoU0I4KW4/ARDf52P7wBpjL6GYGwOMdZ7m9Kip
+wCTI1ZrhVfQM9ocDq12bUUvkpgeSRQ+frW+2d4/7z/afGkv3VTE0q1FYcxow89ga
+pfDI6vTqzi0MJ2x29dckHJg0z4gdTwbZmE4jJrY4nRKYP+PBtZcmp1mYjQKl6gZU
+Qa1II8+hBceDepgnsNKf5ml2bue2SjXkb4SXS6OG57YyIVrKvBPOtOrXCflTLY2R
+6kOPsfK/BoaJEY6FHFJahVRZM5sVSo7b4sia2Wqfn+vzNa7DxWW4VRMsuNmDYTc2
+uxOVFl0zuTpIrv58DkdfyRzIG1q2jqq2ETCzKN9BR5hqW3YnzL0ew4/g1FNGQIRm
+ZOGeBGhzEIh4AOdhqmc0gHM/A3YRj3zJ8FRLDStdLjNBl7s8qpdc65ihYoptkb8Z
+7KVggP2zq38RPgdwxE9hjEAKnEeEk9STQFxyCoCU1Vu5S86LvTpmFUNFXf/MiGZo
+dylFeGOOSZDGo/NAvWwUB0rklDePrV7w5PEVMY9uoWpeNgMU/eQthvkwKoST/IW7
+ywuVo574r9NkOhGuEehyOKIsE7sHy9rN7K2lk7fiStUAAz7lfmvaUy0vjbb6ppji
+vBcsvxOsug+c+y5QvwdU0yneBFrv3PeApXeAC9z/zXP399H3fovf+ZXf982+65vr
+nm+hO77q+z3TXdRcuMKtXuG9605vVhnr7q3Yp/tOb45is1quuNMrlL3OjZ5zj9Ds
++dSLm0R7WbJLrHVzI8tb/h75ynkRsRqDKtBDG7KBH5w73E98ECKZfgFFxHCM1xZZ
+fog3juMJWqgEeIHSvCUvQNUqlF6BznP9+UHQZTkYFYonHwVa4Oqd0qxupNMdxJyr
+v6TojpfyGNBhCkwIKS6IdeCByEltkVN3YlSoTH41KQopoNDpRQ/lpV5etntfvRLK
+C+NdfqDkx5B10WPdS5hKL1evufrL2bFACrOqYmSK49VfzXH+VanoHF2WDVa9pbEi
+FyckPYxXrB2HCknoCiowt3d+0cRbIAC4WuDLaLYgnskWcs6IThjEJgSKTqAKHAmR
+PjEAo7bCN1ejD11PcwzfwIVAjH4CgncCQmEwkjkvkDlV9263fhQF/c0q58sU87Dm
+c+rYlySjP49GO0faa+vaVX9llgpOUjm/UcZiuvybnv1PMPmZcy+dmjaB0uHkI0Ak
+evjg1i3yYuI3NkrH0Nxg8Aqb+NIPz9kADt10s0avGf3bTqfci4n/gn5QnRiejIIa
+S+JRIArXHqgD+cuTaZbFEcMgV5s1/qMmW6YLwBqq2T3Zlmrhy3TiRQDG0GufhT4c
+jJs13CK1B7fp3L//5TIWePDlMm9T6zGUzQ89EIfb3EV3ECYDGCWUDx+wL/HaMDp9
+8OXDTUwZlE6AUHgjuoHQofEQSouSHCjLAJUHAnLACYTD+4xA+Vm7ze0YSNgXYqzl
+pvU4Hk9GQeaxdhuaQPCm2VuE2NhLTsOofRLDNMYbbKU7ubzPxApusOEogJ8YZjIc
+vm0LxdIGg7kPgvZJkF0EQXQf44ScRm3KkrzBSEhP7lPV9kXiTTYY/nufneLXHrZf
+01ZZDMPq0dkiNXAPx2e3ra84QuMpSJikpCqYAj8lgbOB2uhn3P+oSSBR1TXMO8mi
+9mkSTyda81TGY2dJMNws1aM85Be8m4P0/DYnF5uYaV1rl2HbAptrjJRimzXAB6Vo
+EQNnmbxuTtR1cyOWNsuC7jQxPAG64XEnjdy3CiEwwkCQaQ2wyZqFC1lRhdgOsJV2
+XERWe3AJc1yGoz9gs1ZAXtXjsmc9qNqhFqSYn8QTP76I2ll8ejqSe5f/ABwSb2ti
+33rAVU+mE7Fz+UNYGQ+YaB9nDFTNBRPa+ZJEeEAfERK026vLpkkbVuZt7cH+JFcb
+6gjoaqVIQOjpdCRbVVPGEBCu4Y7C4sOPwVJ3ay5sQeCfYPAhxIo2pu30krcVaOPC
+FmF/f1vZ35ejTg4yzwGGZRccbhQ4fNstAB9O9Dl05F4X0NGgssXvEQ1/VlRAptJd
+Ve2oTwsafL0WBkc75gAZT7PAXwwcvMcbhYdgG9IAdcpZnCjKA8dACLI2DvBHA6Vk
+kBbZckH6BmQmDkLMRuGAoKLOz2Q4a6fLi7nlfn7cIquNBbAJA8ERGC68JAqj0ypI
+uCgP+ax/7NS/XJ6ONOaBc2j57+sgg332SbpaxSUk3LsJ+LM0xhipPLuioVYKgC+Y
+slSZ2WIYegdXUIJwVcA1sauwOQmSlSDJb4gYtAcdbNbgmRe9KcBCLXXlmNOzMBi5
+aMsLENiKN1jF0c69foUB8i1ZOTpoEJbrzEX6RITGxD0iHbu+pK+qCN5fMR6VuGqw
+4yA7i4H1geXKagXOO+QK3hoDLJqeAP+4WRPCIV0HJeNGfTtIg+8Qd7wRxc6im14y
+4Dgz7oY11eUp5kn244f15v0CYCI0J+eMHxeyaoxbUdkX4jVGovNmrVdjy1X8Ix94
+YVl8zGCXcFZyPAcfnCWec4We8enmF+EF+uEQCJdxdUwRTqwkySpVt4+P1e2jEtvE
+OIGRBFaf/m2LyFFqRU/iBI6u9igYgqi2PrlkRBTYb1dX73ond+8zp8h3El/CxoGu
+LjZYl61ArTX4Lzk98RrdFv2v011vGqKbPhRozX+rRjDxfB/2KYh72P2KJvPZlZP4
+ooiJFTJgiVSJ3XQLCKb1M4hHsPTtNdfin62ZwjACoMt4k4D7ozjZyIE3BBm4nYbv
+At6r3WcZRo28iUZGHczxEVBnbeVBQuWGUhIFvBmc8ZfLZ2uOp5qIrY98DZdc4AGM
+awMXu3Qqosvdgw3VvSn50LUPo3/z48rR6yp14lR7FJS0fLJOqQs/t6OTdHKf/1s5
+aoSpPm7iGz5qbPJ6lUaIzV17hCUgVHoBxzB7fJhO1lpgF+fvSkXWZePo0B7N3Duc
+3eI7cZbgrPH4rmmsIP5RGSC1UYoUcINNJ5OAHC7ELrsIwtMzIGF3ul1NJUXcQoGI
+VeGvvss4/wMoQGp67zQYO1nAUujlakuXXUSuwZx7sSVLU4aTTNFSJEi9bvk8qRsL
+MaYRQstxku2mPCJvzgYB7/aIG3fsHgARAm6uijuuAg+qixcHRBXWfzwgSnnCgyTO
+Aq4f3CLbwMbR9LsgzNDgJ+VZsNJrA0Ipac06i2y3BPfAL3S3aWZoh8q0MmXbZP2G
+hHmxvafP+MTzTwPnZOloO/EGb1B1G/ltcYDDuJyXfQ/gqH/I6r/1v1hfXRuSicJv
+1wcn99YH9YcPFkA6aD+ajk+CpE/sXNZw9QbTNQCk/BquS4SKN5IVJKiEF+h1kI9R
+jM7du3dN1mB1xk7T5nP1z+RduVGjifIz18BRzojPOGf161XD30tngFhjsTa4Sxi0
+0CzZyIVjMQd15T52/HSx+X9/sJsyMm/MiNGPYnYcT4qMPTLERR5b0ITVEi7akAa4
+rKOf1VV3PRU8M28PjWn1Ayrn7Ut2g4ufNvnmNScTU0qij3f2jreOd19sHTEZJmbr
+iHPDNs/r4m4WEFWc0yGyU9w3q0RVDdJ5Eo/8fCN5X6ytra1wptIiDbp5SwWjW7Zj
+V2zuvUoQKZwTzoNWp/4z+EuipEWTkYezOE/8cHb4/bxccdm5Ns9o23FxvIYVCw6Y
+P1icV3b8tNUz19i6Qnb6Be7dcjXh86v/9A/f7O7B3l1m27tHB/tHu7CV938B+1dI
+/OX7V2hsf/kbWEzkF7SDtRF/WltYiHO/wC2MtpeB6/TdP2CwZ3fU2bv/s2/d3r2S
+rWuLLZjcZjhClSbXLwspKH8cjEbhJA3T+zy7ZJsMWzBcim1WYgwL0NE2fXzIiryo
+VSb3MSDDvT3KCFxfhO+fVOyqfK0XGnWBsFlDFuaN6Fhd19T6JCdtnU69xKcMTlly
+9cMwOI3d05n8hBsQb2B+gbtvmvLLZsfm005Ntrv35HDreP/w1y24WbAdLt2CeRnd
+N+bn3YSLjpv7EuMmbFCIgUIBaYcMRS6btD3Rxk0pGG5mYxoSrTI51P3xD69+mGB6
+wWXh47jIvVXFDp0bjVesq6Zr3YzKnQl12/xWdKE7qrnsFN2by9hLDr4oidP0zAsT
+lyERX4Zk+ZjSzShTByM81kathFs1LmOxPXkVq3mzm4BBY9AkHinIXIR+doaEhJYN
+8/cNgjOYRpBsoiN5I7iEl3dXOitrnTvdTq/Xa6pb3blvhJQRBDQIpw5uZp7xnXSL
+SfFyeOastAAA1dMbA2aKKa64pqic8mmiJ0HmRTFmH2+xS7Qkou8wY5H/wL/WNXZu
+6WLhBaBL5sAIqXRNcgRgW6dx4nEscFoeLqhWrhmXmI2neNvPwnHgh17G82tJV3p0
+BydP+pBfePuYSkImpWSeFkPDhaOzbtGF1wXg+gvDMXhD2P4sS2u6ZWVHNsMSWj8R
+NXvMyDsHHDpvT8LRqEQEE5s3H7uyM8O85nwlNCNXPBMcTgXocoGaaSRe59x3rl40
+15lpYaRbdhYupQE7XExHwVpK6HML+vcH/DzLlVlq4Uw7GsNu6nrgkL6rNwaR2CTs
+xW4/s7pVeoHB3Tur/v28/4+y+9RNPSvB7FS5/WjQFh4tNwhuYS86C95ax/qNxCxo
+z2lWaliSzgNuS2NYDW9uDWjQpWO82/RYb0NGIOfe7xi6JDZM5+bilMqYIVtMuQH/
+DZ1+na2Y3dEh7JZhXJjuTCNkT7+hYnmIcAAtJuODstvsgHD36l89GSFUHBJnK6ZE
+uChyFu0vb3vjyX2Bs06+xPKt29k77v/DN/vHO0cYXBRTZtSJUbEt0PgK0vfLSpcP
+TFct7HZNv2CMevH46MWcrhzoMzCKPddemNdyk6O0VyUQ2OiYYa7RNizWJI5SoBo6
+FtE7oyDjxeGICSfAEvFfZygaiu+AsD6GfvVtqpMhxjuAkCUlcld2ZvOpQoJ3WIcI
+FOMYlp2Vtmj6xFBs26t/RRZnsZp5oNvla/SrNsky24vhD8hez69+ACYz8hZrSAut
+O7OiwSBKgyCThSgE5l1sNFYIX2rGX3BG4jaaKdZcBPu9TitaSODy6vA0sbePA1O/
+zFB4rbrXl96YpiNls+Juvwzx+UsfLzXw5NqsfVFzLB5zcPpKpl6dYWpDXVjUB3l8
+yQfBz5VLToa+PElswacIhBz0XDujk0GGsRMjEfuLx+YaFvytO6XmOtTBcuagHOKN
+A4rz2DRRES02tOUAK0MHbLDSUc0TM9r+8Ci5FKhmZhTpQt0w7VP4IC0ANE9QXpS7
+q1uJIzM8tDPfV6HizxfUumQoP3Wga6T0rBDt2v7cTPRrV6tGo9eKiK1VXTQq9ow1
+cETKtj8fSt+635TTTdLJ8t2AMgenYuTHoezpC8Zkvw2C4d1hcL8mxZJK4juL4Okm
+pXFUTuSNWtc1Hs4t2tC+/+7HmhMXZ1JJKeeagq0Xnj0FdWd/586d2dfJM66MHVNy
+2n8Z5UoPFXo7EwfIjNwpbuSUrNrc3ByxRCfY1R+3FrY5v1CSKd+S+a+ypINDmQba
+PZEfH/TXcWQgK3xNhqsgmq7bHeeZgHc7y4wudxzNOJUvzvnYVnUo1nuaZU7ZcPrC
+p6EaWjMWbvZiKN+XSgeZ0p2g3d9pxqBzdFvm99GTUqA7i0HJMMR7WJX/+N//d3W1
+M2eOwyk4zY+fptWz41ziVszmhfMM+13VUcHKSc/PgKqy8+BdkP7o6DHDT8JNJQUn
+3NQ0dHNhRAXNLVoez7fExdMHNeMl+smqvpXF8qISC72R1FNIJU4SWm3dbEmp8AB1
+MuVXMELVubKRXz1uB5k3OiN35DhlQh5PNZeTX77Ss+QOZX4QNI4DjJaMOWZvXKn5
+CSgz87g1P4IC0xF25m9Ue2mopChT1TLlQf7JlZTX007O1iha2tlumXZ2sf5z1Z/M
+8HxNNeRi1bZEcoqYPQmT4AIvX39ypaEIlHkTOsN7C+sMXdZ1xZEXNH2SWHzKaj7n
+q6V0pIWq7tMveylarNtC85gSdU+uPuRtifidFTpDTYd3gyq8eTV4P1dScvdAftY8
+5fbnJvKWu9rUm7xOKnNDYfdR+rpPRV13Uxq6j+PZrXDQlSy77PG6+qCfVx1k6EV1
+IbOrebRw5dBq4QB/EQ+u/u2Xov6pUkJ2S9Q/82l/Zih/Pkb340aYn0G5U4a511Xf
+fCoa9O4vTV/e/WVoxxf2FddTdiyoCZwFxvIO80wgCymaSjuUE7Steb3IIfRa7lcz
+Ov9kNEN8b8rMTMM4zkRmJmz2N79+Fv5cXFy4YufdaB9d+NxZW6O/8LH+rq2srN75
+TW995U737vpq9y6U662tdnu/Yd0bHUXJZ0ruDew3CeBSVblZ73+hH9pRt5Z/f4v9
+njnwAB/n2djamLOKbfHoyc+9yMPQECRRi6TqWFyERESXnZFn5PZ6HCeTOOGOA1SL
+28+SMmgQTHhiEEZD2Y7DlI3RcnwDf7K2bBYZmQ2Q25PzUCbs23u6u/cH6MgHBogU
+o9qIG0MvzQanYR/7G+Oj/qOtvb2dw81es0MtM7aHyhVK1omeBZiJZJp6MiGnllxr
++evj44P+1/tHx9AZCJohqmC1EQTKdUT3P+iI8Yu8ZhsMiDUG2ZwgdHgKMMwMrXqH
+ZighKEU6ZFGePRAbWuYZtE44LEBUB3oeROeNej6xOpe86j2eCbSh5RDTCslskars
+/VsiKahqXkpuy8ty7GjKyEe8IeDlTVEZDnBXGiqFCIxJ7xTgoQZArE+nIU8EJnPp
+fbhlFliepsnyCKXh5cmbUy0bnsq9NzvB2FI6naA2tx/AYT5CaVKmsxBMtWjiZd0o
+KKRbLcslT5FRWrqY+nLn+dbuMy3nhTWOGe3l2TBc8D+Kue/LuQecF0UCd6BfYwCY
+dfWv3ugspsCPXF0jsImC/yUBBuTCXcaj1hhJSSuzimo5u6+ZCVTvqt6l9HRdMzm3
+K1GdXpXcs2YkqHMnpuPNALIV2zDyuU5g/0Kr5IjVqC9vvPI/X1rGzCb1lgYeRQXU
+JpIDhaUbXvR9wOgB9iIwTvZL21GHnnzhBB4W1oaMu5S2Bv7UlsPo0wC4Nt36RXCC
+F/ftE6m2RvcxG/qcGZ2de1XNRwAW8fPqrzntyzM+YUrkIM1EYuWhxxMqK3v0E5Xz
+MTgPkSLGI6AGOu0kLy9+SHjJSYhu4UkosVeRqxzmqA9TEyEHEIq4xg6CJI0jcuMi
+Z9L9Kd7yGEqyOTLI5uulOmkZ2Gnk61LZvhEP24+5/x86IrdTmFtgJwX/Q1vPKd7e
+n6ASNMXyaRQOh8XiT+A808pt7+z9sW6nV4Gl2aZklwDt4BLwcSRTJbMJJ+mL0YHe
+Fyuwb1c6Pbl1rb1Zx/xbKpO26FEW1RFSvHIipI6K9S10ofUwyemjIEt50qAl4k7o
+QhuK8LTm/vJ4+Y9wyorE5vcxK8yXn23vPz7+48EOaU3gN/4BYSk63axNsvajwxo+
+U1cjX44xoYnM3F6j+8qa/or7ep6HwQWS7hoTV8HilmmTm+dyr84WyChhBuJeO4U9
+G2z2Ol3ZFOl5Hgi3FXWPhAxCPLr6C56l5AQdYL5YclHRuCYQjag2b4nk81xu2kAO
+1dK2tqXdUTsJfBDZB1+sdlcG960yvpe8EQW+6PZOenftAien7QnwevB+2B2uDNft
+9wMv8aEQvqeP/V4I4MkbKLEyWA3Wu84SpBklxcLd7r1CJyIOsdLIrgV3g8JUPDQ5
+IesOHMz6F0H3JC/yIY+S+HsLUBSvOHxHt02iI3hktp674xuP1S1V19kTCrdWZ6RR
+GXrjcPR2g7W9yQTvfd+mWTBuAUaE0Zvn3uCIfj+Bki3Mdn4aB+yb3VqLHcYncRa3
+2NcBHH2ILS22BZRy1GKpF6VtYIxDC/y5NnsD07cEXtIGmujjvm30Vtf94LQFoFod
+rg3vsO7v4HuwDpA9wUvT31m3EgL2eHppi2oVQtfmM+G7Cm2cn5mvTbsK45XLhsIo
+UDDCcBUybw1dS9IhAkJYa6OBBis+S4Ha9hy9S+m+fdfsBj/5rfPvrKXgmIXQn6bC
+5bmIhipsNqrbyF9CBs5m4v+d7j3gQKEAvne9XrfGWwib4RjWBjXHg3vzues7rumG
+JIGHH0oVoCxFO391BegJR7uTu71Bb1CBdk7ikq/2PQRGAaKEpYRYJdhCriAxvE1A
+IEPX1NkT7ZDhHIbasuZsBb9v86AlpWChZVtZX2+x/B84XpvFGpi2p815RwyFMk0a
+a5PLZgkk0IyZ4sJU4V4Ra20zRuPlCPWGCUVT4ZExnLWly/rdbtexCs5osQ4Km/vM
+O/aHjaluGK6WoCsPCtlGQdRaOrFn7xTgJklZ8U0e3h3E4Ngx2h+d1M1Gpp5NCSw0
+WHeTqA0K2V8F4bU5IJyen7qhvHqnDMrFN4D1I8feL9ubZz3XYcvReqWwhAbW3rOx
+1kLHwtDsTdHuUuzbmWO0yYYdz8lF/Nyr8EX5ubTeLexwE2ErxungWQz/PYvO6vVB
+iAsHb9s8pSIcZ6WngmLkhgEcAStOLOVXv2vWsaSxtGUksFdYKwvvC+/taEFrc0/w
+bNWao8ElSd666UA8Le/DArTUGum9m6Q6KtbQfFOvQuTVTmFeKgLDsOf3fGsv4Xmp
+2MbOeuUIcq/EsgP4NAmtDvAJ8KwgdkJlRL7pGOXmJJgEXtbADQEHLDDbwL7CLmqs
+3AM8b7HeMGk2HTDqlWwuHn+zV4o9MHKCfwWz5GRzigcf7JuBN/AWw3Ij4JyD2Bjx
+eMoX8IsvQEo8qUDaOzbSfjRS9kqZeQnSDo8s0j4P4xFFJamEcSnR0Y++3/qDlTsr
+d6p4dPyfYsFXVoD9Xr3H/7MOX3vInIeca7CuUVTxxPaNfQnDDKOeRSYLCDInI2ef
+jN0iLhnWPeZ5hB9X9L7qHYVX2B0HZ2eHGXS1svx7YVkPFOX46s+DCNpJ8bpFdZMF
+g7O2D2XCkU10XGfavaE3HMzawpVSlmM1CqQ+386FV3OfZ8bEztYqgOeWra6DDIXR
+FhULpAsqcDczxIPyg1OfsZhsG0+Ejz4/4IDA/1wUyz08zY3KNbqvKNgZa+ic3Bps
+YtuOsmoW1cM1x/ShAkTtJL4oA1CRjlN0Qq6IJ3ma91m1BNR+h9uwlKNdQdScD1nm
+RM7qY8vCuLJFM+ZDUQhd8ynl6OZSq13EyJgngfdmg9Ef4MNGc46GK7wCv80vc6r4
+1XLm2tBaPqbckF7aYrXH8RQ4sYTtBRc1YJ/iKCaqXY76paRoFJx6o3YUZ2iwvgAd
+mg8hLA7zjgNdKvRElfQUP7kauJJXgUVEq6UKddkch4jgMuc/SIyDwqElu1FNhekZ
+V6QRWgTTWVTTUNpmNuLa6rYbEXgMcH2BXHLh9Swuu5TOq5elBIfv/mBAFz5IRaM4
+srbSYIrBXTbYJA4dGqECk0EkcOKhB4fVFb4Quk8gJah5TEshr5JJzMTalfU7q8GJ
+c4NWKnG0Tja429vMrnr+WuDfK28uDdBnbq5Ru9jouciyeSs1t97cGN688x32huvD
+L9wNcqICB4QX2ezAR9JOziGgSSxdN365zK9Mv+RWm4a/bX6v4ko6lGvASgKvK7V6
+7cH/9j/89z/8//4//+eSe1B2m+Xx/fyA4pzZ0aa1djWdZCFk8vkpwxvdR/HlZg1l
+uZU1+L/Ln3TiZWfM36w9762w3rNVtn5+Z9Bl6531dbbaubcGRL9zd419ASCGh707
+7V5n5Q77on2ns7YOf3orL9ZH7S/aa+/G7R67c7ZyfuesvfLi7rtxD2uurA/anTtf
+sC5WW2931u/wL/hPKn8x9Yi+wWOWP5a/8vfvanZQ4GWYrdOBlX6e9R5sPd45OtrP
+UzPAWve0EpMHWxisFk5pfsdPpgQUl9uHf8MoBlQLMXt0lqA9B8hkaJgF3BfmkA7I
+mMNL83vu1Lro9j0tey2aEHhA2KHdbBrSg46KMF4a2F8qL8si+1sKLBsbzlYdC0+m
+0f/xz/8C6CjspNkLlNqVnYNxcS8u9q/+hZs1RkFmrYHdx5eTYp/7KUCR6DzBCJNr
+M4Qf5m7FTPIITQS5BSBu5cXXgsw+xEpw4zFMQOjJ6imbJPEwTFN0fgxTal1tr7RT
+9BLcDpgHRdCujC9jhAtFwzMWGRODyxVtsas/s+ASI8WmYhDSpQN6D09CP84TsMXQ
+PoHOY5OrH4DX8rgBEWcrzrzxhgXIiZ30kCxZ9SdLcKz1+Zqj/VKqLMsKs6vvxdnV
+XwYhWZocoDd4mNbxxeYDUaWO1KOOv+v/2//w3/6/0CqMbDH4I1d1KIHOgbyAeMi+
+i5PIA3SBJRrEwD2jqXscQrkWyUs4aQxxLVsDegw45KX1Zqs4ZjIYuvp3WJItfzrK
+4rp44R7zf/d/t8ZcqG4POIpPE28YwjLCyo8B8c88qIEj9cY0zKkfvMP1HeFoM885
+SMuAh1WO8f/0P1tjtGobI/y7+JRvD++dl+CgAJkjjDRNzGCLJeGQoOmJNtAPP+Hp
+RlwD5c3dZk8BU/Nxlg30/2kNlNfmzjoWIEEA94Zqs3yHBVvAd0IvSCHF3obNkaAp
+bzimRKojWBfozznQ51d/8RE3jmJAkXAWSP/b/7c1Uru6MVg8SFNgHOlVi51D2QDm
+BaQow1HD4FK0+YZTN2DDIPBpSsSGcnLoHPARTA3ExugUoPuCWqxXgfZ/sgbsqF4F
+4GE4GiOSpld/xguCfBJpfALvx8Af4eh3D45flOyq8SQhlNsBxms8RtP0etlg//v/
+Gk6Fwr5yNGCM+Fn8Hbw/D5NsSmAGnvdNkJHZKSIsmmrSVEZBOCoD6g5hc0AEByoC
+f0+Y4Brmf/zz/9caoquyk1zJPUOkCuWFMRwZPLO8QGWyek+BfuCB4xzpcUzu49TZ
+ykEluv7HP/9gjfQghCPJQ4S7zWRD5lAR3B6McXTm8b0DnbSYDPdBAx0LlIfDJAGu
+2j3MrSgL2yJl8Xb8dTUxJebUplVWA8Yoj7jDAjfeZtt7R4iOScDQmPgIBgbn4WXI
+XwZAocpW/cXBXov96Xhvi4JYU5WyVQeK/99YI3TVLo7y6l85WYXSeNYD+pJ5WXb1
+71EAKIH1kRKkZ1gi1cYOZ/7/EmE4Gnvo0lJYfpZIPgp881AuqJtkAAP7FMdQBvCl
+/wbHTN/Qj9jlaL409rLBWZCKsKbFcx8/FHElxhQhmlEvNt8kE+Khh/a079/PrNt/
+oxkGz1G3YVfG9anrFW/fNguJ0RXKvX/vmkQdV0ov1yzmqnVEHSCrcg1uZQ787kV0
+LsznZuFin4bRcmVHL3kHr9FQWXbgaK9ExY0f2/2wKB7kt8suOdAdtYMH+IdRdYuj
+yTHZAFkJGpdE6CB/e1yVUjzGz8fgsl1/UXzGz6eA0/gpiabBk1zTSj3YZHdwMJ8p
+wDZJ1AijaeCuzCt+/nnxbVWGbCWZiltKGW+CllKlw8jvgUsSYxjt6h7AXKlBKSYE
+Br3kh8Dr2YERKBpYpZN93iY/RtBTeSOX2WbUoYOFOzc702GrcZhRJWgxZvqwG1Bw
+XKjXHnDfjy1uOD8DEnO4ns/K6V3mAO1Og+bUT+h3sQXdxNoD4Ob/j/k9Nfo5akm5
+ci9K4sQd6fy0jvTLQxeRKxRt54nEKxeCLvNqD1SgrCMkqSEyh1VLYDTB78/MG6sS
+L3rlilSRM7dk1T52hnlGgcf4PByi82klnhUnqUIsSAXvyRdoAn2/LKG9pMU//Wxl
+tF1MOQ/89hQXNFlwsiWT0tynfvp56RHscBPtJ+FpMF54YuXxdfR0cyrk5087Rwrv
+F1B4P1SpqsQTN7J8uSvWz7B6Ii7ezmUwQIz82N0nnKNgb8dRcIktS/cslD5l9rvy
+buZODu2k/frltwWD49j3iF8kf+kUlb1CBCftEWl9x3GE9yGez3VeeDtC3/HSMxGe
+j1wFSy7DQxFIUFP7xp0vTxLryuCxhwrZAXQDzIv059Q8N9PgO9RBD1AyB9E7nrIo
+QC1uSHcCZNaVyNx5/LpgGEY0chjUCXqztojrAsrGYqUc3g5QohfiPGZ92c1ZDpHu
+D7MEo5hKam5vEI7Rz74I9MqLAn5lVnJVoN+nFS6N+FhUlIF8dLdPMLgcOwrReYvu
+A0DOzgI+f4ydoLvHuxCkiEEik2McASkZvEFnQ5j7RecsRDfStx28JgTRuRBUVV0u
+OvbT7REIa/fZi3iEoS+u/kUq3Bnqd5MwTiwcdmZ2zHk209Wd3G7rRf5NBZrFUlm8
+4Q4gqzcFFOVhOj35Lhhkm5KPGHjx71a6fgD/PAtPgkR/wK9e4Esb/oPmE+9imoww
+9qMfGLzCbbwi2twfeVDuaEqqMPh2vNv6XXcL/i/6wpaS4DxMeQ/4j8R7+RuYkxC4
+nI0Z/UGbeHg6i5nnH5Ro7B5UFaSTpAktKgbEXTrnFfik/o6sNIBJobytUKWAMTJC
+fRFf/uP/9n/Au9jHtFEBYwTMYF9aiOK5cKTIVVdkAl7mt8rAvZLL7s8dHeVv/2PE
+/7nxyD/8Uxn/p7d+d623RvF/eisra6ur8Ly32lv5Nf7PT/Jxxv+5ZuSfA3GMHCTA
+EoQTnrLtMcVmmSb5fTnJ5cilKBKW8tA2M+LFLBotJvXOg/44xXAxPObrEuVv7gdJ
+EieG3vnW0gijgPCIbTwMQkUcWoyKgeULwWfzFw0Ks4jhEnp37nV6nV4dOqFAOjFC
+0GOpNzqXDA6aTSTj6YiCW/AgMP0DjDJ0+zYL0zTIxO+XdZqR6q/+Og83k0fGsW64
+60GE0dTqzPxsPrCaFsUoyGT9LV4rwASiuJ5r8uuc16fLwVG9vCWj2Oz2PLx8rleM
+TC82u7kouEj1yZY0R8XmmCwedOnsyfJis9s7pYvMme2JYnOMT96N1qvHp4rNNcST
+kTbI8iHyYnMM8iyeTGa3qIrNbnGyMjEQuqRFLDa7MT8+m6cxLDZHY1HaP6E7wHpl
+Y3mx2W2eT6J5BojF5moMo2JnYRRk9crG8mLztToI00FcjYd5sfmahCMk9oRlS0WT
+qtjsVt9lkdd/R0FZkopWjWJztgqQSt/EE2EsUNqqKjZns4NRPPWHILEF9apmtWJz
+NkwaYJxhvXK8ebE50YCbPNAZUYUGebHZ7Y7xzDydSebyYnM0mZ72L868LPUmkwpE
+MIrN12oWjJDBGc9oVRWbr1WcW4ABXsvRyyw272C9cdpP37ydlKKXXWy+hn3c5okv
+jejKGpbF5ms0HXmDNzNwQBWbr8l3cTwGqBExrGgyLzZfs3F2FiTVZ4BWrKrNdHAW
+AO8T9A1GrtCmXWyuJlH0ybRjmQcptFvkpWSwO/fQfIOncbeDpapaGQHLfSbHVNqK
+Xmp2a2JkM1qbNbKLIHij5lgOelmsEkXo1AcRYQaXmhej1ozRmy/xvljrYAACLeAq
++c9iqL2SQReKFbtxFXF3doIbbnZnebHSzowi7s5QVVbFkhvFSjtSr61OhLQx4Hfx
+5eujF3OskPV6Q3GuIDg7+Fl4iuKk1p2MV2oytKJcWYfa+w1mybSFTi88YEG1Xkvm
+qIpVUhQjnGkpJTCDnhY3HIj8IOiBoALi4zQZBMoG22imWKqkqQvPbMjdlF7K0RBe
+kPQLQnQR67RiVZCicp4vUwFWNpcXc6BxoYC9W2SBSKc25R1FZdTGUcLV1QQvOgZZ
+zt+6uyoUmwksWSP0J2XkxS42d5tZHI9SJ6PmKDZ3qxovPqPhObl2o85ZMJr4Qfpm
+BoBVsbkbPo8FMahumIrNbDQJzoGzgQM2jt9MJy7mylVs9s4ZjeKLwO+n05OI/AlK
+ENoqVobVxWIbFCN8e+fJ1jfPjvuP9w8P+kffPNrbOT7ShiKCe4bvAt+kCTR0KqdF
+x30Wcv+DMZuOMfxtdOax9OqvrBEzoeC8HI+02NnowTPAC1C8cD1JuFk7VePGbsqe
+UNj8auxAy3H+txzHdKsEnEWTYwfNahWJS8tFu1tFKtwkq8fRGyNSsQyKDc9fG+GH
+caiw9/oUMLdhluN0mtvifTB0oPYRbzRJzxxt2nVk83INn3tRdvXnMYaHPQ9S7vIg
+PZQowLaIcxyZylwa1wSQfEbYcteyjkMQDzNYnPPemgBcaAAONcUC92UXL6HI60LO
+rRxyIbecNYrbnp4f1KTb8GEvAM99obzHB86x2hIFboXdCN2CSL8dXE4CivxIjhCm
+2IBFn4Rju5gTEUtFBb0zbzSOr/41NnrShAGtP1mSAzfjhrgZGZfYcM5BmL0Radbq
+LoPRJXSLMxaa/OSQVJCVjNmQZqZKnfDKonFrDfW7i5e4iukkATQcNlRKl9+lG+ws
+5jGyAUPPr34YYY6ExhRIytdfbzx/3uzUmi01Q23dXebX1oz5zIq4UgBQUW6UE6oq
+wurdexvdrh7ZvFiai2kVzYkCrN6zGnO1ZgqSslU0XygvbYzAIGKF5VHLcpAEAdRF
+OxmOo+ijpONfC+1m/CC8DMikBTNfwFmBlicDzEp534K0EYFfDdQSAFwx5dWzJ8+2
+nsLvF2vzTgGN42Imsk4ozMrHZuPPUjjpx2+YsNHOkUaRDRcdnKJlvErdmDa4fTen
+e0Pf3g96Tgd4LdM7YgR49ZOnrywDEbSYDzRLYBfzuCr3jZg4Rn+8+OytqQC3zwzQ
+Ad0dhHj7B9+lySHyBGrW8mChS0FhoqXA7Np2n8F5KzwvrHlK4bMlXYN0AZTVvdGF
+9zbt48UoiDs0/6bzVLaaw92ltWQjZ2mGC2EXRCb3TgS2ys9KsDED8DttMkYCMKbC
+WMWBtrO4KX6yHMBxn+JNbQmbQ6XIcBQt22SGFMDxwFfr2XQxQ2UVv93aa4ozacjP
+pGHhTHLspIlHjDTwTNohM4RDhm+hLBg791CIc/V8H9aCl8EVgoecJRQPnc5V851I
+9d/BTIlFuvozIDtiPZA7Ak7j8e72YZPl69KSU205Eh3ygZRHr3IsaTVwSmUAF7wk
+rHix8zULWhyE6vE1Tm/ueistJn2vCDqPQ2334HxNwMwjmM0GlQ4cskIIMIES5kHG
+IAJ+LNCUJ/DxBiDnsYbMNQPDQaOOUGRch0FizAFPxD9o5qx3Slacm0KmIcKOMTMa
+dV5+FPjQ9BsgGmlurLFMlWBzIB2S7LaWm1YHmwFU0Uk6Vye88HIX07iIxbc5r3wC
+SKdoNIUoWQv0KKeVt1tYDfxQkhEpBtSUtc0GG2hGM2jqS+Yi6DIsqURN96k0Ca9U
+QnE25W2QFnhJI4XO22hgu17qljO1x+6hoF/9iHwe0k7tfoGsaKnE6OijSUL5rNHU
+ToLyQ2bTPGac9EeNsgPDZFtZEBFKbsCPDqsaQAdK7MszecgDd6Sj8BR3AtohK/Nm
+zAMmchXZk9Qoj4t7zrv34cCH9bgGjDswyFR45GqmWBhjZXvnaOvR7rPd463tfUZs
+Iw+ekUo5dETGsX5sLI4kAx/IFukxHHjBqSdtqMkXnfJG5TqJBlDqsZB8Y5J1sXMf
+CAJRDZj1WTw9Dxhu0OatWft2jvRdmN1lckq+ZsqUSVFI8k6GaSLNy8mmhIvx1Aao
+loWuhoRRZZDEeES5xVjmnXBuSjcOy58S4bYGVdkT56tarGaaWNZmtnoEJGOKHvPH
+IryO0ShxxkarRGOm6XyNb3vp2UmMyS9u594gaR68pqQLX1abrxeRr0/P/9cQeeSa
+JT2orIPYusx2n8WTPnQEp5rqjqf3uZWboH9WgnaMDtm+/tgqBMw+Wibr1uxiX+YW
+7LpbAIUOYjyAkMjsK37BeDE4Qgh7vcaSGB1L6IXuXyBs+bO3E8wyTj+UGfZgFKdQ
+0/cyT7alWuDOKxgGoc3zd2zWELFqD25TnvD7Kn+rbalfSM57FmCALj3BcKX/pwKG
+lhOXw0TYbVsW3re+RO0X43R800Z7Ng6ys9hHR+s0q4l8SiHWqLHQV1+VB0Yybp8h
+N4R25yNHRDGYczBi9G+ebjefu12Sgo+F0WnBs3LFLEbkx8w1LtJ3BewpUNURT5l7
+tlIeS6vQtRWUyi5Ec8VobxOXNyaPkCrxJB6103F7lZRPMKa2cIbS1lEN+2vvJByF
+ZLJfOEdqZp5jaqXaR0v0/EWZh5ZeFPGsGGCrOKsZPr60V8V+UW0KxOF8To2RM9dm
+DRidGjok5+QE2HKqE/gu7ujhQ8HmPWR1UUz6XrPlGcNygPq5l+D5yLOrIUHFRHYo
+6CbAv4wpTJaydiY+DmOANL6JTjDCX7NW2GDOfstWib90O9nN65Smff05N1oOJP3k
+2IbDII6u/nIehOmnufssYqEH1uIxwWQ0LT78X95208ywF91zhgX3R208PYE5xw1M
+G8ljFVH7GKhoUhq6DCMAYeyyxuV5iDGhWox/4XXOpifwILq8ROYkQ+Wsj5qIIBt0
+WJs9J/Y4YCudO91unuSStu5PtGN/KgS2QoSR86sfpL9szOUOCddDXenMcOO4+8d4
+ejw9ATZ4F5UJaA7aYk9AlDuJ4zctdhy+Oaa/FyFG0F/+Q4v9/YUXtnA5fMxVss2t
+JzmO/g0iogj/16Lof4CGj0WMv182JkrXievhYu54cePYOPBSfu4WQyY64itm4SlI
+V+jB/WjkvQtokbwopr+rd9YLhLPXWdcJ598guhYjFf6yEVW5DV2TauZeRzeOqntB
+NhyFcFIrCopEcnBGNDEK3n7eYl8/2gfcgyJPR/FJjLqEFnomjgP2gp/5R5MYA9f/
+zVJPI6KpiE36y0bI04/AxtMfCxWP0DmixXYm4YCDmpL0jmLAvMMwzuSzR6Pw3TsP
+D+sDQEVU8GHWJ8DjiziBM/4PmE/tWXge/M2ioyNGMh4LnNn8ZeMlepNeDyu5H+qP
+JhP5ejBpkIRi9rTXYt/sPwM2Mx6dgXyEGdv9q/8RyOHh3RZ7vLfHHiVeGoLc8+jR
+479ZXHQEwP1lYyD3QL7mOS28l28cC5/uAH4dYdDZZ140AMr2BMByhiILfD+Kh94R
+/2pGFp5QyF8ey3magSg0+ptFQ1eo6F84Hgon7mtionIBv3FcfI7Jv/wYj1jCPugp
+gL9bo3CHJyiA72PvHRzJjw5bwDeewvCxWBBGf7PoZ0bm/mUj3mRlcj2coyABN45u
+x2cBo9jlAXuEgkdvdfUuSivHR0TuoP0kZY/CTCwBm1z9O0j1lBLibxTZrPDorGEF
+QW/+svHPj8+uh38UV+Km8G93PEETMfJKoEQ9POT8NA3GhaDzjcfK+Yj1OvQ/kJXj
++HQUsHsd+l+L/cPU879o8mutk2kChdHYRBrIpH/ziIqXdCSssPXVXzqGqpgj10RU
+LWYJ+cdEcf2mbk/z4MUJo3RemEYUUxMllGkS00vwxdgRCXEYhpkS62JcnjoChTL6
+N49vp3eshWcklPAk6rNluSnQ92cqL/25ncVJMnuS2ijytGoW+4fhg9Hic+xh+ige
+njOhqNU8tqeEAg8Utbd1zJERZLfkwkv8Jht4kwyTLXGzLQGnIDoPKfanl+9jOZd4
+CsTBG8HuhY08xdDRCFWeZihGoE4EUFtoRXv1r9Q0kJB4NBVBPDF6qLi2VkaAIhqn
+IgsUm1oaGnT47S2mGjyPaeHQDJemKHYZmlgLVxpvzPNL8VRQI2TWOhrk/8ZIjSMh
+B9uSWTR+2dTmfBJxox7t53WoDkU1qjweY3SuiU6hYT8eTHGrdADAO6MAvz56u+s3
+6hhwJp2e9OMJKt3SerNDoX87wsYM/T/OwrQjWsZOqHPhhBoF9fu161C1LW4HosxJ
+eVKVFGVf2k4o7dLqB3L1b84OpBwVcFEsgKhQyCLLLU8vi1lstcyxmC++h7lOzeT0
+IkutI/Pobwcn/nrQu+/Kl4rr37gmAtCyyNyvlB+13qxOmDCR87NTYarMpGt319fv
+fHG/kGIcYVDRMrVu2dhhhGLLxC4YPxD2QUAAgYZgkGTOmeEzP6AwyhxNvKTDjoCu
+snSKGRRRNPXYNAsxgjPzRqdTtCVCytoILjfwIMjCxxQZFkn7Y7wPbrZggZDASpSE
+9mFaAy/JD0keuTFIxkCUE5V6r/PlMoy0Au0cqQoN1BJwKI/i7SotyNedGVWo2tm6
+C1PXcSWNvLon8cjPF7cXrHyxeqLwUC1ujqnBSnBv2FXYroqs0fLLZKSU70hLQwqC
+szee3MeQ+BTKKky/XD5bn2Mai1Fko+oc1NkoPxelVqHeCjQafV7Iw7i4K434cO/f
+s3l3s17vOvyjMT2B0E9Ek8C10denIHjn2N44OnrWxnRWy/qGcWeOKfRQRWvNgpU5
+TlSxT27tKSDfQguvQvgtsuqy0k0tOdE64JbegoCAeVHz5V4GAjqYglTL1/nXZTaC
+JC600npkxUUWW6t3U+t9AE2yLTSnxPt8b3TAw5Hoy36QhHDSiSjFvy67FWdxsS1u
+hGdcaJ/rNW9q8cXJK49Zce5Kkenb4EQj9ntwypNgJRT79P04Trhm9aen+vMU+UWx
+Q//xf/1PyA0B9M8FF8tFWFqT55gY8ngKJHn0i+SG9Mivc+8YO1zsvPvFqndTu+VP
+vEVtT/zpYAvo4592txgpfX9lfaxgvIuttB67bKGl1ire1FrviSZ1bhe5nzB7y9da
+0UoQWLJAHI6/IkAhbPJiKGAGblsICYyqN8YN53c5324dHmgZiWj1/xQkMTtOpumv
+3LAd1nqxdTeiYS+07HrNm1r1Y9lmi1b4OAwSseDqBM7ZotNE+BJEp0AIWuxrb+wN
+zsJPjiGqeP3JKvKfB1HqnQZhQga3wKhOo3DAI2T8stX4KqS6rszXHl5Hpa+Faf9Y
+xT5F+/4kFPs6BpAzT5Rd/ecoIHx4EiQJ3eFxqzYHevz4Gn8LUp+yxr8MP37Jen9Y
++aGJBQMdC0rvAUpvAfD+FHrnmnyZTJFfCjwPB4CF8TBjxxi2v8WOMO4n3g98i5kM
+tiaTua8IxpQRUEUT+fWCoOyC4L/5nwwKQD5PB/FkihzZL1IO1hNfzM0i2dky5mWQ
+rHo3xR5JdNe4IPkIdUYtBt3hXkzfAJYsj6/+eg6nfoAxXsdoP/EJCUkWUo+CIeDw
+yhxESrV68xgiA8NfjwnIw8p/jC2RMeSCHSYc0Zk3PsHoRZM4ARodXnpslwxdHQY6
+PvIaicnXNbxhAGRSuuSyIHfU3SCajk2mPAMvOZonQKPPyPhmAuQZaELmNeexXzEm
+8jctfem5bxYiLHrCnEUIi1bvxuQu0aROWJCebHNSQoQFcCXrjINPiIj8rEuuEhMt
+tOZGOqNFFl2veGOXzJIKPJeNa+uvOuwAHWix8a9L70oeteCGN5JOLbbn9ao3hQAW
+Yy1ULUfYC1tmz4/2NHygEXTGsgbHChoQfv3klC5U5BfGc/9f/h+mKK2b5oi12UcT
+118s/y2Soy20abSEaotsmLzaTW0WEZtE2xKiD74V5I/T01/JpJa1bqG1VnnuFllp
+Wemm1pmUC9oqU/t8jQcexQ0O2JiLxtGnJFL9rGut0gkutN5GEsJF1lyveGOXzNAm
+cEJBBqRZv2fAvjrTlLWlLxGWURqkXxFAT/y40OrnuSIXWXpV66bWnR+purZLv3oO
+TyNv1GLfBo/PvKzFXuCyt9iz3b2dFtsfB6ej4BM1w7nJWyfHz3kiK6IC+SbDKlr6
+6RSjwnsTqZu2vK9OkyITtcG2BvA3YNvoiJTFydsW20PPwcOt7d1vjprsNpPmBzcU
+lHHicJmymEvJBZZpv6xIjDyxCKMwyhMvRGj/05QcljwGrKPv+fA8TtNpmOAFX3CJ
+MEBb4d2DNBhwZyT23MuS8B0cZEIFn6i43CkbBOg2ForwGjbAoA5CjAMMUH85njIQ
+EoNoEEIr3EeTw/2cRzUiaDLThKPoZUma9h/1crM6muwE/rbRcyzHFvMm65d446ml
+cFxUp2lkf7zp0LI70QBjF515iebkh9FFtw3sErFnJbIiPnEcbmxT3ja2fx4kSegH
+6Y8YbpbPQVOtYhrCNh1HVgSW85AnuNPmBKUokGesosSxQY5fwE6G3hhTI1FY3Zhy
+EMBpicHX0YsS9qGSBAPDZzGMKL9FMp1kXlrpTvjzWxJsi5k30iatsUVPFrUmKBPg
+jY2APRubQOX6M4Nxi2GrzeEMGW5lV8kzlIqceg8f1NgEZITgLB6B4L9Z27ncYGMg
+w2HiiT8dRATgIrCFjrj9RImic5KUXtfPhXR78ThAqCr0UnlP8lvWhsxqkMCoeAil
+KapuggkaV+E9wvnVX5LT6chrfuKohG61mNqBYn9zQ10k2b4kET8dLvEskTeCTDIJ
+bRU29XjGjl63pb72Pg5xdiJoPKDznhJ6pRLuIsCCH+Q41djaXgY4N4EIpTnkNToN
+s/MwVckPGM2awVJ451d/pgxQiu/4xDHrT3Ek/PEPKX+r94t1VnYkoZ1DKCtJXTtb
+LnNX/NioHxqDIO87YXne0SIlYoFYA3hnzFHV8ZKJB2cLXltOT9oJpZ1CjNaQ1eAk
+/gZDfPBcW4Yn51aeeAuTuFLgD0pPdmNUEruGI8QziKOZfKyEQibxBTxbsyidIG3d
+5Xu3f9vr3u/dXen07tCD3gp/8gU+uccf3ak5M3wUk+0ShGblSEPqW5YnuUkAk7P9
+CKJ7NJ2gDRmt1UBfK+Qa4dzm4SgSChwHXymQxtUPyARyBCYWEM9xXMxIi1oxZllM
+8TFS1rsnpUDaIYPRNIwoaaDcGehlRkiB/PQRxZhlz1abaJylGALKzXwjJPsskdKu
+uBbhdnmTS9yvZ4HPfuv7vrRWgxfr8KbLbRh/amlQi5yixFaSVv825EA7T/28p4Ir
+v/2c54Kj6k2JkEjd2t/KlOB8e5QoG1gDvbla7Ojbp6jfOdj6FKTFpzBgDI4jQiio
+IOLINKl5NE5j+sIvHyQU+S80eb/wRKznJkiQ0NKYqIcXYdgdHntHZU2DciifIimg
+LhneXkAB1dcEwwkqhdEnzq5pnnqYP9JHSZkUX41d/+AXG9XK2DOhPzffplW5xubk
+tT6WYyPieQpHU+nSAHbugRA6Zo3c6mD1zjpbZjsUpmp3u8X232SeDNl283lI6NU8
+m3NLKmHI0NlWxRwdYYbC50+2iMmUgYlhYhFNT9/Aw2mE4a5QbhprwaQ4O/Yp7jEH
+pbVs/Y93gYhuxxfRKPb89G/raMzieDTPFVax0jX2nax3UyfiMyL1Sb42uFrFxQvY
+FiZ7hkNT3o80DqbHx39ssW/D6OjxQYvdbf8pnLTYHgxz4vmffw4bElOzwD9fYz4h
+Om8+vRMUL4NSFg9D7k9P+gsOCIaXJZNgdBbTYyQ8F2jEzsjAjRePYKNiFvPvPLlP
+PbG54diNztA7QWU7+4Xs291omHgBvJhiQD2W+1P+be3ZhfxdS2peY/d+tM9r1Ra2
+lu6Ah9LV1xBE+e09NvCj74Cze+xNQIiDHX48TaI0C/FKeutgN5UxeL1P4n7kuUi7
+K1hSLq3CLFKpViRlJGxQWEXgGDhtoiyDNDs8V7X5E8NP+QmvfsBs3sQ4c+V3kDFk
+fKM3JhUYUHZgZJLxMMZsqZ/kzYnrmhIgij4dcPAeTSnMPzsMxnH2N3JBKbfUmZjm
+ovtY1rvGLtaq3vQeLl00EEeDCN/AkfrsYBfk0kESBJEI+gTssPj2bZgGn8K+FZw9
+quoyDzFcePuRTxEKlqmYnhdDUxifCrO/HR89Z4EQJ0UWaegFuI6rf8MjlyUIC8+c
+e4uFGO055EKqiOmqXFK9QYjChDf6hexadKkYxhFdWvNoqFmMpsLsaPfgb2vjnscO
+n6kZmxbrXGPDimo3vVn1tWqZSwVLt4V6UWIf8ffBGQp0jdXHf2ixP8FwyBwMYIWP
+W+yPgYdHD+xtDGLME4ZRjIJRGH96vLPpsotnb/zOMC7YwOjNKCsQLFr6lcrR8Td7
+GPo/jgYAmYOtR3+ADQ/rdB6meYRnH/XaBNuALho164frnr6Onz9/lt+tU6DpYs4o
+NHwdJ1c/JNyR/lj4Mn/yaX5FEABtLr9UTVoKD3wgK9c0frKq33Q2DbS2i7l+1p/y
+jRiz4BKPPv4w0PzfYY09tPA4kxiFCbAY5vLF5Oew83ikW+GyqfS9f4tZfPVNtRth
+DrAYA6CG40XRdG0uu49wHBTwKc28JPsYsw+zJWH10b230e1y04+PsemQMPENbGpM
+PB9vFjcYdVPpvFu29DcJQiAuNwJAaEeAr3cz4ANEKgVd7zqg+6kvRbxpSkkItgRx
+aDyTPgo/3QYZTaPB2Q1uE609w0TqhvaJpKMNPwgv6Y7iBAjyIOb6hYgu5BGsyc++
+bTggbmrzqNZuDKhi9wiAfto75UkYCR3xUTD2ol9srk61nBdB8IZQ45p8jqh/c4zO
+cx5mJxfeyd5Z2XKhKHX1wwnp2AO2HWMi2580gbbj5ycgRAgxLGaPJNxus0deFAXo
+WIFCKnGCX8dp9snLEpgIEm9GhRiYT+nG9loKcuUgM/zQvAGGAishkMrp5rJ9EfrZ
+2QZbuzcj3syXPLaY3FUivZ53GnANh+2dxrsXFDUvXG+yzc1N4wnuLj7+fHvNv7l2
+LsOTMJGYgVmHVNg2j+1Iq2/MiTZLCuDzmxsA3ujCe5v2kUDMAQE5b63WR078MMji
+BFNoCUNBdM8b4RVenMasjcRcAOVj5g3HFg1wwbOwvDfDXJ+NY9gMUhfFR6uUQS0l
+zOHiAftJqavudZvM0yyEtPvJcYzXuOjQJa5BWIgXQNmUkmyNOmxLa+9INri2ttrk
+4mISDIC58XkSK5AwvRZdjnjnYcrvXoIkC4ch5hndYHGegU90TLcoPPSbMBtigJun
+aDPxbXDy9JtdxqVXT5hJpDCXZeidcYOIQj4wHCXXCp0kFYdNFUQ1hGgILGnq8M1d
+4q7+LKcPUBvDULxMJCyjjGBqrjMyAlaPFKCaBMPN2nJ+EhO+dCZnkxqchwlMZLMG
+z7zojaJbJ1nE4D952tD3S3eAw/XFo/oFb1U0P4dG9EWYTj3uEfg89hEQSLuNM2he
+/WWZpewnyxaSIwR7Ajh54Y1GXASQk1/02Fqfg0Uk1q50/KpG0RklD1yKpwlFLDMy
+x8qH1xcUjIY4PV8CHO0LlISHbkcVaNUqVyFXVMCjDTg/C69PplkGZxMHDP9RtoVq
+GHp1FA7eVEReNafc7HA41V0zwiCrxL8RGLXjCeTUKV3gHzChOgDqiBcXQEhq1aE9
+8+U2t+s0gqpFD+cD3nwlbaLmljlkqjbqon7i9GohJyPyMRL380NAGXFTT+zsZHgU
+RGkAK+SjHvSE0xrjHOO0Op1AkdAXsjmmhQRwi6Rz8ky8IW/Ih0CejSdLfBkDvy9G
+PuqHOJGUbZKRH7IT/eAyTLO0Uc9pPUCiP5Au26IuVaPYgHOUawy9URo0gVPyksR7
+22jeN4YVDlnjs2A8yd42SkfYbG4YdWzH6x+RnqppsN1IZDndFtvhhh2sxNEoY+my
+4SjAYE3wb/si8eCgxH/vs1P8eg/jOOmH6NoMKQCxATmZwBucsXJAI0ou+f03bPMB
+/g2HzQ0b2FVjzyMSt2VEqeHd4RdDzxmX2F/3v/CHhbjEa0a84zsY7piiAyvAhNEo
+jII2hw8c9KdRG6MoQFV0+w8SHUZ2jOFrUC8RooFR9IM8Xy1Qs9lNzRUIhUpyXkQC
+UkJvdXX1vttHiFbnZd0P0gGG05uHnTH6I4TAvQe1Bl4aDMYTq80WE79H8Smwz4Ai
+FMDqM5CHurPRwpzcGJmRYhSJB42KqRndPkQgKDJB7wGXEW1xTCCRsWX4r8PKGtMK
+c4kNOWoc1SLgCoCOGeTKavqngEre2zXnAOcP7Lk5x1ktGhglBzEaphYje/do1xVW
+j5tOPCxdMP5+g0lKXEfJePfgfA2PTHIoi+uE9djvHDtxzphEals4Rjv/8s7F112m
+N8feVUKxlNnbDoZhRCFWxpy9iR0KmTl5PjV1i3qSAtbB/H2TEo85k/lT7c5kAlXJ
+BfB8Vvwh2ZQ4OUvbuwaX6RKF78w6xZ2MiXDAjBQf2mH7kgcFUj7NPHVXH9E6w8N4
+dIZsqDeA4+w+I3M4CqzA/StDyerA6p2ibiYD7jUYCbUCeV8qpehQyJrlOobr28cY
+a2At5yel9t65HASCjb/NDoIkRZY/fKdnk/iEFd07bVj7ES6mNPNsaDrIG1EZ6AoA
+xLSRuv+ZTrDLvnj4EfeCekPloSiEpedX6dS7ySAm36AKErfXSZyhyPwKw1xlHsVl
+EjA93n1VQxjzndlhO/KitsVUNbqt9dBWbxB8ijaiViCT3RSpQAro8nYCFTFMxs15
+Llqu+SfUBQ9Zwn3vV0vQxXTIv7vSWVnr3Ol2VrrKJV88WL+m+30+FIVnN+Vej1CN
+p4IM81gH5CKw983e4y30+0k0Lzw8pikmAkYiwkgJXguwTJhodtg349wRHhulaDnK
+J0gGzOmgsXYWRlNvLJ3z0XgZSp3FacZiGZ+KwjdxO0oQgb9+fKApPj5xVH0WYlqV
+R7jZPMw2ITyufzRUHUzTLB73L2RHCyEsmt6iATmSJULY01F8EqPmCIhIh37gq+tG
+jrCGduMIvK3ueHj2nHNyVsHYfEhtZXp7MrofB+mYu3LD0yyIrv6VroEMR7VcK/aL
+wLE9DNnItvxQKP0ajzDw7k+BbCeyo4WQDXUb7TDiSY78WOFcjPFESfPx8bimRvYj
+4ponIA4c7NgDUhZy9DuPB1f/ZqdwYh5g1qeOTs+9SZDbn2OINLL1QbuJlPxrxsBP
+8ThXPzJi4SmQauFuFjlye717bFMbLCY8jQbhxBtZR3Gv9wUURHddyuVwvDsL5WhU
+5ThHr28E3+YSxkiQpjN2EMNp+R3euUU8rB2FIFVrhfePeLazxlQ/nIFvJK8kWG3S
+ozwAIW2TVl3oN5oLXinv+oEnbv8IFHRlTFc4emyzgKGJE8h5LZZSEB0YoIiDyuOg
+tWCMxOBhUbqGZ40t4PH4TFEfk4L8dyn8IG5Y+PukBDxuhKD5nZMx2NW/CCOBT17E
+209CDPWeX2JoobV+LAJyOg37HgKsn8bTZBBcl3HvLq+scXqB4QM73c51+fbCgG78
+RNpnhzgIDMPFBsSPA/sz8Fz3hi1idBJiGLjLA49/zO1bfGV+Iq7wJ8nVXyfoOKD0
+LbkACbRC+RrGuNBjdTnZGBhGbGTSGMYJSAeHwQCVQj7ZxWCU6wToVXr1V+YJLdAy
+har0WPBP03AS8NALHbYlhgwthW0EALAKWOrZ1p5+EzoQMgXK7ihPfKSj1E+0O/R4
+c5Qq7NutvR9zd1x4hb2xMs/eWOmuUvzMVdgPy6srH7EdtBHc+GbQ8VNGoODIExFk
+WSPJcRCDtwHyTdCXFl3l5fEi/P9jcdDYCInGXlhpEKI+2VPkGTaC2il8KaVj/Y/v
+sudEThemMPElHg7TIGuv2seBrjQ7C30/iJTWzDsP+mqBlYasGFDVvIlIpycgfRVu
+IsSlJn0fnTqC1ENvDhX+kTdCX7uAbU0wQkMCJAUWVxwntra+CLcvlxFQAD9x6YJx
+/vygAeCLsw78qjVJ3/ub/wI/FxcXmrUdCJbZNEVzu5vsowufO2tr9Bc+1t/V1d6d
+9d/01lfudO+ur3Z78Ly3tr7S+w3r3uQgyj5T9JZh7DcJ4EJVuVnvf6Efbryz/Ptb
+7PfMhQf4PGc02sgqsK0BsqjsuRd5GMOM2AZxGmPxA2Fciw4j1E6LbYfeaXT11xTv
+UjEaWByFcPzlUudjqYRJoYHlW7cSJLxJ0I+jAWxTOD24uY/Yq9br5WmaLFPI8OXJ
+m9Mcm2XpW0uTU+Kz4XDgdkE5XUEHbTwSmy2WG6bJ6RpP+VTYbXZMuSSMa0voRNEU
+ZPzznjPvpE99qr7hcf705evimGTSCmmsZfTUYmTi1GKajSxZx85stmr86Jg+NRvV
+UGB229teenYSe4lPzeNlBF0TonMdCTPucfd9WW2+XhwW/I2D5OrP5yHmWHX2kFsP
+Q+vCqgfYk0kfOkobeXe4VngVX2Gcxu9SyO4MjqCs3mS3b7PS1w1uvVKvY6mGy3St
+0VzcEaLJvqdjDU7RKOsjJ90/iS8bFfxYYVhN1mF1sl9R5g7qBhcgq/T9ZPqA+qxR
+iHbdzIq7qVnVJ9zNYCzdDDrsAAkCugEqA8UWG8fnHrMkjSkaxXMhpHH0FrByzB6A
+3HsOjFzg01fgsQS1wXDqMBqP0iHEJcbwdcCC+oWXRJg8XiAELO2HW7eWl3O8V5Ha
+0ThsEKKqAjAP3opUBYB5IhhH/2D/6PhlXXvHLUky4GLK3qLNz33RXhJgZgvkSaej
+EZEDfIpuAAnbpHK6/YfWUFOu9NJgFADfjK+gRr6u/DEvbNbkJo/Yrmg2b0G1Si0b
+Y1HIsJ2nRji/+mEUgjxV18woLTjhFPDxB4DxrKnQP7AOvQ57AZIh+kkgR61lY+A4
+hyKEuOH0EqDz57GBmKQO4bAJU9gDfI9TWNtNvuI5BIYhej7zrYzhqh/v7z3pP9l9
+tmNCAncHECNAw032FdUR2xQDWdo1c1hgD3ldvUX5FqSF0/7YywZnjTo/odrv4ijY
+eJX+voZbkN7/0zTOAn2ZAIeX67RPa8shoLHWh91JCRiQmpumrx/IosxVG3NWo11u
+cDkZxXCA1TvUZY409wt1Ls4ARijvTyPYJNRAE7ZrzzU6/BCJ7adn4VAVLzYqBwMg
+xw041kdTVWdROPMuFoTxQrDWPycg175xv/5QeGo+yX99EHtM7qAVukilpDkMyaD0
+xMlDnBMMUPbl1HV9lcKX+0k4GvGtQ1/74UTRJu0pqlk2TQtqezPViec6CaNlqlI3
+gPZVcBkMBFumirCveit3eS4O1p7giGoA/SAdeJMgBbF+5CWnBq2CtzW2xVYe3O7V
+WtrQNDTQjIzVwMmqGI12Z+7HVyfdVx35/5NlRAJe0bnJNIDVxUFXL66rY7k/KFtO
+o/fdvVfp51vwX+OV//mrjvFPMx8M/B3PHNDS+GXv9f15kEdqZIyzROdJBCKgCwc1
+PcNan5dzmOfzFw06DmUegl6nJ0C2ZJgXQjfy3CjzqMEOyt1tNuSA799SBwMHD5UE
+XmJT4Qh2t6mtIYbUUseW0TAxeGYtuwDUtZpVSI6Hpto6BbKBFe1BFg9nxT7wvWgs
+cJ3z53U0n68/erb/+O93tusts4hgSsjCXjtezEIAQSygweehNqmNHFKcc2yQWn8Q
+TOiMJiO9XDxclgSoaQ9lnJ7yoSr+Asb8D9/sbG3vW418Vlc1JQjxIxk4ynyWK9/w
+po8smSgL3xiZhlF8SpdIUz8kQ5Vb+S68PoS3nj3b//bjIFwK4EMyhQmJ5UnG3oiI
++WwA8mkTy0T2k0qEZrn4pbimhrhTU3lYOwaYOYngfPJjivwJvBlN/9YS/9tH8g+A
+Qmbo6Hjr+JsjYofuq/eCf9IAWefxoHwaNxfO+HMVSMGj7GaF97AzaE8gF2+/m06g
+o8DvexkHR1sAqp7Fmaf2Er3rijcSMgFfS3GwiZfKPKVP7IxRMTe+0l/eUsKidiDq
+UMqZ98S7cLOURnFBE4ExSYlUfZfG6ECHt7ENbIJL59pJDPDhkxB1TG7WsR79cZCc
+Bg39VUt2aK2+ZM1FHr0xA6lsgvIW8BPEaxBjLtQxl+MRiGViz9+a43DB0c+IslEI
+IqagqY3+pcKt1wYLtgDTb7SmY9zrAlNHJNwobyLba/YlOqpYp/QSnt/k8QYDKhUi
+qOSAeN6u+TTnbnhDyNmMXKyAcK2ZxIBXI2BsNQa4ztUQwi0O+/n88zJGoQgVe5ab
+1EJe/4OBOaYdiUaO+BWdh3eFNLRbS/mOJCWGRTaEVgQoBOw4/KhNW0dpn+97tCQM
+rv4dUyRiQYz9cRAnUXyaeMPQA/6pjmDnZampTnaZ1eWu512ceuOTEREZZxdbANEM
+LRYeBRkqzh5jSNYoTqFxaiTvQDbk6CMKLlI+C2cfe3GG0ZW8lI8/E4F2nl/9xadZ
+GN1gW44u0hg1P/WyLnhbKTuKefD224zSX4lZGB3wltrk3u/qCKWJtLSjHW44SFMZ
+eQMMGq86sfqhhtwrwtfD3cPfxacxNv/UQyOlfXLO07owV8S9HjzGqDxZCj0cydfQ
+ywsAXBDrUzAnIYu6ejmLJ5NyzEIzpYTWfKc9iMdjZKjc85ANOfqYrEwEYjn7OI4T
+FHRpNVYOzFmYfUBDjub9+Kyq+S28lBe22Nvx16yB1sFHmAckbpq7DxpqU6BTP0hc
+a34+iao6enGw12KYkohHBb4MS7EKGmq/yyIX5gK6pN5p6aprycxxn595GduNYO9H
+2dV/jggFtG5UW7IfoOYP8W5Ru3b1RkECsij+206npMCcJ4/1l2drhRtRJMUnHvCu
+8J1uTPVYFI+29h7vs+0dtg2M9BF+ebYL3NkR63W7v2O7e/D9GbLYO2zrePfFvhZE
+GXriXU4eHMtkaKR5Sy3q3ZBZUGWfa5273a6mCsb8vehli8pg1UGTfQd8KXKnwEUA
+TT6XifXSYKosNygALiXbmHCNcczi4RA3tQwxEndUt3siCkkUIDRFcM9hkE09mXQi
+D14vbTRHHW3GE7wH5tfo8xl2zWPUNY9B14uQosc8Bcabe76I8P1Mu2jSbbr0++tZ
+tlxf+sr6xIfxoUkJQnRUMPfKTHsJrmLVBsOH4Gd2Pd9huaA8F8tYMhScy/mrcudG
+w9aDm9bQv4U9pHt9rhpO3GvoxM23VMG24CwMRr7DuoD2BmtLkXQPNszW0/3DrUrz
+DcNNtwIQn90sJJBf+jgwDLD7titKhoTD1/uHV//pcHefHWx9c4Tko7H1eAfzOD3b
+fbRzCA+qwzsqyCw+O9+LToPk4+aH8SDT9iBMBiOXKcn2ztHWo91nu8cwjzmm4fTt
+hI3iFwy0zR12jLwzkk1uqcIoWnRavsssr3x95hi1iCk3/cHdO6s+d3OOpmOQ5vvc
+nrdaQtG99g1w5HQ8wKyXzhu+PHemGP+syV/98whWwRPWOppnonPmLl87Yy6azP96
+vgEUgnIvSNikQtAYhq22qHLTLsXwPKqDvS3JetFLHCirIjkD3wisIkCJ0Kk6bOgc
+uzAYG0BTt+oorgEWTGPWWFmjQGfS1w5q3PRGcTj3NSuRJYyyc29krU1BVYOIYiJ6
+CFJHGiLcGmmTjP6UTuxcpnmaOVrl0bX4EG1NU3GEYu/h8FRk8jnHZbDje0fXQvoZ
+ihkhFkRwgFE/uorm+id6YR8I487C2URW8Jr2GU2Y73Xofwwvlel/eOV1IK68frxD
+SnKJpl8G2SaIyFU3cKjAz5FlxPhzMK/CbAi599xIC0+EoxANNjzy3x7E2kn3DHU8
+zblY2gz5pDaPVZWGaPmZj43eGQUZLw6nWDgJfPHrDL1GxfcBBsUCwcK3ud8M5+5Y
+jSwpM6A+M8OzypnzWcHbuaoJ2OXREhar/g+Z32G541lEITMG8WKNaEcwbg5U/ZQ3
+AE8TGykdsPsyQymkDLtzvaWt5kMNJhCVt/y6hC7bN5hzFkvDiZedieuGJzs720f9
+7d1DvIBaxvt8XvklF8pfu6/Xuda071Styk9Bi0/dVlsAGFpdXqHFUKnbP/r73YP+
+zvOD4z/2n+3u7RyVGCzgZ27drtk1aabR9GhU0bacmORhRvwic/Sy+5rbpP223tSg
+YyuE9U/RRKH8Kd5nwoIL5si4A3AdJ4QI+QlSHIODKlfsV19PKlVkJwW+kMbH4IUB
+vx2EIW9TOwIobFLpsUUTLJc6SJ004oZ0B6j00I+JBQZx4vkYT7k8CNrq6l3v5K5T
+PlBLjoyHYvTnGkMphsynCzBQY444bwszDaWivUghE1Ufy+ZsKrmCmWMs4w6A6x/M
+4A6sYVSGFXKvV5GAG+2VxRaCaiZFhwe4fp8A/4GX/nTLr5v9BmN2TNeSh4E3+gjl
+2cRcpPAUOHRGikRxxx5P2TeHz7h6Em/2MRcR2lkpDSZdv58oJGMeD2wx5Qcu6sS5
+qWvKRLI/citCp7cNPu6JNhzcqIxbA2+WmGKzcZCdxT5MCMPaG25APFbhtf08i3Fz
+uf+PZso5I1R8GMlQ8atcqV0MeHvaU1ElWuwSrwTE97fxNJueBPzHSQDsPQ89URmQ
+R7cyxeg7wi3AL3gmOVytFnBWcpCbADbzmYPcHHMcMaP3F/2ThDeSuT8L9rNkm+uQ
+rcouGoThszPcV29dxsYrASPvjKRGwwetLCRWTvc1Q5qSsZaPp0q3rLX7UtrivOZW
+VtLeqULunHEZU0F8HXcw5vEi716UAdPj/efs6BtSkX7muGJx9jJ5sJ+TmUrexYCD
+sjPX9XkGFSpYZaH/bUpX2UiPNoTb/+yuREA/ERagY5AqYyol2UTmkLBnIPJii+Ti
+wASEDnYOn+8e78JSLbO9q/9qPzc++zmWSzPc4r79kcev3nSLrY7wnfqp16tMNTGL
+KNhMwq+Olr+MD5zYcHqlyz9mH+jleXd9vcT/k38X/p/d7urd33R7vZWVu79h6z/m
+oOTnv3D/T7n+PyYeLLD+vfU7d2D9V+52139d/5/iY69/7lXKn9yEL3il/3dvpde7
+06P1h12/trqK/t937tz51f/7J/k4/b+1tb+G/3fuDfwtNbPB5CVCbm7S0m8T+N04
+wxuEdDqOoeEBT5TEY5Bh8CrUW1/DNXwyTHFU7WkWjlJ3EenhUvI6Ty4h39tK4xn+
+51Kru5jP+gduYi7dYgiOb4K3uTG0eqR5qx7uAFOLLqnqZVng85KiGyz372mjfxMM
+Q7Pqnit1R2mujoaRlwN1gkJJWN1yrjy2Wp7Pehz6FE6ht7jvqcBFbo2lGa+bbg4+
+hlmDluuWvwONwXqGYFs+93A9T5c1fQ3a8dfndpDQAPI34yYxt5dEn1wpF3KU4FVs
+X4k+us/OcJfo257QC3pM9JVTrDR9l26XyTRCwZURXt5amvLHfflY+Sc7Qw3AMFMe
+jkJWyN0qHU0VizfqohT6nhkOT6r6JPTdcOYIDA0ti6IdKCodvx29K02V1jLdMxWm
+hUYXl/035CWKBb7KHzT4ZZbeRIt1m8pjf+/p7t4f2NHRM5krwIJvdBpGlzLEgRvI
+hs+qnKKmWU1HfKIK0BEHEY2sEk6uRgS4SsalYBZdC1hUTcLHWN3I5bJre+FOTpNg
+wtpDjcTTyJE419HDNtK8a8umoGYgyvJ1OhKESq6LlnT8xgm81baT0i9h2D05JunM
+I/0w5ZjIRtUeqGtNjAFpLfcvwsiPLzTcMbudUU/NSYHxERJlof+/taTHBin3kJWx
+Q1wOsiquyIYRRISfhI+lSw737AqcsT1uLRnHhdC14+13taMQLEkXloF86l0HqnKE
+UsepeqIOU0EVllUYFzx9OLY6F9M4Z1TPanG4Stk5G9t5i9eW9/xf8Yv+vEXTLyw/
+XPJaBQOCpYHbDkEzlci7JCsJlwe77FL6eg24g3iVv5frgt/y+CpdYapc5uy10jH8
+vWDMvRU9ipNu+wFLfx0PL+7XZbjFUE7c+by/UCzgZYdeG+iY4QBTp9ty/vq3/hfr
+q2vDa7mGLaNnmPDSUmOb5TZmjGwMq/ZWn6M+smHX89eCazowyUa1keXOTbDfuXcT
+jO/51b+n4YCczcyxYbAkoU/nc9THtn4y6PqFsVV7opHfmfRDo/7ysc30UjOGloIY
+E7Q9QJ9WEWzcBOLaHkC8SW1o3555Wbo1mbTYMYAvxT8jNHUbi5LGyMidK8rUwE2g
+DU7urQ+u4/Om+bppI5P+cAcjIMNk5pFy3zjXyKCfYOL5OUT1kd0L1tbg3aKeWWxZ
+98nSRjbLa8sY2RQY2XYaDJIgKyJacG81uGfDbD7/urxHbWS5xx3uTbtgAc94P+2B
+l+DYzO3p3w16a9f0ylsWXnnayDSPPb5TTL89c2TS18mJZyvdwRdf2DtgXk9UzTFU
+DW2mm6o5OOxqAsdD0o6LC9q7662c3Luea6lrbA63U+bF7EV4HhdHliXx5EwjuCbY
+7nl319av4Qe5HX/tGplllN1GU9U25RbnULFQDe+YS0Z2Z3B3/S5sT4o9sMT1Af38
+iNV5f6f5JR7BxFd4WV8ZYHo8hJzOIc3Lphuh79zmfbynohs/fooz0Cps5kMzpexV
+g+cI2NZpMp2IX1xlKDWFrLGNicdOArQEp4w1HpbHEMGnMjmZUFg2b6FFCrDAS1xL
+BWxrFGQXcQI4OR1TrFoNuDiMJ9OIW/d408twFHpCAQrVzzG3SJIHyJaB9mFA46sf
+0gEWo0Q7LXiE6dBG5IYgAt/HU3YWXDbRuCm6+negUDHDssiD9wehn2hSVGPp3Bvp
+6yaEA3zaxIB80yRiK2tCloOnyDVIqRb5RyBpTSptaEmiKfQaDhqyBq1zI4yypmrj
+wSbrFZ8CB726oi+wGIJRSi6m7JDsuJGPFe+BFnYvRdBDkx/PJzCKo9OVcNIAQAEE
+84E27caBU4el6IMgobUP8sXxzmH/xdaz3e2t453+7oF69uTZ1lP4/WKt6ZhGOj2B
++ly51YB+QZxuhJMVHIw2BBh/r24MRFuID/cFCvfY/kl29edxHqU9xVCJaDs2T4Lj
+JsJ0MJqiCImBrZtADUYjo/BPkmiZVGy6Ppd2BgwFTVJZEp9gcgw28FJtWqjbZiBd
++B43gcgCTEjh4UD5hhrwyDO+p+u+ndPLZW6h4dfG5po6b4DmgwbbNE3rWaOugaEl
+J4ZzVHobXuOlXpAL3q4XOXCkTiUcUrrb1NbUOAlvGej7F2F21ud5c02aqjU/R+WG
+DI6Zo2t+cjiAiqdHOFSHB3xF1YXRfwqLo6l8ijFUiipPNbBclq8XpWe7ZVe1hhid
+Jp47Yx4WGmuoaaFl2QgkRR6dS3t4IR6KexY+9/yuodm0pWQ54c/M3poyV0GgBbZa
+ouXQlksLq6naEQgoe5apmAuQcrTFdax2TRtKzuURR1p/CCd05I/eaogEZ5J66kDG
+ysEs0qxaVueIc7hw1H8pSi8GGbvuLAxyNAUHQBZPJ8DxuvBQW2yRU1lT6MmVkeml
+jQcimqyOC6KaaMitRsb9zwtIyDqWJx9KsbhzFouOonqdzQ77xFFXDXLh1qpXAo6r
+p8CPITOI6bt4lghK3iXSx4U+cIoUCsv3eNpiKGHAoEgjkDGSyZwtJGkagQZ1uBlZ
+0a1aLZYX5XzRXJhdh6HWy5auSO8+mWE/s4atH24i9qb2Hh8CawbsOryQ3K6cpXNP
+aAfHxIFsp7wPu6QDkWQvEjCnMl6kznfiw2swnYU5U0PV4T3leHKaIsczAwwgZLkO
+3KEIy1UsPQcweG00SPV8Hw8bGzB2gRsBkt1oldLbNVqOSY5DVXajUE0KZI66szp1
+7KMC1IZlY8hpoVH4mphROH/KV8sscM3V0lfKbLAKk2TCZbU2pSthlXSTkTMvhUmN
+Qp8PRe/IsYHp6bzT1eiSkNYNWhVhUNyYLlG1S6AlfNQfe+kb8znRaX2wxeCCWJEm
+oSRRPon7jnKig3aPffkla6yusLYGR7uGNlLVy22tITt2IZ+slMxV9Wburau6msVZ
+ibYc3BSPPXsUYKamZskZ4ZQUFVtXEuQVLZ+kRAPfrairo/gUGADYddxUxjEwOyAs
+8cI83Kt9KJollQpxVkGx7als4SB+mJOFjZI5yPCzHJvNd2K7yPf8p1UGF0VEuIVv
+9izEavMC8pcduxawRiulMMkqhvguB6vjvj2ftC9Szo1E5GLB0Hwm+bCmqmDZ6ax2
+VihyepZc/TVkMUcIVlD4oVJOZNUMLlGBJ9dGpCWQto65wOzWwRRlZj1RAF84Pzg3
+hQF+oy4XXYkE1uN8tZVygQtMrsak0Gc0JR5CQ6XCy0wmV3ZKXKLOEMoXrXyWihM0
+dRZq1BrP+sHdu82r3mjvz6zebaSooCN1/sZNRmwSUgQoLgtNHlVN+fpo9UiJ7lgl
+jfjohEdNP3+bExvHS53AKIBp7zUCImKYTWQCP61UTiZUOXpULKnt8wKqinev9amZ
+NEYVVY+5vYlWwaI3qkb+vFAlpvtVkcy3YP5IRaSJxMwyRRNJ/o6bSRaq3xKESpKo
+VZXUm1tL82y++5MgwgtXjRTpkUVuLcXnk4gsAgNTw1im2TH1oYooWc0UlKQxjAOK
+LIu/bV5UU5hK4zSdj5P6UVGp/lp9lfU522ka08yqUTbmeSrftxLW6E1YQzFeyT5z
+0m90jhQfH+hkxu7mZT2bRlEw6gsKI+YurXrcRUS+Es24x2KdaBiCf+KKrZK+TPYN
+jaqgKL4HahkjB9DUk8FQJgrVdout2NwiVcEDGdlpuu6hJ0WeXiv5YJPdI/u7/BHd
+INn8txjW9YVDakAys4pPpqcAc9YwGGI1mKY1R2oKQ/P3bV43b1/jdlU7jlYIkmRg
+amIE/IN0nk5o4wnlz3AkGuEtcfP/On3nffP2y8rbHALvip6GE82Q0PEcByIyUx8G
+4xiYogaQo2bp0DhfQ0NLZwytcNLKuZXw7PKjn7tqr7fcRa1TuL5/sLMH4y8rrp2m
+OeBKyuZn68yixkkrwVRSVpyQDlxjn7Nes6RWfgorhC0pqZ3ClPyvZHLG2ZuPoaS4
+efKWbK+SurOPYKP4HMdxsbz7aDbLVR3T+qdU2WNaSq521vKLUbIUCIf8gEJ/qCdJ
+EDw62maDZPqOLoH1Kzdyi7pFbg3hUD/TpW13iobdqrm2x1YeLANGLaPBBZp085pN
+M82ceJhnmJsmcreK3ZwfbqJrCk9lWaQWMhr9Y+Ol13631f5Tt/1F/1XnVfv1580N
+nlxLZDLyi6mMtN7htZHG6EN5V9BchqmTXkJXrz9/1XH/bUIRKIg4iYW7l/jYaw+3
+2k9ef/4ef7zqQCljiKFjiKnUWxXTLME7Qnme6ANLrDjUWaIFMz8Q3TKq2ZN8E/N0
+RMq+l7+Eo38yBPqVm0Y4bhHFYGCLGWqxfHj2uZ32HRqk1KFAEgVdKiTqr1heVyDl
+3dw2mipUso/W1HW0ppy1MOpSYqAo89DYwEtIdld7iBG/SxY/aBokNSXxlPGjwxzE
+kLxQCMeYkUpQfvJ9YWsMcINEb5Ba3IZ3UZa8rTDeVnIqL6lJ9S2FEWKtbclW1hAn
+X7FCWQw5TQWs2piUKJoVQPSSfDHtewhncSnDzUyOp2pootymjkFzVNVlus0KFHNW
+FgLqpkRAd5WSeHcmupTPtCQFYFmyP/xMIzI0EJhkITw3LNB6d62h2hUUjgpDZKZB
+Tm4GaGmKQTcxTxabjj1ty8TDkCIM+3mUq0ZwucHOM1iVHms/YBdehH/I+qgIFXk9
+i2yRpQTXZ1B6W2zd5OoWAbNui0sHsXDbivg6RIEKgwkUk4stLjBQdwOVo3FCV571
+RvtzDIMLFKRqGsUXqGoyW3BjODcfFChr8fJ609XkxiBRVa3MQbpoVvO0MpuszdXU
+3CRvrtYWJ4dzNXsdUjlXw/ORUfy4SSl+cp5m/npLpq1QCbXBz49g3lQ9kMVsnObZ
+ZG4QaJvGbLSgFDdfz804uKenK6OvP/gZiFUt/ePH0Lzrdd2yHVWpuNLTWygRI6kJ
+TTtgQbW8Tq4lmLuKoS2QwkAFLISaPi1cmRnFcg1BWqEeoKJzqQj47Aw1QTpDTUBV
+LCW9Ro0qKi2mI6AqC+oJ8jqzdQW87Lz6AvyUbI9y4vfhVuFRcdcI3Pj/s/dky3Hc
+SPqZX1E6Qk2NVc2+eOoKWpK9mpUlhqW1N0KjVaCq0N0QqwvlOkg2Y/wxu2+7rxP7
+sq/6sc3EVairL5IaX60IEUDhTCQSCSCPNa7LFqPTojWiqcbSi7M1Cpm1sUaZ1RfH
+CgtjxUWx0Z3ZssWw9kL4/V6U7TpvkoBG0lr9kfPq+LWDJlhRKxM1ZmLOUufNybvU
+ROAIYsI/nrwuPsgr6tK1V2XVmP08P015UudcH1jKNmj6w7vv5HgUqtVjPyhz6H7y
+EW3KlpR1Gi8E7p6WOW2tlqOyF2d8+X5afZQQ90qnxcO4Ufvp1/PpC6XTB3hPnhUX
+SVpBpb3qc7vq4bKq5RV8+e6i+Gx9M1WOFlfJYuBeaoV22/ub4MTTosuHh+W8GkiW
+rNUvljgWKvOgDRhrJhtOI0TMSVm7wxT3lhb3WoqLccge4DufrM2MRH1xVXpRTCsp
+Aa8HfJ7R7gKkNWF9SfeL9cy85zxD66lCwtl5eYJqZ033Zjx3/IQR6V9bmK4GAJOt
+u1h0gj7XkZ9VQywhPUrO3RMSQZWVIhZlScxudSlZNVa837ZFVOrO18s55UU3i8OS
+uJy+6ixd65Wu9ArhHTGStldd+GRJLtjCleKLde6qnSKwmm3Rs3tOPbd0Oi+SizNh
+E6euccQWCTL4XaO3+L+5Ysr0/dJduXZK17eyY6V30oGRddQFqle3lXrk/e1g1CmX
+Um+XKobXu7Ngd9uu05JCulVcLxTrqKioDNfWXC0igPYzoqIfi8UAOz+8+P7Nuzc1
+Z/CG9xGWDuQmRJwd3JqcFxdCZK1apmwcYaUiNucj+8urWRSP0qmmF2yOBeZ2Kbw6
+j1PhbSozvVDsr4JDlbyr8TSr8jLLeJjlvEuTHqeFSpZC576yUigtNGzdtUeyXAuz
+NO668qX9uWI/T9ptURlIGFZlfiwBFquSJgEWu8NCgEW8ConnXls/HH9iaSGdb6T/
+26Log9oJpbrHyUpwj0PyLKVtmm8PRc4Gba6WjO/LePThvehQ861cDYBtmatc6oG8
+WZc2K22vFBFH51eTFDbHPGBZo+Wj4397/vLdx1dvvjOWj0xKzYygqKWLL38Pq4aY
+xPiqs27n+UjP0JSEygLcTt0WX9FJA18Y36vP/+MQYORgbNyBjsuXAOiEs43ysj/n
+aLAcGQUm9O1h/Kjyfib8E6bO99/IJaQq1zaUGgyTdYxhsoyw0HGBq+v1eg7uA0BG
+oQfplIYhSSaljgoxcOuRG19uraZsuVU72cZgCSTdM6nT3VCHyIumYTOg+hcKhvoD
+LB5kO5QdLJnlIeyWzqNS/Zj09dd10X10cKyltKyW399lVfEs63pPvL+3v/2Sun6U
+rkAz1Mpc1N8XyZGJumIYUmpLgf1dv5A33F9gCwqKotx9FO8atD41qH7KwYsC7/vV
+URerzsTMm0tJDuDZq5cvXr97vP3+P/6WVl/y/fpLfr0D/qze+i8Nz21aF71JS4S0
+KIk0N7+EgJJlBNTu1tUJqd2tZoJa3nGBopJWirpiZdr9ZZvjsTZSt1LTzSSwqam2
+99cquT90lAWXlyeFPTzJPjTsunUzfcY4qi2xinI18gtUIFA6jUOWAUq//1v64OGH
+r4XcZXMlTTI6qi7cvb2KtpBIMAjvlSU87C57Tcjtba7DuAzVvVVQ/frQfAFW2swg
+YLi3EM1qKLCoQBtavaViDxE2oVMmrV8E0k7N8V+P/x3ZCpLlJGSXynVj8vk/YwbH
+b9iLpcVmYUCZfCK4NWn7z9+9ePe+g2nqFFpKUfcjmr20jCjidw0x7n30Q0qibXFT
+8FS7+2LB49sFZyp7IIyiEiC2FX/dYzJj4fwImIQpTViGXn5E1Y9uuS4aYH7F0OwH
+jNBYBU+NWfDUcV3LeZeqFl33hgSqHIcU9ln83z1PSHzk4P8PnU95mrHx3FVWWo+c
+NCY+dT2YcEqjhw7AcRK5LKOz9Mjx8VojeehMsPweutZWfok8nmV8diTdimtP4yb1
+ABM9ca9T5IwvnJSHLHDu0F38Z3s0WmcAoi/CzXdTV6suvQpvUZYJzGZXSJs4Wu/X
+HK3vC2dewjmb8MSl3V11vgVKkQgrooHlcEj5toHjMAyGBKSDzrlafNFUfPh4JKp7
+1eoUvnWxqvogG9zpFd6HpABeg6HXW7a91jXBV3W1dRX4ARtN8hRVyzL0aZeQhAmj
+VlT6cSLClbnygDfVnsB94wl8B3BmxmHtrAFmH/dHlzeA+kR1ZVv7HL+/AcjXg6V2
+yXVFWFbRT7pWomI3S4RoreXqfiZhLSQC14Bbm5vJjvROfc/5Vje2LtSML6XyxzrM
+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
+zCXw7zl1FcjVgbfcNCwTZGWYqU+LaUA8m+H5DF9x/Cxb6Ke7wXDGKfKeSjx/Dqfj
+c8gRrwKLDp+jFHcS/d7vXOjX9C43JAS5vEpqm1dZX+zFEAtaY3LuA+w/4HTodpD+
+Jzy6MBs1YYJBoe975rXu/U76TCtgJMLvPQSynpr5dA0WkNofVlB33L6m1kaMVx7R
+oB5AcB2Kf83AANGlifRXub8nDThJQl9Ojyb3L62Xf66f3/+hpv3c+7/xMpuv/7Jl
+/L7/+1l+sKTDfv+267TXz2+efyWH46g69P+st0i/frobczPptJ2vwOo3pSStcsIk
+jNx8MLkGtPOn9bY7feqR1vXG8mc/Xw3NFh93itLdAuQ/rIV+Ac35UxPHl+bP99/P
++zPyH1bbw8/j+w9/n5D/2Sqd+/9L0vX7/v9n+f1H/f/9QY1//veyRg+A36t+FDVu
+Bv431YP6Vw+nv3bz76vn3/RTp55/g95Nn+Xzv4q+Fn/+X3/+/6TeVfyVOv3539ta
+Pf/j84/XTg1P3guqvv1E2D4OkFm0OIjIbk54zEBPysT08dUjUH/AEbz61LOvNC5L
+1SpYloWxPNVHl50qRSv3qkSvS54+gi48ThUlQLiPUm5bg/WiqnmAxue1ofb+tWoO
+Alr1//mX3z1NKriIwtBWwZwMXc1ptvyC00ax5egOE78n6J01B7ncAsJu6AjMF3fJ
+wGK6heKMwpoqoNr8MwzpSj3/Uv/98/9UX+NdKFGJ4ArTjMTQp041NdRU3MVxdZ3R
+zWadu60zCyynZsQVxoxMhf2jxLXU8y//uP76qV8Tk1qQmtzivY49nh2+E42ItqDQ
+1I0jvejBVwkT1VEpv2+3fd3AQvdFLASCxI1ImcFP8oLGbl2ZPPZhwq3rqFcVFC1I
+Rl/zCkn7CZQeBfWfKgEtFQaWjZhQjwuIUFgnTH7bVrKT8H+4fQ0S4Q+6QdQAg/8k
+oQzQV9LfOpyRyra1bcM6/o74os7y1ImWR5rT9uImkak6dQ646BG9U5XsU/MUka6C
+zWgKWkLsVVsDV/B4j+imtEnmmSOkQFwVXFQLCBqp6vaAJzXU6gJatwRNfQxvnT2i
+oyvTk2rlNchiTuzlGcuM3UyHEy8TXXA81XsBw3dwOHR5X6tKldCvwEVqkNNpar1o
+c0xcorNYaa7MkxiqQD+llIDJe1kraJJb3dSyHSiePIW9F6YSdNlN9uqAm/z0wQTL
+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

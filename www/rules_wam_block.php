@@ -3,63 +3,59 @@
  * rules_wam_block.php
  * Rules WAM - Web Access Manager para pfSense
  * Banner / Tela de Bloqueio Corporativa para Hosts Interceptados
+ *
+ * Dois modos:
+ *  - Banner real: servido pelo NGINX dedicado do Rules WAM (fastcgi_param WAM_BANNER=1).
+ *    Não exige login, usa apenas REMOTE_ADDR/HTTP_HOST definidos pelo NGINX e registra a auditoria.
+ *  - Prévia: aberta pela WebGUI. Exige login e não grava nada no log.
  */
 
-if (file_exists("/usr/local/pkg/rules_wam.inc")) {
-    require_once("/usr/local/pkg/rules_wam.inc");
-} elseif (file_exists(dirname(__DIR__) . "/pkg/rules_wam.inc")) {
-    require_once(dirname(__DIR__) . "/pkg/rules_wam.inc");
+$is_banner = (getenv('WAM_BANNER') === '1') || (($_SERVER['WAM_BANNER'] ?? '') === '1');
+
+if (!$is_banner) {
+    // Prévia na WebGUI: exige autenticação do pfSense
+    require_once("guiconfig.inc");
+}
+require_once("/usr/local/pkg/rules_wam.inc");
+
+$wam_cfg = rules_wam_get_config();
+$support_email = '';
+if (!empty($wam_cfg['support_email']) && filter_var(trim($wam_cfg['support_email']), FILTER_VALIDATE_EMAIL)) {
+    $support_email = trim($wam_cfg['support_email']);
 }
 
-$client_ip = !empty($_SERVER['HTTP_X_REAL_IP']) ? $_SERVER['HTTP_X_REAL_IP'] : (!empty($_SERVER['HTTP_X_FORWARDED_FOR']) ? explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])[0] : (!empty($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '127.0.0.1'));
-$client_ip = trim($client_ip);
-$cache_hn = array();
-$client_host = function_exists('rules_wam_resolve_hostname') ? rules_wam_resolve_hostname($client_ip, $cache_hn) : 'Host ' . $client_ip;
-
-// Identifica o domínio solicitado
-$req_host = !empty($_GET['domain']) ? trim($_GET['domain']) : (!empty($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : 'website-bloqueado.com');
-$req_host = preg_replace('/:\d+$/', '', $req_host); // remove porta se houver
-$req_host = function_exists('rules_wam_clean_domain') ? rules_wam_clean_domain($req_host) : preg_replace('/[^a-zA-Z0-9\.\-_]/', '', $req_host);
-if (empty($req_host) || $req_host === '127.0.0.1' || $req_host === 'localhost' || filter_var($req_host, FILTER_VALIDATE_IP)) {
-    $req_host = 'website-bloqueado.com';
-}
-
-// Categoria do domínio
-$category = function_exists('rules_wam_get_domain_category') ? rules_wam_get_domain_category($req_host) : 'Política de Segurança Corporativa';
-if ($category === 'Regra Personalizada / Outros' || $category === 'Política de Segurança Corporativa') {
-    if (strpos($req_host, 'xvideo') !== false || strpos($req_host, 'porn') !== false) {
-        $category = 'Conteúdo Adulto & Pornografia';
-    } elseif (strpos($req_host, 'betano') !== false || strpos($req_host, 'bet365') !== false || strpos($req_host, 'blaze') !== false || strpos($req_host, 'bet') !== false) {
-        $category = 'Apostas & Bets';
+if ($is_banner) {
+    // Somente valores definidos pelo NGINX (cabeçalhos do cliente não são repassados)
+    $client_ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    if (!filter_var($client_ip, FILTER_VALIDATE_IP)) {
+        $client_ip = '0.0.0.0';
     }
+    $cache_hn = array();
+    $client_host = rules_wam_resolve_hostname($client_ip, $cache_hn);
+
+    $req_host = rules_wam_clean_domain(preg_replace('/:\d+$/', '', $_SERVER['HTTP_HOST'] ?? ''));
+    $is_fw_direct = empty($req_host) || filter_var($req_host, FILTER_VALIDATE_IP) || $req_host === 'localhost';
+    if ($is_fw_direct) {
+        $req_host = 'website-bloqueado.com';
+    }
+    $category = rules_wam_get_domain_category($req_host);
+
+    // Só registra domínios que estão de fato na lista de bloqueio (evita poluir a auditoria com Hosts arbitrários)
+    if (!$is_fw_direct && $category !== 'Regra Personalizada / Outros') {
+        rules_wam_audit_write($client_ip, $req_host, $category, $client_host);
+    }
+    header('Cache-Control: no-store');
+    header('X-Content-Type-Options: nosniff');
+    header('X-Frame-Options: DENY');
+} else {
+    // Dados de exemplo para a prévia
+    $client_ip = $_SERVER['REMOTE_ADDR'] ?? '192.0.2.10';
+    $client_host = 'Estação de exemplo';
+    $req_host = 'exemplo-bloqueado.com';
+    $category = 'Apostas & Bets';
 }
 
-// Data e Hora
 $block_time = date('d/m/Y - H:i:s');
-
-// Registra auditoria da interceptação quando exibido a um host
-$wam_cfg = function_exists('rules_wam_get_config') ? rules_wam_get_config() : array();
-$lan_ip = function_exists('config_get_path') ? config_get_path('interfaces/lan/ipaddr', '') : (!empty($config['interfaces']['lan']['ipaddr']) ? $config['interfaces']['lan']['ipaddr'] : '');
-$block_page_ip = !empty($wam_cfg['block_page_ip']) ? $wam_cfg['block_page_ip'] : $lan_ip;
-$server_addr = $_SERVER['SERVER_ADDR'] ?? '';
-
-$is_fw_direct = empty($_GET['domain']) && (!empty($_SERVER['HTTP_HOST']) && (
-    (!empty($block_page_ip) && strpos($_SERVER['HTTP_HOST'], $block_page_ip) !== false) ||
-    (!empty($server_addr) && strpos($_SERVER['HTTP_HOST'], $server_addr) !== false) ||
-    strpos($_SERVER['HTTP_HOST'], 'pfsense') !== false
-));
-
-if (!empty($req_host) && $req_host !== 'website-bloqueado.com' && !$is_fw_direct) {
-    $audit_line = sprintf(
-        "%s|%s|%s|%s|%s\n",
-        date('Y-m-d H:i:s'),
-        $client_ip,
-        $req_host,
-        $category,
-        $client_host
-    );
-    @file_put_contents('/var/log/wam_audit.log', $audit_line, FILE_APPEND | LOCK_EX);
-}
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -460,17 +456,16 @@ if (!empty($req_host) && $req_host !== 'website-bloqueado.com' && !$is_fw_direct
     <div class="card-footer">
         <div class="footer-brand">
             <strong>Rules WAM</strong> &bull; Sistema de Proteção Web pfSense
-            <?php if (file_exists('/usr/local/www/rules_wam_ca.crt')): ?>
-                &bull; <a href="/rules_wam_ca.crt" style="color: #64748b; text-decoration: underline; font-size: 11px;" download title="Instalar certificado nos computadores para eliminar avisos no HTTPS">Baixar Certificado CA</a>
-            <?php endif; ?>
         </div>
         <div>
             <button onclick="window.history.back();" class="btn btn-secondary">
                 &larr; Voltar à página anterior
             </button>
-            <a href="mailto:suporte@empresa.com.br?subject=Solicitacao%20de%20Liberacao%20de%20Acesso%20-%20<?=rawurlencode($req_host)?>&body=Ola%20Suporte%20TI,%0A%0ASolicito%20revisao%20do%20bloqueio%20do%20dominio:%20<?=rawurlencode($req_host)?>%0AHost:%20<?=rawurlencode($client_host)?>%20(IP:%20<?=rawurlencode($client_ip)?>)%0ACategoria:%20<?=rawurlencode($category)?>%0A%0AJustificativa:%20" class="btn btn-primary">
+            <?php if ($support_email !== ''): ?>
+            <a href="mailto:<?=htmlspecialchars($support_email)?>?subject=Solicitacao%20de%20Liberacao%20de%20Acesso%20-%20<?=rawurlencode($req_host)?>&body=Ola%20Suporte%20TI,%0A%0ASolicito%20revisao%20do%20bloqueio%20do%20dominio:%20<?=rawurlencode($req_host)?>%0AHost:%20<?=rawurlencode($client_host)?>%20(IP:%20<?=rawurlencode($client_ip)?>)%0ACategoria:%20<?=rawurlencode($category)?>%0A%0AJustificativa:%20" class="btn btn-primary">
                 ✉️ Contatar Suporte TI
             </a>
+            <?php endif; ?>
         </div>
     </div>
 </div>
