@@ -1,0 +1,49 @@
+# ==========================================
+# WAM Feed - Jogos Online & Plataformas
+# ==========================================
+# Plataformas e Lojas de Jogos
+steampowered.com
+steamcommunity.com
+steamgames.com
+steamcontent.com
+epicgames.com
+unrealengine.com
+roblox.com
+rbxcdn.com
+riotgames.com
+leagueoflegends.com
+playvalorant.com
+pvp.net
+blizzard.com
+battle.net
+ea.com
+origin.com
+ubisoft.com
+uplay.com
+gog.com
+rockstargames.com
+minecraft.net
+mojang.com
+
+# Consoles e Redes
+playstation.com
+playstation.net
+sonyentertainmentnetwork.com
+xbox.com
+xboxlive.com
+nintendo.com
+nintendo.net
+
+# Jogos Mobile e Casuais Populares
+freefiremobile.com
+garena.com
+brawlstars.com
+clashofclans.com
+clashroyale.com
+supercell.com
+king.com
+candycrush.com
+miniclip.com
+poki.com
+y8.com
+clickjogos.com.br

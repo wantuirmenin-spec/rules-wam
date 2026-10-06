@@ -1,11 +1,11 @@
 # 🛡️ Manual do Administrador & Guia de Implantação
 ## Rules WAM — Web Access Manager para pfSense
-**Versão:** 1.4.0  
+**Versão:** 1.4.3 (em testes)  
 **Compatibilidade:** pfSense CE 2.7.x / 2.8.x / pfSense Plus  
 **Plataforma Base:** FreeBSD / Unbound DNS / NGINX (banner HTTP)  
 
 > [!WARNING]
-> **Não testado ainda em pfSense real — validar em laboratório.** Veja as pendências no [CHANGELOG](CHANGELOG.md).  
+> **Versão em testes.** Até agora o Rules WAM só foi executado em ambiente de laboratório (um pfSense de testes). Não use em produção sem antes validar no seu próprio laboratório. Use por sua conta e risco. Veja as pendências no [CHANGELOG](CHANGELOG.md).  
 
 ---
 
@@ -372,7 +372,7 @@ sh wam-install.sh [--move-gui] [--gui-port=50443] [--wan-gui-sources=IP1,IP2|non
 2. Serviço **DNS Resolver (Unbound)** habilitado em **Services > DNS Resolver**.
 3. Acesso de administrador (root via SSH ou Console Web).
 4. Para o modo Banner: WebGUI fora das portas 80/443 e sem redirecionamento HTTP — configure em **System > Advanced > Admin Access** ou use `--move-gui` na instalação.
-5. **Validar primeiro em laboratório** (a 1.4.0 ainda não foi testada em pfSense real).
+5. **Validar primeiro em laboratório** (até agora o pacote só rodou em laboratório).
 
 ---
 
@@ -413,7 +413,7 @@ No menu **Diagnostics > Command Prompt**:
 > **Porta da WebGUI:** a WebGUI **só é movida** com `--move-gui` (ou resposta `s` na pergunta interativa) — para `50443` ou a porta de `--gui-port` — e o redirecionamento HTTP é desativado. Sem isso, se a WebGUI usar 80/443 (ou o redirecionamento HTTP estiver ativo), o bloqueio funciona em modo silencioso (0.0.0.0) e a aba Status mostra um aviso.
 
 > [!CAUTION]
-> **Atualização a partir da 1.3:** é obrigatório informar `--wan-gui-sources=IP1,IP2` (IPs públicos da TI) ou `--wan-gui-sources=none`. Sem isso, o instalador **aborta sem alterar nada**. A regra antiga da 1.3 (WebGUI na WAN para qualquer origem) é substituída. Os domínios da empresa que eram fixos no código vão para a whitelist editável. Porta 50443, DNS rebind desativado e bogons/redes privadas liberados na WAN continuam como a 1.3 deixou: revise em *System > Advanced > Admin Access* e *Interfaces > WAN*.
+> **Atualização a partir da 1.3:** é obrigatório informar `--wan-gui-sources=IP1,IP2` (IPs públicos da TI) ou `--wan-gui-sources=none`. Sem isso, o instalador **aborta sem alterar nada**. A regra antiga da 1.3 (WebGUI na WAN para qualquer origem) é substituída. Porta 50443, DNS rebind desativado e bogons/redes privadas liberados na WAN continuam como a 1.3 deixou: revise em *System > Advanced > Admin Access* e *Interfaces > WAN*.
 
 #### O que o instalador realiza automaticamente:
 1. Verificações prévias (sem alterar nada): regra antiga da WAN e conflito de portas da WebGUI.

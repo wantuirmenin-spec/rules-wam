@@ -1,10 +1,10 @@
 # 🚀 Guia Prático de Instalação do Rules WAM no pfSense
 ## Procedimento de Implantação a partir de um Notebook / Estação de Trabalho
 
-Este guia detalha o passo a passo para implantar o pacote **Rules WAM 1.4.0** em qualquer firewall **pfSense (versões 2.7.x, 2.8.x ou pfSense Plus)** utilizando apenas o seu notebook.
+Este guia detalha o passo a passo para implantar o pacote **Rules WAM 1.4.3 (versão em testes)** em qualquer firewall **pfSense (versões 2.7.x, 2.8.x ou pfSense Plus)** utilizando apenas o seu notebook.
 
 > [!WARNING]
-> **Não testado ainda em pfSense real — validar em laboratório.** O código foi testado com Unbound, NGINX e PHP em Linux, usando stubs das funções do pfSense. Instale primeiro em uma unidade de laboratório.
+> **Versão em testes.** Até agora o Rules WAM só foi executado em ambiente de laboratório (um pfSense de testes). Não use em produção sem antes validar no seu próprio laboratório. Use por sua conta e risco.
 
 ---
 

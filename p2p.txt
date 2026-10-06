@@ -1,0 +1,24 @@
+# ==========================================
+# WAM Feed - Torrents, P2P & Pirataria
+# ==========================================
+thepiratebay.org
+thepiratebay.zone
+1337x.to
+1337x.is
+1337x.st
+yts.mx
+yts.lt
+rarbg.to
+torrentz2.eu
+torrentgalaxy.to
+limetorrents.pro
+eztv.re
+nyaa.si
+fitgirl-repacks.site
+skidrowreloaded.com
+utorrent.com
+bittorrent.com
+qbittorrent.org
+seedhost.eu
+tracker.opentrackr.org
+open.demonii.com

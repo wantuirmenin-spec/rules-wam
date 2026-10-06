@@ -1,13 +1,13 @@
 # Rules WAM - Web Access Manager para pfSense 🛡️
 
-**Versão 1.4.0** — veja o [CHANGELOG](CHANGELOG.md).
+**Versão 1.4.3 (em testes)** — veja o [CHANGELOG](CHANGELOG.md). Licença [MIT](LICENSE).
 
 Pacote corporativo nativo para **pfSense 2.7.x / 2.8.x / Plus** projetado para controle corporativo de acesso à internet, **bloqueio de categorias de sites**, **página de bloqueio institucional (HTTP)**, **agendamento por horário comercial**, **isenção por dispositivo (Bypass IPs)** e **integração com Active Directory, NPS RADIUS e Netskope** via Unbound DNS.
 
 📖 **Consulte o manual completo:** [Manual do Administrador & Guia de Implantação](MANUAL_DO_ADMINISTRADOR.md) · [Guia de Instalação](MANUAL_DE_INSTALACAO.md)
 
 > [!WARNING]
-> A versão 1.4.0 ainda **não foi testada em um pfSense real**. Valide primeiro em uma unidade de laboratório.
+> **Versão em testes.** Até agora o Rules WAM só foi executado em ambiente de laboratório (um pfSense de testes). Não use em produção sem antes validar no seu próprio laboratório. Use por sua conta e risco.
 
 ---
 

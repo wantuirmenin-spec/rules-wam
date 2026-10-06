@@ -1,0 +1,26 @@
+# WhatsApp (Web, Desktop & Mobile)
+whatsapp.com
+www.whatsapp.com
+web.whatsapp.com
+api.whatsapp.com
+v.whatsapp.com
+chat.whatsapp.com
+wa.me
+whatsapp.net
+static.whatsapp.net
+v.whatsapp.net
+media.whatsapp.net
+mmg.whatsapp.net
+mmg-fna.whatsapp.net
+crashlogs.whatsapp.net
+g.whatsapp.net
+dit.whatsapp.net
+pps.whatsapp.net
+dyn.whatsapp.net
+media-iad3-1.cdn.whatsapp.net
+media-iad3-2.cdn.whatsapp.net
+media-gru1-1.cdn.whatsapp.net
+media-gru1-2.cdn.whatsapp.net
+media-gru2-1.cdn.whatsapp.net
+media-gru2-2.cdn.whatsapp.net
+whatsapp-cdn-msft.akamaized.net

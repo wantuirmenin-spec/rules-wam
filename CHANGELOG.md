@@ -1,5 +1,10 @@
 # Changelog
 
+> **Versão em testes:** até agora o Rules WAM só foi executado em ambiente de laboratório.
+
+## 1.4.3
+- Projeto preparado para divulgação: licença MIT, aviso de versão em testes e remoção das referências específicas da empresa (domínios na migração da 1.3 e IPs internos nos exemplos).
+
 ## 1.4.2
 - Corrigido: o config.xml do pfSense descarta as quebras de linha dos campos de lista, e as entradas ficavam grudadas (ex.: `10.0.0.0/8172.16.0.0/12`). Agora redes, IPs, whitelist, blacklist e domínios são gravados numa linha só, separados por espaço. O mapeamento de hosts usa ` | ` entre as entradas. Na tela continuam aparecendo um por linha.
 - Valores que já foram gravados grudados não podem ser recuperados automaticamente: revise e digite de novo os campos de lista depois de atualizar.
@@ -43,7 +48,7 @@
   - o bloqueio por faixa IP da Meta virou opcional e vem desligado;
   - o `pfctl -k` não derruba mais toda a `157.240.0.0/16`.
 - **DoT (853) bloqueado só com a categoria Anti-Bypass DoH marcada.**
-- **Redes autorizadas padrão** passaram a ser RFC1918 (`10/8`, `172.16/12`, `192.168/16`). A faixa pública `192.192.0.0/16` e a `172.24.0.0/16`, específica da empresa, saíram do padrão.
+- **Redes autorizadas padrão** passaram a ser RFC1918 (`10/8`, `172.16/12`, `192.168/16`). A faixa pública `192.192.0.0/16` e uma faixa interna específica da empresa saíram do padrão.
 - **Sem reescrita do config.xml a cada Save.** O pacote não reescreve mais o config.xml nem recarrega o filtro quando não há mudança.
 - **Unbound resiliente:**
   - `include` com curinga, para o Unbound subir mesmo sem o arquivo (`/var` em RAM disk);
@@ -66,7 +71,6 @@
 - **A WebGUI só é movida com autorização.** Com `--move-gui` ou confirmação interativa. Sem isso, se a WebGUI estiver em 80/443, o bloqueio funciona em modo silencioso (0.0.0.0).
 - **Atualização a partir da 1.3:**
   - exige `--wan-gui-sources=` (IPs ou `none`) antes de remover a regra antiga da WAN, e aborta sem alterar nada se não for informado;
-  - os domínios da empresa que eram fixos no código vão para a whitelist editável.
 - **Desinstalação reverte a configuração antes de apagar os arquivos:**
   - remove o include do Unbound, os domain overrides, as regras, o NAT e os aliases;
   - restaura a porta e o redirecionamento da WebGUI quando foi o pacote que os alterou;

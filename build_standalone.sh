@@ -37,6 +37,6 @@ echo "Gerado $OUT ($(wc -c < "$OUT") bytes)"
 
 ZIP=../rules-wam-pacote.zip
 rm -f "$ZIP"
-zip -qr "$ZIP" README.md MANUAL_DE_INSTALACAO.md MANUAL_DO_ADMINISTRADOR.md CHANGELOG.md \
+zip -qr "$ZIP" README.md LICENSE MANUAL_DE_INSTALACAO.md MANUAL_DO_ADMINISTRADOR.md CHANGELOG.md \
     install.sh uninstall.sh build_standalone.sh "$OUT" index.html pkg www widgets feeds
 echo "Gerado $ZIP"

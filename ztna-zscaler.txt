@@ -1,0 +1,20 @@
+# Zscaler ZPA & ZIA Cloud
+zscaler.com
+zscaler.net
+zscloud.net
+zscalerbeta.net
+zscalergov.net
+zscalerone.net
+zscalerthree.net
+zscalertwo.net
+zscalerenterprise.net
+zscaleranalytics.com
+zscalerapp.net
+zpa.zscaler.com
+zia.zscaler.com
+zpath.zscaler.com
+mobile.zscaler.com
+pac.zscaler.net
+sme.zscaler.net
+safebrowse.zdn.net
+zdn.net
