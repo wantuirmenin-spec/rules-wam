@@ -17,18 +17,9 @@ $lan_default_ip = function_exists('rules_wam_get_lan_ip') ? rules_wam_get_lan_ip
 if ($_POST && isset($_POST['save_rules_wam'])) {
     $wam_cfg = array(
         'enable'               => isset($_POST['enable']) ? 'yes' : 'no',
-        'block_social'         => isset($_POST['block_social']) ? 'yes' : 'no',
-        'block_adult'          => isset($_POST['block_adult']) ? 'yes' : 'no',
-        'block_news'           => isset($_POST['block_news']) ? 'yes' : 'no',
-        'block_sports'         => isset($_POST['block_sports']) ? 'yes' : 'no',
-        'block_gaming'         => isset($_POST['block_gaming']) ? 'yes' : 'no',
-        'block_streaming'      => isset($_POST['block_streaming']) ? 'yes' : 'no',
-        'block_gambling'       => isset($_POST['block_gambling']) ? 'yes' : 'no',
-        'block_shopping'       => isset($_POST['block_shopping']) ? 'yes' : 'no',
-        'block_p2p'            => isset($_POST['block_p2p']) ? 'yes' : 'no',
-        'block_doh'            => isset($_POST['block_doh']) ? 'yes' : 'no',
+        // As categorias bloqueadas ficam nos perfis por rede (perfil obrigatório)
+        'profiles_required'    => 'yes',
         'block_dns_bypass'     => isset($_POST['block_dns_bypass']) ? 'yes' : 'no',
-        'block_vpn'            => isset($_POST['block_vpn']) ? 'yes' : 'no',
         'block_vpn_fortinet'   => isset($_POST['block_vpn_fortinet']) ? 'yes' : 'no',
         'block_vpn_cisco'      => isset($_POST['block_vpn_cisco']) ? 'yes' : 'no',
         'block_vpn_paloalto'   => isset($_POST['block_vpn_paloalto']) ? 'yes' : 'no',
@@ -37,7 +28,6 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
         'block_ztna_cloudflare'=> isset($_POST['block_ztna_cloudflare']) ? 'yes' : 'no',
         'block_ztna_tailscale' => isset($_POST['block_ztna_tailscale']) ? 'yes' : 'no',
         'block_vpn_commercial' => isset($_POST['block_vpn_commercial']) ? 'yes' : 'no',
-        'block_messaging'      => isset($_POST['block_messaging']) ? 'yes' : 'no',
         'block_msg_whatsapp'   => isset($_POST['block_msg_whatsapp']) ? 'yes' : 'no',
         'block_msg_telegram'   => isset($_POST['block_msg_telegram']) ? 'yes' : 'no',
         'block_msg_messenger'  => isset($_POST['block_msg_messenger']) ? 'yes' : 'no',
@@ -82,6 +72,93 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
         $wam_cfg[$lk] = rules_wam_list_to_store($wam_cfg[$lk] ?? '');
     }
     $wam_cfg['custom_hosts'] = rules_wam_hosts_to_store($wam_cfg['custom_hosts'] ?? '');
+
+    // Sites liberados dentro de cada categoria (preenchidos pela lista de caixas de seleção)
+    foreach (array_keys(rules_wam_category_map()) as $ck) {
+        $wam_cfg['exc_' . $ck] = rules_wam_list_to_store($_POST['exc_' . $ck] ?? '');
+    }
+
+    // Perfis por rede (gravados em net_profiles/item: veja rules_wam_get_profiles)
+    $profiles_list = array();
+    $iface_list = rules_wam_get_configured_interfaces(false);
+    $profile_names = array();
+    $profile_nets = array();
+    if (!empty($_POST['wam_profile']) && is_array($_POST['wam_profile'])) {
+        foreach ($_POST['wam_profile'] as $pp) {
+            if (!is_array($pp)) {
+                continue;
+            }
+            $ifs = array();
+            foreach ((array)($pp['interfaces'] ?? array()) as $ifk) {
+                if (isset($iface_list[$ifk])) {
+                    $ifs[] = $ifk;
+                }
+            }
+            $p = array(
+                'enabled'    => isset($pp['enabled']) ? 'yes' : 'no',
+                'name'       => trim((string)($pp['name'] ?? '')),
+                'interfaces' => implode(' ', $ifs),
+                'networks'   => rules_wam_list_to_store($pp['networks'] ?? ''),
+                'allow'      => rules_wam_list_to_store($pp['allow'] ?? ''),
+                'block'      => rules_wam_list_to_store($pp['block'] ?? ''),
+            );
+            $pcats = (array)($pp['cats'] ?? array());
+            foreach (array_keys(rules_wam_category_map()) as $ck) {
+                $p[$ck] = in_array($ck, $pcats, true) ? 'yes' : 'no';
+            }
+            // Perfil adicionado e deixado em branco é descartado
+            if ($p['name'] === '' && empty($ifs) && $p['networks'] === '') {
+                continue;
+            }
+
+            $plabel = ($p['name'] !== '') ? htmlspecialchars($p['name']) : gettext('(sem nome)');
+            if (!preg_match('/^[A-Za-z0-9_-]{1,32}$/', $p['name'])) {
+                $input_errors[] = sprintf(gettext("Perfil de rede %s: o nome deve ter até 32 caracteres, só letras, números, - e _."), $plabel);
+            } else {
+                $vname = rules_wam_profile_view_name($p['name']);
+                if (isset($profile_names[$vname])) {
+                    $input_errors[] = sprintf(gettext("Perfil de rede %s: já existe outro perfil com esse nome."), $plabel);
+                }
+                $profile_names[$vname] = true;
+            }
+            if (empty($ifs) && $p['networks'] === '') {
+                $input_errors[] = sprintf(gettext("Perfil de rede %s: marque ao menos uma interface ou informe uma rede."), $plabel);
+            }
+            foreach (rules_wam_parse_list($p['networks']) as $item) {
+                if (!is_ipaddr($item) && !is_subnet($item)) {
+                    $input_errors[] = sprintf(gettext("Perfil de rede %s: '%s' não é um IP ou rede (CIDR) válido."), $plabel, htmlspecialchars($item));
+                }
+            }
+            if ($p['enabled'] === 'yes') {
+                foreach (rules_wam_profile_networks($p, $iface_list) as $cidr) {
+                    if (isset($profile_nets[$cidr])) {
+                        $input_errors[] = sprintf(gettext("A rede %s está em dois perfis (%s e %s). Cada rede só pode ter um perfil."), $cidr, htmlspecialchars($profile_nets[$cidr]), $plabel);
+                    } else {
+                        $profile_nets[$cidr] = $p['name'];
+                    }
+                }
+            }
+            $profiles_list[] = $p;
+        }
+    }
+    if (!empty($profiles_list)) {
+        $wam_cfg['net_profiles'] = array('item' => $profiles_list);
+    }
+
+    // Perfil obrigatório: toda interface interna com IP precisa estar marcada num perfil ativo
+    $ifs_in_profiles = array();
+    foreach ($profiles_list as $p) {
+        if ($p['enabled'] === 'yes') {
+            foreach (rules_wam_parse_list($p['interfaces']) as $ifk) {
+                $ifs_in_profiles[$ifk] = true;
+            }
+        }
+    }
+    foreach ($iface_list as $ifk => $ifd) {
+        if (!empty($ifd['has_ip']) && !isset($ifs_in_profiles[$ifk])) {
+            $input_errors[] = sprintf(gettext("A interface %s (%s) não está em nenhum perfil ativo. Marque-a em um perfil de Políticas por Rede (ou crie um perfil para ela)."), htmlspecialchars($ifd['descr']), htmlspecialchars($ifd['cidr']));
+        }
+    }
 
     // Mantém chaves internas que não estão no formulário
     $prev_cfg = rules_wam_get_config();
@@ -163,6 +240,122 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
 if (empty($input_errors)) {
     $wam_cfg = rules_wam_get_config();
 }
+// Configuração de antes do perfil obrigatório: mostra já convertida (vale ao salvar)
+$wam_migrating = false;
+if (!rules_wam_profiles_required($wam_cfg)) {
+    $wam_cfg = rules_wam_migrate_profiles_required($wam_cfg);
+    $wam_migrating = true;
+}
+
+// ---- Dados para as listas de sites por categoria e para os perfis por rede ----
+$wam_catmap = rules_wam_category_map();
+$wam_ifaces = rules_wam_get_configured_interfaces(false);
+// Com erro de validação, mostra os perfis exatamente como foram digitados
+$wam_profiles = !empty($input_errors) ? (array)($wam_cfg['net_profiles']['item'] ?? array()) : rules_wam_get_profiles($wam_cfg);
+$wam_sites = array();
+foreach ($wam_catmap as $ck => $cmeta) {
+    $doms = array();
+    foreach (array_keys(rules_wam_category_feeds($ck, $wam_cfg, true)) as $ff) {
+        foreach (rules_wam_read_feed($ff) as $d) {
+            $doms[$d] = true;
+        }
+    }
+    $doms = array_keys($doms);
+    sort($doms);
+    $wam_sites[$ck] = $doms;
+}
+
+/**
+ * HTML de um perfil de rede. $idx é o índice no POST ('__IDX__' no modelo usado pelo botão Adicionar).
+ */
+function wam_render_profile($idx, $p, $ifaces, $catmap) {
+    $n = "wam_profile[{$idx}]";
+    $h = function ($s) { return htmlspecialchars((string)$s, ENT_QUOTES); };
+    $sel_ifs = rules_wam_parse_list($p['interfaces'] ?? '');
+    ob_start();
+?>
+    <div class="panel panel-default wam-profile" style="margin-bottom: 14px;">
+        <div class="panel-heading" style="display: flex; align-items: center; justify-content: space-between;">
+            <strong><i class="fa fa-wifi"></i> <?=gettext("Perfil")?>: <span class="wam-profile-title"><?=$h(($p['name'] ?? '') !== '' ? $p['name'] : gettext('novo perfil'))?></span></strong>
+            <span>
+                <label style="font-weight: normal; margin-right: 12px;">
+                    <input type="checkbox" name="<?=$n?>[enabled]" value="yes" <?=rules_wam_is_checked($p['enabled'] ?? 'yes') ? 'checked' : ''?> /> <?=gettext("Ativo")?>
+                </label>
+                <button type="button" class="btn btn-xs btn-danger wam-profile-remove"><i class="fa fa-trash"></i> <?=gettext("Remover")?></button>
+            </span>
+        </div>
+        <div class="panel-body">
+            <div class="form-group">
+                <label class="col-sm-3 control-label"><?=gettext("Nome do perfil")?></label>
+                <div class="col-sm-4">
+                    <input type="text" name="<?=$n?>[name]" class="form-control wam-profile-name" maxlength="32" placeholder="GUEST" value="<?=$h($p['name'] ?? '')?>" />
+                    <span class="help-block"><?=gettext("Letras, números, - e _ (ex.: GUEST, CORP, ADMIN).")?></span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="col-sm-3 control-label"><?=gettext("Interfaces / VLANs")?></label>
+                <div class="col-sm-9">
+                    <?php if (empty($ifaces)): ?>
+                        <p class="text-muted"><?=gettext("Nenhuma interface interna encontrada. Use o campo Redes adicionais.")?></p>
+                    <?php endif; ?>
+                    <?php foreach ($ifaces as $ifk => $ifd): ?>
+                        <label class="checkbox-inline" style="margin: 0 18px 6px 0;">
+                            <input type="checkbox" name="<?=$n?>[interfaces][]" value="<?=$h($ifk)?>" <?=in_array($ifk, $sel_ifs, true) ? 'checked' : ''?> />
+                            <strong><?=$h($ifd['descr'])?></strong> <span class="text-muted">(<?=$h($ifd['cidr'])?>)</span>
+                        </label>
+                    <?php endforeach; ?>
+                    <span class="help-block"><?=gettext("A sub-rede de cada interface marcada é obtida automaticamente.")?></span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="col-sm-3 control-label"><?=gettext("Redes adicionais (CIDR)")?></label>
+                <div class="col-sm-4">
+                    <textarea name="<?=$n?>[networks]" rows="2" class="form-control" placeholder="Ex.: 10.50.0.0/24"><?=$h(rules_wam_list_to_text($p['networks'] ?? ''))?></textarea>
+                    <span class="help-block"><?=gettext("Opcional. Uma rede ou IP por linha.")?></span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="col-sm-3 control-label"><?=gettext("Categorias bloqueadas nesta rede")?></label>
+                <div class="col-sm-9">
+                    <div class="row">
+                        <?php foreach ($catmap as $ck => $cmeta): ?>
+                            <div class="col-sm-4">
+                                <div class="checkbox" style="margin-top: 0;">
+                                    <label>
+                                        <input type="checkbox" class="wam-profile-cat" name="<?=$n?>[cats][]" value="<?=$h($ck)?>" <?=rules_wam_is_checked($p[$ck] ?? null) ? 'checked' : ''?> />
+                                        <?=$h($cmeta['label'])?>
+                                    </label>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <button type="button" class="btn btn-xs btn-default wam-profile-cats" data-act="all"><i class="fa fa-check-square-o"></i> <?=gettext("Marcar todas")?></button>
+                    <button type="button" class="btn btn-xs btn-default wam-profile-cats" data-act="none"><i class="fa fa-square-o"></i> <?=gettext("Limpar")?></button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="col-sm-3 control-label"><?=gettext("Sites liberados / bloqueados nesta rede")?></label>
+                <div class="col-sm-4">
+                    <textarea name="<?=$n?>[allow]" rows="3" class="form-control" placeholder="Ex.: linkedin.com"><?=$h(rules_wam_list_to_text($p['allow'] ?? ''))?></textarea>
+                    <span class="help-block"><?=gettext("Liberados: passam por cima das categorias e da lista negra geral.")?></span>
+                </div>
+                <div class="col-sm-5">
+                    <textarea name="<?=$n?>[block]" rows="3" class="form-control" placeholder="Ex.: exemplo.com.br"><?=$h(rules_wam_list_to_text($p['block'] ?? ''))?></textarea>
+                    <span class="help-block"><?=gettext("Bloqueados: só nesta rede, além das categorias marcadas.")?></span>
+                </div>
+            </div>
+        </div>
+    </div>
+<?php
+    return ob_get_clean();
+}
+
+// Modelo de perfil novo: começa com o mesmo bloqueio das redes sem perfil
+$wam_profile_default = array('enabled' => 'yes', 'name' => '');
+$wam_fallback_cats = rules_wam_fallback_categories();
+foreach (array_keys($wam_catmap) as $ck) {
+    $wam_profile_default[$ck] = in_array($ck, $wam_fallback_cats, true) ? 'yes' : 'no';
+}
 
 $pgtitle = array(gettext("Services"), gettext("Rules WAM"), gettext("Configurações de Bloqueio"));
 include("head.inc");
@@ -205,15 +398,25 @@ display_top_tabs($tab_array);
 
     <div class="panel panel-default">
         <div class="panel-heading">
-            <h2 class="panel-title"><?=gettext("Categorias de Bloqueio Disponíveis")?></h2>
+            <h2 class="panel-title"><?=gettext("Catálogo de Categorias (sites e fornecedores)")?></h2>
         </div>
         <div class="panel-body">
+            <?php if ($wam_migrating): ?>
+                <div class="alert alert-warning" style="margin-bottom: 15px;">
+                    <i class="fa fa-exclamation-triangle"></i>
+                    <?=gettext("As categorias que estavam marcadas aqui foram convertidas para o perfil PADRAO, no painel Políticas por Rede. Revise os perfis e clique em Salvar e Aplicar Regras para concluir.")?>
+                </div>
+            <?php endif; ?>
+            <div class="alert alert-info" style="margin-bottom: 15px;">
+                <i class="fa fa-info-circle"></i>
+                <?=gettext("As categorias bloqueadas são escolhidas em cada perfil, no painel Políticas por Rede. Aqui ficam o que vale para todos os perfis: os sites de cada categoria (Gerenciar sites) e os fornecedores de VPN e Mensageiros.")?>
+            </div>
             <div class="form-group">
                 <label class="col-sm-3 control-label"><?=gettext("Conteúdo Adulto & Pornografia")?></label>
                 <div class="col-sm-9">
                     <div class="checkbox">
                         <label>
-                            <input type="checkbox" name="block_adult" value="yes" <?=rules_wam_is_checked($wam_cfg['block_adult'] ?? null) ? 'checked' : ''?> />
+                            <i class="fa fa-tag wam-cat-marker" data-cat="block_adult" style="color: #64748b; margin-right: 4px;"></i>
                             <?=gettext("Bloqueia portais adultos, pornografia, acompanhantes e cams (xvideos, xvideo, pornhub, xnxx, fatalmodel, etc. - Mais de 2.600 domínios)")?>
                         </label>
                     </div>
@@ -225,7 +428,7 @@ display_top_tabs($tab_array);
                 <div class="col-sm-9">
                     <div class="checkbox">
                         <label>
-                            <input type="checkbox" name="block_social" value="yes" <?=rules_wam_is_checked($wam_cfg['block_social'] ?? null) ? 'checked' : ''?> />
+                            <i class="fa fa-tag wam-cat-marker" data-cat="block_social" style="color: #64748b; margin-right: 4px;"></i>
                             <?=gettext("Bloqueia YouTube, Instagram, Facebook, TikTok, Twitter/X, Kwai, Reddit, Discord, etc.")?>
                         </label>
                     </div>
@@ -237,7 +440,7 @@ display_top_tabs($tab_array);
                 <div class="col-sm-9">
                     <div class="checkbox">
                         <label>
-                            <input type="checkbox" name="block_gambling" value="yes" <?=rules_wam_is_checked($wam_cfg['block_gambling'] ?? null) ? 'checked' : ''?> />
+                            <i class="fa fa-tag wam-cat-marker" data-cat="block_gambling" style="color: #64748b; margin-right: 4px;"></i>
                             <?=gettext("Bloqueia casas de apostas esportivas, cassinos online, tigrinho, Blaze, Betano, Bet365, etc. - Mais de 1.500 domínios")?>
                         </label>
                     </div>
@@ -249,7 +452,7 @@ display_top_tabs($tab_array);
                 <div class="col-sm-9">
                     <div class="checkbox">
                         <label>
-                            <input type="checkbox" name="block_streaming" value="yes" <?=rules_wam_is_checked($wam_cfg['block_streaming'] ?? null) ? 'checked' : ''?> />
+                            <i class="fa fa-tag wam-cat-marker" data-cat="block_streaming" style="color: #64748b; margin-right: 4px;"></i>
                             <?=gettext("Bloqueia Netflix, YouTube, Twitch, Disney+, HBO Max, Globoplay, Prime Video, Spotify, etc.")?>
                         </label>
                     </div>
@@ -261,7 +464,7 @@ display_top_tabs($tab_array);
                 <div class="col-sm-9">
                     <div class="checkbox">
                         <label>
-                            <input type="checkbox" name="block_gaming" value="yes" <?=rules_wam_is_checked($wam_cfg['block_gaming'] ?? null) ? 'checked' : ''?> />
+                            <i class="fa fa-tag wam-cat-marker" data-cat="block_gaming" style="color: #64748b; margin-right: 4px;"></i>
                             <?=gettext("Bloqueia Steam, Epic Games, Roblox, Riot Games, Blizzard, PlayStation Network, Xbox Live, etc.")?>
                         </label>
                     </div>
@@ -273,7 +476,7 @@ display_top_tabs($tab_array);
                 <div class="col-sm-9">
                     <div class="checkbox">
                         <label>
-                            <input type="checkbox" name="block_news" value="yes" <?=rules_wam_is_checked($wam_cfg['block_news'] ?? null) ? 'checked' : ''?> />
+                            <i class="fa fa-tag wam-cat-marker" data-cat="block_news" style="color: #64748b; margin-right: 4px;"></i>
                             <?=gettext("Bloqueia portais de notícias como G1, UOL, Folha, Estadão, R7, CNN Brasil, BBC, etc.")?>
                         </label>
                     </div>
@@ -285,7 +488,7 @@ display_top_tabs($tab_array);
                 <div class="col-sm-9">
                     <div class="checkbox">
                         <label>
-                            <input type="checkbox" name="block_sports" value="yes" <?=rules_wam_is_checked($wam_cfg['block_sports'] ?? null) ? 'checked' : ''?> />
+                            <i class="fa fa-tag wam-cat-marker" data-cat="block_sports" style="color: #64748b; margin-right: 4px;"></i>
                             <?=gettext("Bloqueia GE, ESPN, Lance, Flashscore, SofaScore, transmissões piratas de futebol, etc.")?>
                         </label>
                     </div>
@@ -297,7 +500,7 @@ display_top_tabs($tab_array);
                 <div class="col-sm-9">
                     <div class="checkbox">
                         <label>
-                            <input type="checkbox" name="block_shopping" value="yes" <?=rules_wam_is_checked($wam_cfg['block_shopping'] ?? null) ? 'checked' : ''?> />
+                            <i class="fa fa-tag wam-cat-marker" data-cat="block_shopping" style="color: #64748b; margin-right: 4px;"></i>
                             <?=gettext("Bloqueia Mercado Livre, Shopee, AliExpress, Amazon BR, Magalu, Shein, etc.")?>
                         </label>
                     </div>
@@ -309,7 +512,7 @@ display_top_tabs($tab_array);
                 <div class="col-sm-9">
                     <div class="checkbox">
                         <label>
-                            <input type="checkbox" name="block_p2p" value="yes" <?=rules_wam_is_checked($wam_cfg['block_p2p'] ?? null) ? 'checked' : ''?> />
+                            <i class="fa fa-tag wam-cat-marker" data-cat="block_p2p" style="color: #64748b; margin-right: 4px;"></i>
                             <?=gettext("Bloqueia The Pirate Bay, 1337x, YTS, trackers BitTorrent públicos, etc.")?>
                         </label>
                     </div>
@@ -321,7 +524,7 @@ display_top_tabs($tab_array);
                 <div class="col-sm-9">
                     <div class="checkbox">
                         <label>
-                            <input type="checkbox" name="block_doh" value="yes" <?=rules_wam_is_checked($wam_cfg['block_doh'] ?? null) ? 'checked' : ''?> />
+                            <i class="fa fa-tag wam-cat-marker" data-cat="block_doh" style="color: #64748b; margin-right: 4px;"></i>
                             <?=gettext("Impede que navegadores usem DNS sobre HTTPS (Cloudflare 1.1.1.1, Google 8.8.8.8, Quad9) para burlar os bloqueios.")?>
                         </label>
                     </div>
@@ -346,12 +549,12 @@ display_top_tabs($tab_array);
                 <div class="col-sm-9">
                     <div class="checkbox">
                         <label>
-                            <input type="checkbox" name="block_vpn" id="block_vpn" value="yes" <?=rules_wam_is_checked($wam_cfg['block_vpn'] ?? null) ? 'checked' : ''?> onchange="document.getElementById('vpn_sub_options').style.display = this.checked ? 'block' : 'none';" />
-                            <strong><?=gettext("Ativar bloqueio de VPNs, Soluções ZTNA e Proxies")?></strong>
+                            <i class="fa fa-tag wam-cat-marker" data-cat="block_vpn" style="color: #64748b; margin-right: 4px;"></i>
+                            <strong><?=gettext("Fornecedores de VPN, ZTNA e Proxies que entram nesta categoria")?></strong>
                         </label>
                     </div>
 
-                    <div id="vpn_sub_options" style="margin-top: 10px; padding: 12px 16px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; <?=(rules_wam_is_checked($wam_cfg['block_vpn'] ?? null) ? '' : 'display:none;')?>">
+                    <div id="vpn_sub_options" style="margin-top: 10px; padding: 12px 16px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; ">
                         <p style="font-size: 12px; color: #475569; margin-bottom: 10px;">
                             <i class="fa fa-info-circle"></i> <em>Marque os fornecedores que deseja bloquear. Se a sua empresa utiliza algum deles (ex: FortiClient ou Cisco), basta <strong>desmarcar</strong> para permitir o acesso.</em>
                         </p>
@@ -420,12 +623,12 @@ display_top_tabs($tab_array);
                 <div class="col-sm-9">
                     <div class="checkbox">
                         <label>
-                            <input type="checkbox" name="block_messaging" id="block_messaging" value="yes" <?=rules_wam_is_checked($wam_cfg['block_messaging'] ?? null) ? 'checked' : ''?> onchange="document.getElementById('msg_sub_options').style.display = this.checked ? 'block' : 'none';" />
-                            <strong><?=gettext("Ativar bloqueio de Mensageiros Instantâneos & Ferramentas de Comunicação")?></strong>
+                            <i class="fa fa-tag wam-cat-marker" data-cat="block_messaging" style="color: #64748b; margin-right: 4px;"></i>
+                            <strong><?=gettext("Ferramentas de comunicação que entram nesta categoria")?></strong>
                         </label>
                     </div>
 
-                    <div id="msg_sub_options" style="margin-top: 10px; padding: 12px 16px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; <?=(rules_wam_is_checked($wam_cfg['block_messaging'] ?? null) ? '' : 'display:none;')?>">
+                    <div id="msg_sub_options" style="margin-top: 10px; padding: 12px 16px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; ">
                         <p style="font-size: 12px; color: #475569; margin-bottom: 10px;">
                             <i class="fa fa-info-circle"></i> <em>Marque as ferramentas de comunicação que deseja bloquear. Se sua empresa utiliza alguma delas para trabalho (ex: Microsoft Teams, Slack ou WhatsApp), basta <strong>desmarcar</strong> para manter liberado.</em>
                         </p>
@@ -494,6 +697,60 @@ display_top_tabs($tab_array);
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <?php // Sites liberados por categoria: a tela monta as caixas de seleção e só os desmarcados são enviados ?>
+    <?php foreach (array_keys($wam_catmap) as $ck): ?>
+        <input type="hidden" name="exc_<?=$ck?>" id="exc_<?=$ck?>" value="<?=htmlspecialchars(rules_wam_list_to_store($wam_cfg['exc_' . $ck] ?? ''), ENT_QUOTES)?>" />
+    <?php endforeach; ?>
+
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            <h2 class="panel-title"><i class="fa fa-wifi"></i> <?=gettext("Políticas por Rede (GUEST, CORP, ADMIN...)")?></h2>
+        </div>
+        <div class="panel-body">
+            <p class="text-muted">
+                <?=gettext("Cada perfil define as categorias bloqueadas para as redes escolhidas. Exemplo: o perfil GUEST sem Mídias Sociais libera Facebook e YouTube para os visitantes, enquanto o perfil CORP bloqueia.")?>
+            </p>
+            <ul class="text-muted small" style="margin-bottom: 16px;">
+                <li><strong><?=gettext("Toda interface interna precisa estar marcada em um perfil ativo")?></strong> <?=gettext("(sem isso a configuração não é salva).")?></li>
+                <li><?=gettext("Rede que não cair em nenhum perfil (VLAN criada depois, sub-rede roteada ou VPN não informada) recebe o bloqueio máximo:")?>
+                    <?php $wam_fb_labels = array(); foreach ($wam_fallback_cats as $wfk) { $wam_fb_labels[] = $wam_catmap[$wfk]['label']; } ?>
+                    <em><?=htmlspecialchars(implode(', ', $wam_fb_labels))?></em>. <?=gettext("Mensageiros e VPN ficam liberados.")?></li>
+                <li><?=gettext("Valem para todos os perfis: whitelist geral, proteções corporativas, sites liberados no catálogo, lista negra personalizada e IPs isentos (bypass).")?></li>
+                <li><?=gettext("As regras de firewall de DoT 853 e do WhatsApp valem só nas interfaces cujo perfil bloqueia Anti-Bypass DoH e Mensageiros. O redirecionamento da porta 53 vale para todas as redes.")?></li>
+            </ul>
+            <?php
+                $wam_in_prof = array();
+                foreach ($wam_profiles as $wam_p) {
+                    if (is_array($wam_p) && rules_wam_is_checked($wam_p['enabled'] ?? 'yes')) {
+                        foreach (rules_wam_parse_list($wam_p['interfaces'] ?? '') as $wik) {
+                            $wam_in_prof[$wik] = true;
+                        }
+                    }
+                }
+                $wam_no_prof = array();
+                foreach ($wam_ifaces as $wik => $wid) {
+                    if (!empty($wid['has_ip']) && !isset($wam_in_prof[$wik])) {
+                        $wam_no_prof[] = htmlspecialchars("{$wid['descr']} ({$wid['cidr']})");
+                    }
+                }
+            ?>
+            <?php if (!empty($wam_no_prof)): ?>
+                <div class="alert alert-danger">
+                    <i class="fa fa-exclamation-triangle"></i>
+                    <strong><?=gettext("Interfaces sem perfil")?>:</strong> <?=implode(', ', $wam_no_prof)?>.
+                    <?=gettext("Marque cada uma em um perfil (ou crie um perfil novo) para poder salvar.")?>
+                </div>
+            <?php endif; ?>
+            <div id="wam_profiles">
+                <?php $wam_pi = 0; foreach ($wam_profiles as $wam_p) { if (is_array($wam_p)) { echo wam_render_profile($wam_pi++, $wam_p, $wam_ifaces, $wam_catmap); } } ?>
+            </div>
+            <p id="wam_profiles_empty" class="text-muted" style="<?=($wam_pi === 0) ? '' : 'display:none;'?>">
+                <em><?=gettext("Nenhum perfil cadastrado: todas as redes recebem o bloqueio máximo. Crie um perfil para cada rede.")?></em>
+            </p>
+            <button type="button" class="btn btn-sm btn-success" id="wam_profile_add"><i class="fa fa-plus"></i> <?=gettext("Adicionar perfil de rede")?></button>
         </div>
     </div>
 
@@ -851,5 +1108,173 @@ display_top_tabs($tab_array);
         </div>
     </div>
 </form>
+
+<script type="text/template" id="wam_profile_tpl"><?=wam_render_profile('__IDX__', $wam_profile_default, $wam_ifaces, $wam_catmap)?></script>
+
+<script>
+(function () {
+    var SITES = <?=json_encode($wam_sites, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)?>;
+
+    // ---- Sites de cada categoria: marcado = bloqueado; os desmarcados vão para o campo oculto exc_<categoria> ----
+    function initCategorySites(key) {
+        var marker = document.querySelector('.wam-cat-marker[data-cat="' + key + '"]');
+        var hidden = document.getElementById('exc_' + key);
+        if (!marker || !hidden || !SITES[key] || !SITES[key].length) return;
+        var host = marker.closest('.col-sm-9');
+        if (!host) return;
+
+        var exc = {};
+        hidden.value.split(/\s+/).forEach(function (d) { if (d) exc[d] = true; });
+
+        var link = document.createElement('a');
+        link.href = '#';
+        link.style.cssText = 'display:inline-block; margin-top:4px; font-size:12px;';
+
+        var box = document.createElement('div');
+        box.style.cssText = 'display:none; margin-top:8px; padding:10px 12px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px;';
+        box.innerHTML =
+            '<p class="small text-muted" style="margin-bottom:8px;"><i class="fa fa-info-circle"></i> ' +
+            'Marcado = bloqueado. <strong>Desmarque</strong> os sites que devem ficar liberados em todos os perfis que bloqueiam esta categoria.</p>' +
+            '<div class="form-inline" style="margin-bottom:8px;">' +
+            '<input type="search" class="form-control input-sm" placeholder="Buscar site..." style="width:220px;" data-role="search"> ' +
+            '<button type="button" class="btn btn-xs btn-default" data-act="all">Marcar exibidos</button> ' +
+            '<button type="button" class="btn btn-xs btn-default" data-act="none">Desmarcar exibidos</button> ' +
+            '<span class="small text-muted" data-role="info"></span></div>' +
+            '<div data-role="list" style="max-height:260px; overflow-y:auto; column-width:220px; column-gap:16px;"></div>';
+
+        var list = box.querySelector('[data-role=list]');
+        var info = box.querySelector('[data-role=info]');
+        var built = false;
+
+        function refresh() {
+            var n = Object.keys(exc).length;
+            link.innerHTML = '<i class="fa fa-list"></i> Gerenciar sites (' + SITES[key].length + ' na lista' +
+                (n ? ', <strong>' + n + ' liberado(s)</strong>' : '') + ')';
+        }
+        function sync() {
+            hidden.value = Object.keys(exc).sort().join(' ');
+            refresh();
+        }
+        function visibleLabels() {
+            return Array.prototype.filter.call(list.children, function (l) { return l.style.display !== 'none'; });
+        }
+        function filter(q) {
+            var shown = 0;
+            Array.prototype.forEach.call(list.children, function (l) {
+                var ok = !q || l.getAttribute('data-d').indexOf(q) !== -1;
+                l.style.display = ok ? '' : 'none';
+                if (ok) shown++;
+            });
+            info.textContent = shown + ' de ' + SITES[key].length + ' exibidos';
+        }
+        function build() {
+            var frag = document.createDocumentFragment();
+            SITES[key].forEach(function (d) {
+                var lab = document.createElement('label');
+                lab.setAttribute('data-d', d);
+                lab.title = d;
+                lab.style.cssText = 'display:block; font-weight:normal; margin:0 0 2px; break-inside:avoid; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
+                var i = document.createElement('input');
+                i.type = 'checkbox';
+                i.value = d;
+                i.checked = !exc[d];
+                i.style.marginRight = '5px';
+                lab.appendChild(i);
+                lab.appendChild(document.createTextNode(d));
+                frag.appendChild(lab);
+            });
+            list.appendChild(frag);
+            built = true;
+            filter('');
+        }
+
+        list.addEventListener('change', function (e) {
+            if (e.target.type !== 'checkbox') return;
+            if (e.target.checked) { delete exc[e.target.value]; } else { exc[e.target.value] = true; }
+            sync();
+        });
+        box.querySelector('[data-role=search]').addEventListener('input', function () {
+            filter(this.value.trim().toLowerCase());
+        });
+        box.addEventListener('click', function (e) {
+            var act = e.target.getAttribute('data-act');
+            if (!act) return;
+            visibleLabels().forEach(function (l) {
+                var i = l.firstChild;
+                i.checked = (act === 'all');
+                if (i.checked) { delete exc[i.value]; } else { exc[i.value] = true; }
+            });
+            sync();
+        });
+        // Enter na busca não envia o formulário
+        box.querySelector('[data-role=search]').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') e.preventDefault();
+        });
+        link.addEventListener('click', function (e) {
+            e.preventDefault();
+            if (!built) build();
+            box.style.display = (box.style.display === 'none') ? '' : 'none';
+        });
+
+        host.appendChild(link);
+        host.appendChild(box);
+        refresh();
+    }
+
+    // ---- Perfis por rede ----
+    function initProfiles() {
+        var wrap = document.getElementById('wam_profiles');
+        var tpl = document.getElementById('wam_profile_tpl');
+        var empty = document.getElementById('wam_profiles_empty');
+        var addBtn = document.getElementById('wam_profile_add');
+        if (!wrap || !tpl || !addBtn) return;
+        var next = 0;
+
+        function updateEmpty() {
+            empty.style.display = wrap.querySelector('.wam-profile') ? 'none' : '';
+        }
+        addBtn.addEventListener('click', function () {
+            var tmp = document.createElement('div');
+            tmp.innerHTML = tpl.innerHTML.replace(/__IDX__/g, 'n' + (next++));
+            var prof = tmp.querySelector('.wam-profile');
+            wrap.appendChild(prof);
+            updateEmpty();
+            prof.querySelector('.wam-profile-name').focus();
+        });
+        wrap.addEventListener('click', function (e) {
+            var rm = e.target.closest('.wam-profile-remove');
+            if (rm) {
+                if (confirm('Remover este perfil? A remoção só vale depois de Salvar.')) {
+                    rm.closest('.wam-profile').remove();
+                    updateEmpty();
+                }
+                return;
+            }
+            var cb = e.target.closest('.wam-profile-cats');
+            if (cb) {
+                var all = cb.getAttribute('data-act') === 'all';
+                cb.closest('.wam-profile').querySelectorAll('.wam-profile-cat').forEach(function (c) {
+                    c.checked = all;
+                });
+            }
+        });
+        wrap.addEventListener('input', function (e) {
+            if (e.target.classList.contains('wam-profile-name')) {
+                e.target.closest('.wam-profile').querySelector('.wam-profile-title').textContent = e.target.value || 'novo perfil';
+            }
+        });
+    }
+
+    function init() {
+        Object.keys(SITES).forEach(initCategorySites);
+        initProfiles();
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
+</script>
 
 <?php include("foot.inc"); ?>

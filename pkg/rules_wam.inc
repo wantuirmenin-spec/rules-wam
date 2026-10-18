@@ -9,7 +9,7 @@ require_once("config.inc");
 require_once("util.inc");
 require_once("services.inc");
 
-define('RULES_WAM_VERSION', '1.4.3');
+define('RULES_WAM_VERSION', '1.5.0');
 define('WAM_FEEDS_DIR', '/usr/local/share/wam/feeds');
 define('WAM_CONF_FILE', '/var/unbound/wam_blocklist.conf');
 // Include com curinga: se o arquivo sumir (ex.: /var em RAM disk após reboot) o Unbound continua subindo
@@ -126,6 +126,13 @@ function rules_wam_get_configured_interfaces($include_wan = false) {
                 $g_ip = get_interface_ip($if_key);
                 if (!empty($g_ip) && filter_var($g_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
                     $if_ip = $g_ip;
+                    // Sem isto a máscara ficava no padrão /24 (ex.: GUEST 192.168.60.0/26 aparecia como /24)
+                    $g_sn = function_exists('get_interface_subnet') ? get_interface_subnet($if_key) : '';
+                    if (is_numeric($g_sn) && (int)$g_sn > 0 && (int)$g_sn <= 32) {
+                        $if_subnet = (int)$g_sn;
+                    } elseif (!empty($if_cfg['subnet']) && is_numeric($if_cfg['subnet'])) {
+                        $if_subnet = (int)$if_cfg['subnet'];
+                    }
                 }
             }
 
@@ -427,11 +434,18 @@ function rules_wam_build_common_conf($wam_cfg) {
  * Lista de IPs/redes isentos (bypass) já validados no formato CIDR
  */
 function rules_wam_get_bypass_list($wam_cfg) {
+    return rules_wam_parse_cidr_list($wam_cfg['bypass_ips'] ?? '');
+}
+
+/**
+ * Converte uma lista de IPs/redes em CIDRs válidos (IP solto vira /32 ou /128); itens inválidos são descartados
+ */
+function rules_wam_parse_cidr_list($str) {
     $bypass = array();
-    if (empty($wam_cfg['bypass_ips'])) {
+    if (empty($str)) {
         return $bypass;
     }
-    foreach (preg_split('/[\s,;]+/', $wam_cfg['bypass_ips']) as $rip) {
+    foreach (preg_split('/[\s,;]+/', $str) as $rip) {
         $rip = trim($rip);
         if ($rip === '') continue;
         if (filter_var($rip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
@@ -480,20 +494,39 @@ function rules_wam_ip_in_bypass($ip, $wam_cfg) {
  */
 function rules_wam_build_bypass_view($bypass_list) {
     if (empty($bypass_list)) return "";
-    $conf = "  # IPs isentos (bypass) - usam a view wam_bypass\n";
-    foreach ($bypass_list as $cidr) {
-        $conf .= "  access-control-view: {$cidr} \"wam_bypass\"\n";
+    return rules_wam_build_views(array(
+        array('name' => 'wam_bypass', 'comment' => 'IPs isentos (bypass)', 'networks' => $bypass_list, 'zones' => '')
+    ));
+}
+
+/**
+ * Gera as views do Unbound. Cada view tem um nome, as redes (CIDR) que a usam e as zonas de bloqueio próprias.
+ * Um cliente que cai numa view ignora as zonas globais (view-first: no), por isso toda view
+ * reinclui os host overrides e os registros DHCP do pfSense. Quando a mesma rede casa com mais
+ * de uma view, o Unbound usa a mais específica (ex.: IP isento /32 dentro da rede de um perfil).
+ */
+function rules_wam_build_views($views) {
+    $conf = "";
+    $blocks = "";
+    foreach ($views as $v) {
+        if (empty($v['networks'])) continue;
+        $conf .= "  # {$v['comment']} - view {$v['name']}\n";
+        foreach ($v['networks'] as $cidr) {
+            $conf .= "  access-control-view: {$cidr} \"{$v['name']}\"\n";
+        }
+        $blocks .= "view:\n";
+        $blocks .= "  name: \"{$v['name']}\"\n";
+        $blocks .= "  view-first: no\n";
+        // Zona fixa: garante que a view tenha ao menos uma zona e não herde as globais
+        $blocks .= "  local-zone: \"" . str_replace('_', '-', $v['name']) . ".invalid.\" static\n";
+        $blocks .= $v['zones'];
+        // Curingas evitam erro se o arquivo não existir
+        $blocks .= "  include: /var/unbound/host_entries.con[f]\n";
+        $blocks .= "  include: /var/unbound/dhcpleases_entries.con[f]\n";
     }
-    $conf .= "view:\n";
-    $conf .= "  name: \"wam_bypass\"\n";
-    $conf .= "  view-first: no\n";
-    $conf .= "  local-zone: \"wam-bypass.invalid.\" static\n";
-    // Curingas evitam erro se o arquivo não existir
-    $conf .= "  include: /var/unbound/host_entries.con[f]\n";
-    $conf .= "  include: /var/unbound/dhcpleases_entries.con[f]\n";
+    if ($blocks === "") return "";
     // Volta ao contexto server: para não afetar o que o pfSense incluir depois
-    $conf .= "server:\n";
-    return $conf;
+    return $conf . $blocks . "server:\n";
 }
 
 /**
@@ -621,6 +654,583 @@ function rules_wam_category_map() {
 }
 
 /**
+ * Subcategorias (chave de configuração => feed) das categorias que têm fornecedores selecionáveis
+ */
+function rules_wam_category_sub_feeds() {
+    return array(
+        'block_vpn' => array(
+            'block_vpn_fortinet'    => 'vpn-fortinet.txt',
+            'block_vpn_cisco'       => 'vpn-cisco.txt',
+            'block_vpn_paloalto'    => 'vpn-paloalto.txt',
+            'block_ztna_zscaler'    => 'ztna-zscaler.txt',
+            'block_ztna_netskope'   => 'ztna-netskope.txt',
+            'block_ztna_cloudflare' => 'ztna-cloudflare.txt',
+            'block_ztna_tailscale'  => 'ztna-tailscale.txt',
+            'block_vpn_commercial'  => 'vpn-commercial.txt',
+        ),
+        'block_messaging' => array(
+            'block_msg_whatsapp'    => 'msg-whatsapp.txt',
+            'block_msg_telegram'    => 'msg-telegram.txt',
+            'block_msg_messenger'   => 'msg-messenger.txt',
+            'block_msg_teams_skype' => 'msg-teams-skype.txt',
+            'block_msg_discord'     => 'msg-discord.txt',
+            'block_msg_slack'       => 'msg-slack.txt',
+            'block_msg_zoom_meet'   => 'msg-zoom-meet.txt',
+            'block_msg_others'      => 'msg-others.txt',
+        ),
+    );
+}
+
+/**
+ * Feeds (arquivo => rótulo) de uma categoria. VPN e Mensageiros seguem os fornecedores marcados
+ * na configuração geral. Com $all = true devolve todos os feeds (usado na tela para listar os sites).
+ */
+function rules_wam_category_feeds($cfg_key, $wam_cfg, $all = false) {
+    $map = rules_wam_category_map();
+    if (!isset($map[$cfg_key])) {
+        return array();
+    }
+    $sub_maps = rules_wam_category_sub_feeds();
+    if (!isset($sub_maps[$cfg_key])) {
+        return array($map[$cfg_key]['file'] => $map[$cfg_key]['label']);
+    }
+
+    $sub_map = $sub_maps[$cfg_key];
+    $feeds = array();
+    if ($all) {
+        foreach ($sub_map as $sub_f) {
+            $feeds[$sub_f] = rules_wam_feed_label($sub_f);
+        }
+        return $feeds;
+    }
+
+    $protect_netskope = (!isset($wam_cfg['corp_protect_netskope']) || rules_wam_is_checked($wam_cfg['corp_protect_netskope']));
+    $protect_cloudflare = (!isset($wam_cfg['corp_protect_cloudflare']) || rules_wam_is_checked($wam_cfg['corp_protect_cloudflare']));
+    $any_sub_specified = false;
+    foreach (array_keys($sub_map) as $sub_k) {
+        if (isset($wam_cfg[$sub_k])) {
+            $any_sub_specified = true;
+            break;
+        }
+    }
+    foreach ($sub_map as $sub_k => $sub_f) {
+        if ($sub_k === 'block_ztna_netskope' && $protect_netskope) {
+            continue; // Netskope protegido contra bloqueio acidental
+        }
+        if ($sub_k === 'block_ztna_cloudflare' && $protect_cloudflare && !rules_wam_is_checked($wam_cfg['block_ztna_cloudflare'] ?? null)) {
+            continue;
+        }
+        $is_sub_active = $any_sub_specified ? rules_wam_is_checked($wam_cfg[$sub_k] ?? null) : true;
+        if ($is_sub_active) {
+            $feeds[$sub_f] = rules_wam_feed_label($sub_f);
+        }
+    }
+    return $feeds;
+}
+
+/**
+ * Domínios de um feed, já normalizados (com cache: os perfis por rede releem os mesmos feeds)
+ */
+function rules_wam_read_feed($feed_file) {
+    static $cache = array();
+    $feed_file = basename($feed_file);
+    if (isset($cache[$feed_file])) {
+        return $cache[$feed_file];
+    }
+    $out = array();
+    $path = WAM_FEEDS_DIR . '/' . $feed_file;
+    if (file_exists($path)) {
+        foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+            $line = trim($line);
+            if ($line === '' || $line[0] === '#') {
+                continue;
+            }
+            $d = rules_wam_clean_domain($line);
+            if ($d) {
+                $out[$d] = true;
+            }
+        }
+    }
+    $cache[$feed_file] = array_keys($out);
+    return $cache[$feed_file];
+}
+
+/**
+ * Lista de domínios (texto gravado) -> array domínio => $value
+ */
+function rules_wam_domain_set($str, $value = true) {
+    $out = array();
+    foreach (rules_wam_parse_list($str) as $line) {
+        $d = rules_wam_clean_domain($line);
+        if ($d) {
+            $out[$d] = $value;
+        }
+    }
+    return $out;
+}
+
+/**
+ * Sites desmarcados (liberados) dentro de uma categoria
+ */
+function rules_wam_category_exceptions($wam_cfg, $cfg_key) {
+    return rules_wam_domain_set($wam_cfg['exc_' . $cfg_key] ?? '');
+}
+
+/**
+ * Primeiro domínio pai que está bloqueado (ou null)
+ */
+function rules_wam_blocked_parent($domain, &$blocked) {
+    $parts = explode('.', $domain);
+    while (count($parts) > 1) {
+        array_shift($parts);
+        $p = implode('.', $parts);
+        if (isset($blocked[$p])) {
+            return $p;
+        }
+    }
+    return null;
+}
+
+/**
+ * Compila uma política de bloqueio (categorias + listas) nas linhas de zona do Unbound.
+ *  - $whitelist: domínios nunca bloqueados (valem também para os subdomínios)
+ *  - $extra: domínios bloqueados fora das categorias (domínio => rótulo)
+ * Um domínio liberado cujo domínio pai continua bloqueado recebe uma zona "transparent",
+ * que tem prioridade por ser mais específica (ex.: liberar m.youtube.com com youtube.com bloqueado).
+ */
+function rules_wam_compile_policy($wam_cfg, $cat_keys, $whitelist, $extra, $block_action, $block_page_ip, &$cat_index) {
+    $map = rules_wam_category_map();
+    $blocked = array();     // domínio => array(categoria => true)
+    $exceptions = array();  // domínio desmarcado => categoria
+    $labels = array();
+
+    foreach ($cat_keys as $k) {
+        if (!isset($map[$k])) {
+            continue;
+        }
+        $labels[] = $map[$k]['label'];
+        $exc = rules_wam_category_exceptions($wam_cfg, $k);
+        foreach (rules_wam_category_feeds($k, $wam_cfg) as $file => $label) {
+            foreach (rules_wam_read_feed($file) as $d) {
+                if (isset($exc[$d])) {
+                    $exceptions[$d] = $k;
+                    continue;
+                }
+                if (rules_wam_is_whitelisted($d, $whitelist)) {
+                    continue;
+                }
+                $blocked[$d][$k] = true;
+                if (!isset($cat_index[$d])) {
+                    $cat_index[$d] = $label;
+                }
+            }
+        }
+    }
+
+    foreach ($extra as $d => $label) {
+        if (isset($whitelist[$d])) {
+            continue;
+        }
+        $blocked[$d]['_extra'] = true;
+        if (!isset($cat_index[$d])) {
+            $cat_index[$d] = $label;
+        }
+    }
+
+    // Zonas "transparent" para domínios liberados que ficariam presos pelo domínio pai
+    $holes = array();
+    foreach (array_keys($whitelist) as $w) {
+        if ($w[0] !== '*' && !isset($blocked[$w]) && rules_wam_blocked_parent($w, $blocked) !== null) {
+            $holes[$w] = true;
+        }
+    }
+    // A exceção de uma categoria só abre o pai bloqueado pela mesma categoria (não fura o bloqueio de outra)
+    foreach ($exceptions as $d => $k) {
+        if (isset($blocked[$d]) || isset($holes[$d])) {
+            continue;
+        }
+        $p = rules_wam_blocked_parent($d, $blocked);
+        if ($p !== null && count($blocked[$p]) === 1 && isset($blocked[$p][$k])) {
+            $holes[$d] = true;
+        }
+    }
+
+    // Subdomínio com o pai já bloqueado é redundante (evita conflitos no Unbound),
+    // a não ser que exista uma zona liberada entre os dois
+    $final = array();
+    foreach (array_keys($blocked) as $d) {
+        if (rules_wam_is_whitelisted($d, $whitelist)) {
+            continue;
+        }
+        $parts = explode('.', $d);
+        $redundant = false;
+        while (count($parts) > 1) {
+            array_shift($parts);
+            $p = implode('.', $parts);
+            if (isset($holes[$p])) {
+                break;
+            }
+            if (isset($blocked[$p])) {
+                $redundant = true;
+                break;
+            }
+        }
+        if (!$redundant) {
+            $final[] = $d;
+        }
+    }
+
+    $zones = "";
+    foreach ($final as $dom) {
+        if ($block_action === 'always_null') {
+            $zones .= "  local-zone: \"{$dom}\" always_null\n";
+        } else {
+            $zones .= "  local-zone: \"{$dom}\" redirect\n";
+            $zones .= "  local-data: \"{$dom} 60 IN A {$block_page_ip}\"\n";
+        }
+    }
+    foreach (array_keys($holes) as $h) {
+        $zones .= "  local-zone: \"{$h}\" transparent\n";
+    }
+
+    return array('zones' => $zones, 'total' => count($final), 'labels' => $labels, 'holes' => count($holes));
+}
+
+/**
+ * Perfis de rede gravados no config.xml, em net_profiles/item.
+ * Tem que ser "item": o pfSense só grava uma lista como elementos repetidos quando a tag está
+ * em listtags(). Fora dela, cada posição da lista vira <0>, <1>... (XML inválido), e o pfSense
+ * descarta o config.xml e restaura o backup.
+ */
+function rules_wam_get_profiles($wam_cfg) {
+    $container = $wam_cfg['net_profiles'] ?? array();
+    $raw = is_array($container) ? ($container['item'] ?? array()) : array();
+    if (!is_array($raw) || empty($raw)) {
+        return array();
+    }
+    if (isset($raw['name'])) {
+        $raw = array($raw);
+    }
+    $out = array();
+    foreach ($raw as $p) {
+        if (!is_array($p)) {
+            continue;
+        }
+        $p['name'] = preg_replace('/[^A-Za-z0-9_-]/', '', (string)($p['name'] ?? ''));
+        if ($p['name'] === '') {
+            continue;
+        }
+        $out[] = $p;
+    }
+    return $out;
+}
+
+/**
+ * Nome da view do Unbound para um perfil (ex.: GUEST -> wam_p_guest)
+ */
+function rules_wam_profile_view_name($name) {
+    return 'wam_p_' . strtolower(preg_replace('/[^A-Za-z0-9]+/', '_', $name));
+}
+
+/**
+ * Categorias marcadas num perfil
+ */
+function rules_wam_profile_categories($profile) {
+    $cats = array();
+    foreach (array_keys(rules_wam_category_map()) as $k) {
+        if (rules_wam_is_checked($profile[$k] ?? null)) {
+            $cats[] = $k;
+        }
+    }
+    return $cats;
+}
+
+/**
+ * Redes (CIDR) informadas num perfil: sub-redes das interfaces marcadas + redes digitadas.
+ * As sub-redes de interface que só caem dentro de uma rede digitada são somadas depois,
+ * em rules_wam_build_profile_views (2ª passada).
+ */
+function rules_wam_profile_networks($profile, $ifaces) {
+    $nets = array();
+    foreach (rules_wam_parse_list($profile['interfaces'] ?? '') as $if_key) {
+        if (!empty($ifaces[$if_key]['has_ip'])) {
+            $nets[] = $ifaces[$if_key]['cidr'];
+        }
+    }
+    foreach (rules_wam_parse_cidr_list($profile['networks'] ?? '') as $cidr) {
+        $nets[] = $cidr;
+    }
+    return array_values(array_unique($nets));
+}
+
+/**
+ * Modo "perfil obrigatório": as categorias saem da política geral e toda rede precisa de um perfil.
+ * A rede que não cair em nenhum perfil recebe o bloqueio de rules_wam_fallback_categories().
+ */
+function rules_wam_profiles_required($wam_cfg) {
+    return rules_wam_is_checked($wam_cfg['profiles_required'] ?? null);
+}
+
+/**
+ * Categorias bloqueadas nas redes sem perfil (modo perfil obrigatório).
+ * Mensageiros e VPN ficam de fora: uma VLAN esquecida não perde Teams, WhatsApp nem a VPN corporativa.
+ */
+function rules_wam_fallback_categories() {
+    return array_values(array_diff(array_keys(rules_wam_category_map()), array('block_messaging', 'block_vpn')));
+}
+
+/**
+ * Converte uma configuração antiga (categorias na política geral) para o modo perfil obrigatório.
+ * As categorias marcadas na política geral viram o perfil PADRAO, com as interfaces que ainda não
+ * têm perfil e as redes corporativas autorizadas (sub-redes roteadas/VPN), para nada mudar na atualização.
+ */
+function rules_wam_migrate_profiles_required($wam_cfg, $ifaces = null) {
+    if (rules_wam_profiles_required($wam_cfg)) {
+        return $wam_cfg;
+    }
+    if ($ifaces === null) {
+        $ifaces = rules_wam_get_configured_interfaces(false);
+    }
+    $profiles = rules_wam_get_profiles($wam_cfg);
+    $used_ifs = array();
+    $names = array();
+    foreach ($profiles as $p) {
+        $names[strtoupper($p['name'])] = true;
+        foreach (rules_wam_parse_list($p['interfaces'] ?? '') as $k) {
+            $used_ifs[$k] = true;
+        }
+    }
+    $free_ifs = array();
+    foreach ($ifaces as $k => $ifd) {
+        if (!empty($ifd['has_ip']) && !isset($used_ifs[$k])) {
+            $free_ifs[] = $k;
+        }
+    }
+    $corp = array();
+    foreach (rules_wam_parse_list($wam_cfg['corp_allowed_subnets'] ?? WAM_DEFAULT_CORP_SUBNETS) as $n) {
+        if (preg_match('#^(\d{1,3}\.){3}\d{1,3}/(?:[0-9]|[12][0-9]|3[0-2])$#', $n)) {
+            $corp[] = $n;
+        }
+    }
+    if (!empty($free_ifs) || !empty($corp)) {
+        $name = 'PADRAO';
+        for ($i = 2; isset($names[$name]); $i++) {
+            $name = 'PADRAO_' . $i;
+        }
+        $p = array(
+            'enabled'    => 'yes',
+            'name'       => $name,
+            'interfaces' => implode(' ', $free_ifs),
+            'networks'   => implode(' ', $corp),
+            'allow'      => '',
+            'block'      => '',
+        );
+        foreach (array_keys(rules_wam_category_map()) as $k) {
+            $p[$k] = rules_wam_is_checked($wam_cfg[$k] ?? null) ? 'yes' : 'no';
+        }
+        $profiles[] = $p;
+    }
+    if (!empty($profiles)) {
+        $wam_cfg['net_profiles'] = array('item' => $profiles);
+    }
+    // As categorias da política geral deixam de ser usadas
+    foreach (array_keys(rules_wam_category_map()) as $k) {
+        unset($wam_cfg[$k]);
+    }
+    $wam_cfg['profiles_required'] = 'yes';
+    return $wam_cfg;
+}
+
+/**
+ * Onde cada categoria está ativa: categoria => lista de perfis (e "Sem perfil" quando vale para as
+ * redes sem perfil). Nas configurações antigas, "Padrão" quando marcada na política geral.
+ */
+function rules_wam_category_usage($wam_cfg) {
+    $usage = array_fill_keys(array_keys(rules_wam_category_map()), array());
+    if (rules_wam_profiles_required($wam_cfg)) {
+        foreach (rules_wam_get_profiles($wam_cfg) as $p) {
+            if (!rules_wam_is_checked($p['enabled'] ?? 'yes')) {
+                continue;
+            }
+            foreach (rules_wam_profile_categories($p) as $k) {
+                $usage[$k][] = $p['name'];
+            }
+        }
+        foreach (rules_wam_fallback_categories() as $k) {
+            $usage[$k][] = 'Sem perfil';
+        }
+    } else {
+        foreach (array_keys($usage) as $k) {
+            if (rules_wam_is_checked($wam_cfg[$k] ?? null)) {
+                $usage[$k][] = 'Padrão';
+            }
+        }
+        foreach (rules_wam_get_profiles($wam_cfg) as $p) {
+            if (rules_wam_is_checked($p['enabled'] ?? 'yes')) {
+                foreach (rules_wam_profile_categories($p) as $k) {
+                    $usage[$k][] = $p['name'];
+                }
+            }
+        }
+    }
+    return $usage;
+}
+
+/**
+ * Política efetiva de cada interface interna (modo perfil obrigatório): o perfil que marcou a interface,
+ * senão o primeiro perfil com uma rede que contém a sub-rede dela, senão o bloqueio das redes sem perfil.
+ * Retorna if_key => array('profile' => nome ou '', 'cats' => categorias).
+ */
+function rules_wam_interface_policies($wam_cfg, $ifaces = null) {
+    if ($ifaces === null) {
+        $ifaces = rules_wam_get_configured_interfaces(false);
+    }
+    $active = array();
+    foreach (rules_wam_get_profiles($wam_cfg) as $p) {
+        if (rules_wam_is_checked($p['enabled'] ?? 'yes')) {
+            $active[] = $p;
+        }
+    }
+    $out = array();
+    foreach ($ifaces as $k => $ifd) {
+        $hit = null;
+        foreach ($active as $p) {
+            if (in_array($k, rules_wam_parse_list($p['interfaces'] ?? ''), true)) {
+                $hit = $p;
+                break;
+            }
+        }
+        if ($hit === null && !empty($ifd['has_ip'])) {
+            foreach ($active as $p) {
+                foreach (rules_wam_parse_cidr_list($p['networks'] ?? '') as $n) {
+                    if ($n === $ifd['cidr'] || rules_wam_cidr_contains($n, $ifd['cidr'])) {
+                        $hit = $p;
+                        break 2;
+                    }
+                }
+            }
+        }
+        $out[$k] = ($hit !== null)
+            ? array('profile' => $hit['name'], 'cats' => rules_wam_profile_categories($hit))
+            : array('profile' => '', 'cats' => rules_wam_fallback_categories());
+    }
+    return $out;
+}
+
+/**
+ * true se a rede IPv4 $inner está contida em $outer (ex.: 192.168.60.0/26 dentro de 192.168.60.0/24)
+ */
+function rules_wam_cidr_contains($outer, $inner) {
+    $o = explode('/', $outer, 2);
+    $i = explode('/', $inner, 2);
+    if (count($o) !== 2 || count($i) !== 2 ||
+        !filter_var($o[0], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) || !filter_var($i[0], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+        return false;
+    }
+    $ob = (int)$o[1];
+    $ib = (int)$i[1];
+    if ($ib < $ob) {
+        return false;
+    }
+    $mask = ($ob === 0) ? 0 : ((-1 << (32 - $ob)) & 0xFFFFFFFF);
+    return ((ip2long($o[0]) & $mask) === (ip2long($i[0]) & $mask));
+}
+
+/**
+ * Compila os perfis ativos em views do Unbound. Preenche $profiles_status para a tela de status e
+ * $uncovered com as interfaces que não caíram em nenhum perfil nem no bypass.
+ * Uma rede já usada (pelo bypass ou por outro perfil) é ignorada para não gerar view duplicada.
+ *
+ * O Unbound guarda access-control e access-control-view na mesma árvore e usa a entrada mais
+ * específica. O pfSense cria "access-control: <sub-rede da interface> allow"; uma view numa rede mais
+ * ampla (ex.: /24 contendo a interface /26) não vale para os clientes dessa interface. Por isso, na
+ * 2ª passada, a sub-rede de interface contida numa rede de perfil recebe a view desse perfil.
+ */
+function rules_wam_build_profile_views($wam_cfg, $whitelist, $global_extra, $block_action, $block_page_ip, &$cat_index, $bypass_list, &$profiles_status, &$uncovered = null) {
+    $views = array();
+    $used = array_fill_keys($bypass_list, true);
+    $used_names = array();
+    $ifaces = rules_wam_get_configured_interfaces(false);
+    $uncovered = array();
+
+    $active = array();
+    foreach (rules_wam_get_profiles($wam_cfg) as $p) {
+        if (!rules_wam_is_checked($p['enabled'] ?? 'yes')) {
+            continue;
+        }
+        $view_name = rules_wam_profile_view_name($p['name']);
+        if (isset($used_names[$view_name])) {
+            log_error("[Rules WAM] Perfil {$p['name']}: nome repetido; ignorado.");
+            continue;
+        }
+        $used_names[$view_name] = true;
+        $active[] = array('p' => $p, 'view' => $view_name, 'nets' => array());
+    }
+
+    // 1ª passada: redes informadas no perfil (interfaces marcadas e redes digitadas), na ordem dos perfis
+    foreach ($active as $i => $a) {
+        foreach (rules_wam_profile_networks($a['p'], $ifaces) as $cidr) {
+            if (isset($used[$cidr])) {
+                log_error("[Rules WAM] Perfil {$a['p']['name']}: a rede {$cidr} ja esta em uso (bypass ou outro perfil); ignorada.");
+                continue;
+            }
+            $used[$cidr] = true;
+            $active[$i]['nets'][] = $cidr;
+        }
+    }
+    // 2ª passada: sub-rede de interface que só cai dentro de uma rede mais ampla de um perfil
+    foreach ($ifaces as $ifd) {
+        if (empty($ifd['has_ip']) || isset($used[$ifd['cidr']])) {
+            continue;
+        }
+        foreach ($active as $i => $a) {
+            foreach ($a['nets'] as $n) {
+                if (rules_wam_cidr_contains($n, $ifd['cidr'])) {
+                    $used[$ifd['cidr']] = true;
+                    $active[$i]['nets'][] = $ifd['cidr'];
+                    break 2;
+                }
+            }
+        }
+        if (!isset($used[$ifd['cidr']])) {
+            $uncovered[] = "{$ifd['descr']} ({$ifd['cidr']})";
+        }
+    }
+
+    foreach ($active as $a) {
+        $p = $a['p'];
+        $view_name = $a['view'];
+        $nets = $a['nets'];
+        if (empty($nets)) {
+            log_error("[Rules WAM] Perfil {$p['name']} sem rede valida; ignorado.");
+            continue;
+        }
+
+        // Liberações do perfil valem só para ele e passam por cima da lista negra geral
+        $p_whitelist = $whitelist + rules_wam_domain_set($p['allow'] ?? '');
+        $p_extra = $global_extra;
+        foreach (rules_wam_domain_set($p['block'] ?? '', "Lista da rede {$p['name']}") as $d => $label) {
+            $p_extra[$d] = $label;
+        }
+
+        $res = rules_wam_compile_policy($wam_cfg, rules_wam_profile_categories($p), $p_whitelist, $p_extra, $block_action, $block_page_ip, $cat_index);
+        $views[] = array(
+            'name'     => $view_name,
+            'comment'  => "Perfil de rede {$p['name']}",
+            'networks' => $nets,
+            'zones'    => $res['zones'],
+        );
+        $profiles_status[] = array(
+            'name'       => $p['name'],
+            'networks'   => $nets,
+            'total'      => $res['total'],
+            'categories' => $res['labels'],
+        );
+    }
+    return $views;
+}
+
+/**
  * Aplica as regras ativas no Unbound
  */
 function rules_wam_apply_rules($wam_cfg = null) {
@@ -630,136 +1240,97 @@ function rules_wam_apply_rules($wam_cfg = null) {
         $wam_cfg = rules_wam_get_config();
     }
 
-    $blocked_domains = array();
     $cat_index = array();
     $whitelist = rules_wam_build_whitelist($wam_cfg);
     $bypass_list = rules_wam_get_bypass_list($wam_cfg);
+    // Faixa isenta mais ampla que a sub-rede de uma interface: a view vai também para a sub-rede
+    // (mesmo motivo de rules_wam_profile_networks)
+    if (!empty($bypass_list)) {
+        $ifaces_all = rules_wam_get_configured_interfaces(false);
+        foreach ($bypass_list as $outer) {
+            foreach ($ifaces_all as $ifd) {
+                if (!empty($ifd['has_ip']) && rules_wam_cidr_contains($outer, $ifd['cidr'])) {
+                    $bypass_list[] = $ifd['cidr'];
+                }
+            }
+        }
+        $bypass_list = array_values(array_unique($bypass_list));
+    }
     $protect_netskope = (!isset($wam_cfg['corp_protect_netskope']) || rules_wam_is_checked($wam_cfg['corp_protect_netskope']));
-    $protect_cloudflare = (!isset($wam_cfg['corp_protect_cloudflare']) || rules_wam_is_checked($wam_cfg['corp_protect_cloudflare']));
     $corp_enable = rules_wam_is_checked($wam_cfg['corp_enable'] ?? null);
-
-    $categories_active = array();
-    foreach (rules_wam_category_map() as $cfg_key => $meta) {
-        if (!rules_wam_is_checked($wam_cfg[$cfg_key] ?? null)) {
-            continue;
-        }
-        $categories_active[] = $meta['label'];
-        if ($cfg_key === 'block_vpn') {
-            $sub_map = array(
-                'block_vpn_fortinet'    => 'vpn-fortinet.txt',
-                'block_vpn_cisco'       => 'vpn-cisco.txt',
-                'block_vpn_paloalto'    => 'vpn-paloalto.txt',
-                'block_ztna_zscaler'    => 'ztna-zscaler.txt',
-                'block_ztna_netskope'   => 'ztna-netskope.txt',
-                'block_ztna_cloudflare' => 'ztna-cloudflare.txt',
-                'block_ztna_tailscale'  => 'ztna-tailscale.txt',
-                'block_vpn_commercial'  => 'vpn-commercial.txt',
-            );
-        } elseif ($cfg_key === 'block_messaging') {
-            $sub_map = array(
-                'block_msg_whatsapp'    => 'msg-whatsapp.txt',
-                'block_msg_telegram'    => 'msg-telegram.txt',
-                'block_msg_messenger'   => 'msg-messenger.txt',
-                'block_msg_teams_skype' => 'msg-teams-skype.txt',
-                'block_msg_discord'     => 'msg-discord.txt',
-                'block_msg_slack'       => 'msg-slack.txt',
-                'block_msg_zoom_meet'   => 'msg-zoom-meet.txt',
-                'block_msg_others'      => 'msg-others.txt',
-            );
-        } else {
-            rules_wam_load_feed_domains($meta['file'], $blocked_domains, $whitelist, $meta['label'], $cat_index);
-            continue;
-        }
-
-        $any_sub_specified = false;
-        foreach (array_keys($sub_map) as $sub_k) {
-            if (isset($wam_cfg[$sub_k])) {
-                $any_sub_specified = true;
-                break;
-            }
-        }
-        foreach ($sub_map as $sub_k => $sub_f) {
-            if ($sub_k === 'block_ztna_netskope' && $protect_netskope) {
-                continue; // Netskope protegido contra bloqueio acidental
-            }
-            if ($sub_k === 'block_ztna_cloudflare' && $protect_cloudflare && !rules_wam_is_checked($wam_cfg['block_ztna_cloudflare'] ?? null)) {
-                continue;
-            }
-            $is_sub_active = $any_sub_specified ? rules_wam_is_checked($wam_cfg[$sub_k] ?? null) : true;
-            if ($is_sub_active) {
-                rules_wam_load_feed_domains($sub_f, $blocked_domains, $whitelist, rules_wam_feed_label($sub_f), $cat_index);
-            }
-        }
-    }
-
-    if (!empty($wam_cfg['custom_blacklist'])) {
-        foreach (rules_wam_parse_list($wam_cfg['custom_blacklist']) as $line) {
-            $d = rules_wam_clean_domain($line);
-            if ($d && !isset($whitelist[$d])) {
-                $blocked_domains[$d] = true;
-                $cat_index[$d] = 'Lista Negra Personalizada';
-            }
-        }
-    }
 
     $block_action = rules_wam_effective_block_action($wam_cfg);
     $block_page_ip = rules_wam_get_block_page_ip($wam_cfg);
 
-    // Remove subdomínios cujo domínio pai já está na lista (evita conflitos no Unbound)
-    $clean_domains = array();
-    foreach (array_keys($blocked_domains) as $d) {
-        if (rules_wam_is_whitelisted($d, $whitelist)) {
-            continue;
-        }
-        $parts = explode('.', $d);
-        $has_parent = false;
-        while (count($parts) > 1) {
-            array_shift($parts);
-            if (isset($blocked_domains[implode('.', $parts)])) {
-                $has_parent = true;
-                break;
+    // Lista negra personalizada vale para todas as redes (um perfil pode liberar o domínio na lista própria)
+    $global_extra = rules_wam_domain_set($wam_cfg['custom_blacklist'] ?? '', 'Lista Negra Personalizada');
+
+    // Política geral: vale para toda rede que não tem perfil próprio. No modo perfil obrigatório é o
+    // bloqueio das redes sem perfil; nas configurações antigas, as categorias marcadas na política geral.
+    $profiles_required = rules_wam_profiles_required($wam_cfg);
+    $global_cats = array();
+    if ($profiles_required) {
+        $global_cats = rules_wam_fallback_categories();
+    } else {
+        foreach (array_keys(rules_wam_category_map()) as $cfg_key) {
+            if (rules_wam_is_checked($wam_cfg[$cfg_key] ?? null)) {
+                $global_cats[] = $cfg_key;
             }
         }
-        if (!$has_parent) {
-            $clean_domains[] = $d;
-        }
     }
-    $total = count($clean_domains);
+    $global = rules_wam_compile_policy($wam_cfg, $global_cats, $whitelist, $global_extra, $block_action, $block_page_ip, $cat_index);
+    $zones = $global['zones'];
+    $total = $global['total'];
+    $categories_active = $global['labels'];
 
-    $zones = "";
-    foreach ($clean_domains as $dom) {
-        if ($block_action === 'always_null') {
-            $zones .= "  local-zone: \"{$dom}\" always_null\n";
-        } else {
-            $zones .= "  local-zone: \"{$dom}\" redirect\n";
-            $zones .= "  local-data: \"{$dom} 60 IN A {$block_page_ip}\"\n";
-        }
+    // Perfis por rede: cada um vira uma view do Unbound com as próprias categorias e listas
+    $views = array();
+    if (!empty($bypass_list)) {
+        $views[] = array('name' => 'wam_bypass', 'comment' => 'IPs isentos (bypass)', 'networks' => $bypass_list, 'zones' => '');
+    }
+    $profiles_status = array();
+    $uncovered = array();
+    $profile_views = rules_wam_build_profile_views($wam_cfg, $whitelist, $global_extra, $block_action, $block_page_ip, $cat_index, $bypass_list, $profiles_status, $uncovered);
+    $views = array_merge($views, $profile_views);
+    if ($profiles_required && !empty($uncovered)) {
+        log_error("[Rules WAM] Interfaces sem perfil (bloqueio maximo): " . implode(', ', $uncovered));
     }
 
     $head  = "# ====================================================\n";
     $head .= "# Rules WAM " . RULES_WAM_VERSION . " - Auto-gerado (nao edite)\n";
     $head .= "# Atualizado em: " . date('Y-m-d H:i:s') . "\n";
     $head .= "# Categorias ativas (" . count($categories_active) . "): " . implode(', ', $categories_active) . "\n";
-    $head .= "# Total de dominios bloqueados: {$total}\n";
+    $head .= "# Total de dominios bloqueados (" . ($profiles_required ? "redes sem perfil" : "politica padrao") . "): {$total}\n";
+    foreach ($profiles_status as $ps) {
+        $head .= "# Perfil {$ps['name']}: " . implode(' ', $ps['networks']) . " - {$ps['total']} dominios\n";
+    }
     $head .= "# ====================================================\n";
     $head .= "server:\n";
     $head .= "  log-local-actions: yes\n";
     $head .= "  log-queries: yes\n";
     $head .= rules_wam_build_common_conf($wam_cfg);
 
-    $conf_full = $head . $zones . rules_wam_build_bypass_view($bypass_list);
+    $conf_full = $head . $zones . rules_wam_build_views($views);
     $bypass_ok = true;
+    $profiles_ok = true;
     if (!rules_wam_write_unbound_conf($conf_full)) {
-        $bypass_ok = false;
-        if (!empty($bypass_list)) {
-            log_error("[Rules WAM] Configuracao com bypass rejeitada pelo unbound-checkconf; aplicando sem a view de bypass.");
+        $profiles_ok = false;
+        $applied = false;
+        // 1ª alternativa: sem os perfis por rede, mantendo o bypass
+        if (!empty($profile_views)) {
+            log_error("[Rules WAM] Configuracao com perfis por rede rejeitada pelo unbound-checkconf; aplicando sem os perfis.");
+            $applied = rules_wam_write_unbound_conf($head . $zones . rules_wam_build_bypass_view($bypass_list));
+        }
+        // 2ª alternativa: só a política padrão
+        if (!$applied) {
+            $bypass_ok = false;
+            if (!empty($bypass_list)) {
+                log_error("[Rules WAM] Configuracao com bypass rejeitada pelo unbound-checkconf; aplicando sem a view de bypass.");
+            }
             if (!rules_wam_write_unbound_conf($head . $zones)) {
                 rules_wam_write_unbound_conf("# Rules WAM - Protecao contra falha de sintaxe\nserver:\n", false);
                 $total = 0;
             }
-        } else {
-            rules_wam_write_unbound_conf("# Rules WAM - Protecao contra falha de sintaxe\nserver:\n", false);
-            $total = 0;
         }
     }
 
@@ -793,6 +1364,10 @@ function rules_wam_apply_rules($wam_cfg = null) {
         'categories' => $categories_active,
         'whitelist_count' => count($whitelist),
         'bypass_ips_count' => $bypass_ok ? count($bypass_list) : 0,
+        'profiles' => $profiles_ok ? $profiles_status : array(),
+        'profiles_error' => !$profiles_ok && !empty($profile_views),
+        'profiles_required' => $profiles_required,
+        'uncovered_interfaces' => $profiles_required ? $uncovered : array(),
         'block_action' => $block_action,
         'banner_conflict' => $conflict,
         'dns_bypass_protection' => rules_wam_is_checked($wam_cfg['block_dns_bypass'] ?? null) ? 'Ativo (NAT da porta 53 para o firewall)' : 'Desativado',
@@ -803,7 +1378,7 @@ function rules_wam_apply_rules($wam_cfg = null) {
     );
     @file_put_contents(WAM_STATUS_FILE, json_encode($status_data, JSON_PRETTY_PRINT));
 
-    log_error("[Rules WAM] Sucesso: {$total} dominios bloqueados aplicados no Unbound DNS (acao: {$block_action}).");
+    log_error("[Rules WAM] Sucesso: {$total} dominios bloqueados aplicados no Unbound DNS (acao: {$block_action}, perfis por rede: " . ($profiles_ok ? count($profiles_status) : 0) . ").");
 }
 
 /**
@@ -1225,10 +1800,31 @@ function rules_wam_sync_firewall_rules($wam_cfg = null, $blocking = true) {
     // ------------------------------------------------------------------
     // 2. Regras de bloqueio (somente durante o bloqueio ativo)
     // ------------------------------------------------------------------
-    $is_msg_active = rules_wam_is_checked($wam_cfg['block_messaging'] ?? null);
+    // Interfaces onde cada regra vale. No modo perfil obrigatório, só nas interfaces cujo perfil
+    // (ou o bloqueio das redes sem perfil) tem a categoria; nas configurações antigas, em todas.
+    $doh_ifaces = array();
+    $msg_ifaces = array();
+    if (rules_wam_profiles_required($wam_cfg)) {
+        foreach (rules_wam_interface_policies($wam_cfg, $configured_internal) as $pk => $pol) {
+            if (in_array('block_doh', $pol['cats'], true)) {
+                $doh_ifaces[] = $pk;
+            }
+            if (in_array('block_messaging', $pol['cats'], true)) {
+                $msg_ifaces[] = $pk;
+            }
+        }
+    } else {
+        if (rules_wam_is_checked($wam_cfg['block_doh'] ?? null)) {
+            $doh_ifaces = $internal_ifaces;
+        }
+        if (rules_wam_is_checked($wam_cfg['block_messaging'] ?? null)) {
+            $msg_ifaces = $internal_ifaces;
+        }
+    }
+
     $is_wa_active = !isset($wam_cfg['block_msg_whatsapp']) || rules_wam_is_checked($wam_cfg['block_msg_whatsapp']);
     $wa_by_ip = rules_wam_is_checked($wam_cfg['block_wa_by_ip'] ?? 'no');
-    $wa_rules_on = $blocking && $is_msg_active && $is_wa_active;
+    $wa_rules_on = $blocking && !empty($msg_ifaces) && $is_wa_active;
 
     // Portas próprias do WhatsApp (5222 XMPP, 4244 mídia). A 5223 NÃO entra: é a porta do Apple Push (APNs).
     $alias_changed = rules_wam_set_alias("WAM_WhatsApp_Ports", "port", $wa_rules_on ? array("5222", "4244") : array(), "Portas do WhatsApp Mobile") || $alias_changed;
@@ -1266,21 +1862,21 @@ function rules_wam_sync_firewall_rules($wam_cfg = null, $blocking = true) {
             "Acesso ao Banner de Bloqueio ({$banner_ip} portas 80/443)", true, "inet");
     }
 
-    // Anti-bypass DoT (853) somente quando a categoria Anti-Bypass DoH estiver marcada
-    if ($blocking && rules_wam_is_checked($wam_cfg['block_doh'] ?? null)) {
-        $rules_to_add[] = rules_wam_make_rule(1700000101, "reject", $if_list, "tcp/udp",
+    // Anti-bypass DoT (853) somente nas redes com a categoria Anti-Bypass DoH
+    if ($blocking && !empty($doh_ifaces)) {
+        $rules_to_add[] = rules_wam_make_rule(1700000101, "reject", implode(",", $doh_ifaces), "tcp/udp",
             array("any" => ""),
             array("any" => "", "port" => "853"),
             "Anti-Bypass DNS-over-TLS (853)", true);
     }
 
     if ($wa_rules_on) {
-        $rules_to_add[] = rules_wam_make_rule(1700000202, "reject", $if_list, "tcp/udp",
+        $rules_to_add[] = rules_wam_make_rule(1700000202, "reject", implode(",", $msg_ifaces), "tcp/udp",
             array("any" => ""),
             array("any" => "", "port" => "WAM_WhatsApp_Ports"),
             "Bloqueio de Portas WhatsApp Mobile (5222/4244)", true);
         if ($wa_by_ip) {
-            $rules_to_add[] = rules_wam_make_rule(1700000303, "reject", $if_list, "",
+            $rules_to_add[] = rules_wam_make_rule(1700000303, "reject", implode(",", $msg_ifaces), "",
                 array("any" => ""),
                 array("address" => "WAM_WhatsApp_Nets"),
                 "Bloqueio por IP WhatsApp (faixas Meta)", true);
@@ -1857,43 +2453,116 @@ function rules_wam_get_domain_category($domain) {
 
 
 /**
- * Verifica se um domínio está na lista ativa de bloqueio do Unbound
+ * Índice do arquivo de regras aplicado: zonas da política padrão, zonas de cada view
+ * (bypass e perfis por rede) e quais redes usam cada view.
  */
-function rules_wam_is_domain_blocked($domain) {
-    static $blocked_cache = null;
-    if ($blocked_cache === null) {
-        $blocked_cache = array();
-        $candidates = array(
-            WAM_CONF_FILE,
-            '/var/unbound/conf.d/wam_blocklist.conf',
-            '/var/unbound/wam_blocklist.conf'
-        );
-        foreach ($candidates as $cfile) {
-            if (file_exists($cfile)) {
-                $lines = @file($cfile, FILE_SKIP_EMPTY_LINES);
-                if (!empty($lines)) {
-                    foreach ($lines as $line) {
-                        if (preg_match('/local-zone:\s*"([^"]+)"/i', $line, $m)) {
-                            $blocked_cache[strtolower(trim($m[1]))] = true;
-                        }
-                    }
-                }
-                if (!empty($blocked_cache)) break;
+function rules_wam_blocklist_index() {
+    static $idx = null;
+    if ($idx !== null) {
+        return $idx;
+    }
+    $idx = array(
+        'global' => array('block' => array(), 'allow' => array()),
+        'views'  => array(),
+        'acl'    => array(),
+    );
+    $lines = array();
+    foreach (array(WAM_CONF_FILE, '/var/unbound/conf.d/wam_blocklist.conf') as $cfile) {
+        if (file_exists($cfile)) {
+            $lines = @file($cfile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            if (!empty($lines)) {
+                break;
             }
         }
     }
-
-    $d = strtolower(rules_wam_clean_domain($domain));
-    if (empty($d)) return false;
-    if (isset($blocked_cache[$d])) return true;
-
-    $parts = explode('.', $d);
-    while (count($parts) > 1) {
-        array_shift($parts);
-        $p = implode('.', $parts);
-        if (isset($blocked_cache[$p])) return true;
+    $cur = 'global';
+    foreach ((array)$lines as $line) {
+        $t = trim($line);
+        if (strpos($t, 'view:') === 0) {
+            $cur = null; // o nome da view vem na linha seguinte
+            continue;
+        }
+        if (strpos($t, 'server:') === 0) {
+            $cur = 'global';
+            continue;
+        }
+        if ($cur === null && preg_match('/^name:\s*"([^"]+)"/', $t, $m)) {
+            $cur = $m[1];
+            $idx['views'][$cur] = array('block' => array(), 'allow' => array());
+            continue;
+        }
+        if (preg_match('/^access-control-view:\s*(\S+)\s+"([^"]+)"/', $t, $m)) {
+            $idx['acl'][$m[1]] = $m[2];
+            continue;
+        }
+        if ($cur !== null && preg_match('/^local-zone:\s*"([^"]+)"\s+(\S+)/', $t, $m)) {
+            $zone = strtolower(rtrim($m[1], '.'));
+            if ($m[2] === 'redirect' || $m[2] === 'always_null') {
+                $set = 'block';
+            } elseif ($m[2] === 'transparent') {
+                $set = 'allow'; // domínio liberado dentro de um domínio bloqueado
+            } else {
+                continue;
+            }
+            if ($cur === 'global') {
+                $idx['global'][$set][$zone] = true;
+            } else {
+                $idx['views'][$cur][$set][$zone] = true;
+            }
+        }
     }
+    return $idx;
+}
 
+/**
+ * View do Unbound usada por um cliente (a rede mais específica, como faz o Unbound) ou 'global'
+ */
+function rules_wam_view_for_ip($ip, $idx) {
+    $best = 'global';
+    $best_bits = -1;
+    if (empty($ip) || !filter_var($ip, FILTER_VALIDATE_IP)) {
+        return $best;
+    }
+    $is_v4 = (bool)filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4);
+    foreach ($idx['acl'] as $cidr => $view) {
+        $parts = explode('/', $cidr, 2);
+        $bits = isset($parts[1]) ? (int)$parts[1] : ($is_v4 ? 32 : 128);
+        if ($is_v4) {
+            if (!filter_var($parts[0], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) continue;
+            $mask = ($bits === 0) ? 0 : ((-1 << (32 - $bits)) & 0xFFFFFFFF);
+            $match = ((ip2long($ip) & $mask) === (ip2long($parts[0]) & $mask));
+        } else {
+            $match = function_exists('ip_in_subnet') ? ip_in_subnet($ip, $cidr) : ($ip === $parts[0]);
+        }
+        if ($match && $bits > $best_bits) {
+            $best = $view;
+            $best_bits = $bits;
+        }
+    }
+    return $best;
+}
+
+/**
+ * Verifica se um domínio está bloqueado. Com $client_ip, usa a política que vale para esse cliente
+ * (perfil por rede, IP isento ou política padrão); sem ele, só a política padrão.
+ */
+function rules_wam_is_domain_blocked($domain, $client_ip = null) {
+    $idx = rules_wam_blocklist_index();
+    $d = strtolower((string)rules_wam_clean_domain($domain));
+    if ($d === '') {
+        return false;
+    }
+    $view = ($client_ip !== null) ? rules_wam_view_for_ip($client_ip, $idx) : 'global';
+    $zones = ($view === 'global') ? $idx['global'] : ($idx['views'][$view] ?? array('block' => array(), 'allow' => array()));
+
+    // A zona mais específica decide, como no Unbound
+    $parts = explode('.', $d);
+    while (!empty($parts)) {
+        $name = implode('.', $parts);
+        if (isset($zones['allow'][$name])) return false;
+        if (isset($zones['block'][$name])) return true;
+        array_shift($parts);
+    }
     return false;
 }
 
@@ -2130,8 +2799,8 @@ function rules_wam_get_audit_events($limit = 1000) {
                 $dom = rules_wam_clean_domain($raw_dom);
                 if (empty($dom) || $ip === '127.0.0.1' || $ip === '::1' || (!empty($lan_ip) && $ip === $lan_ip) || (!empty($cfg_ip) && $ip === $cfg_ip)) continue;
 
-                // Checa se o domínio acessado pertence à nossa lista de bloqueio ativa
-                if (rules_wam_is_domain_blocked($dom)) {
+                // Checa se o domínio está bloqueado na política desse cliente (padrão, perfil por rede ou isento)
+                if (rules_wam_is_domain_blocked($dom, $ip)) {
                     $key = "$ts|$ip|$dom";
                     if (!isset($seen[$key])) {
                         $seen[$key] = true;

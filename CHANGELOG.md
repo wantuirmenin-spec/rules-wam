@@ -2,6 +2,46 @@
 
 > **Versão em testes:** até agora o Rules WAM só foi executado em ambiente de laboratório.
 
+## 1.5.0 — políticas por rede (perfil obrigatório) e sites liberados por categoria
+
+### Novidades
+- **Políticas por Rede.** Novo painel na tela de configuração com perfis por rede (ex.: GUEST, CORP, ADMIN).
+  - Cada perfil escolhe as interfaces/VLANs (a sub-rede é obtida automaticamente) e, se preciso, redes CIDR extras.
+  - Cada perfil marca as próprias categorias bloqueadas e tem listas próprias de sites liberados e bloqueados.
+  - Exemplo: o perfil GUEST sem Mídias Sociais libera Facebook e YouTube para os visitantes, e o perfil CORP bloqueia.
+  - Implementado com *views* do Unbound (`wam_p_<nome>`), o mesmo mecanismo do bypass por IP. Um IP isento dentro da rede de um perfil continua isento, porque o Unbound usa a rede mais específica.
+- **Perfil obrigatório.** As categorias saíram da política geral e existem só nos perfis.
+  - Toda interface interna com IP precisa estar marcada num perfil ativo; sem isso a tela não salva e mostra quais faltam.
+  - Rede que não cair em nenhum perfil (VLAN criada depois, sub-rede roteada ou VPN não informada) recebe o **bloqueio máximo**: todas as categorias, exceto Mensageiros e VPN. As abas Status e Dashboard listam essas redes.
+  - **Migração automática:** na atualização, as categorias marcadas na política geral viram o perfil **PADRAO**, com as interfaces que ainda não tinham perfil e as *Redes Corporativas Autorizadas* (sub-redes roteadas/VPN). Nenhuma rede muda de bloqueio no dia da atualização.
+  - O painel de cima virou o **Catálogo de Categorias**: *Gerenciar sites*, fornecedores de VPN e Mensageiros e as opções de firewall.
+- **Firewall por perfil.** As regras de DoT 853 e do WhatsApp (portas e faixas Meta) passam a valer só nas interfaces cujo perfil bloqueia *Anti-Bypass DoH* e *Mensageiros*.
+- **Sites por categoria.** Cada categoria ganhou o link *Gerenciar sites*, com a lista dos domínios em caixas de seleção, busca e marcar/desmarcar exibidos.
+  - O site desmarcado fica liberado em todos os perfis que bloqueiam a categoria.
+  - A lista é montada no navegador e só os desmarcados são enviados, o que evita o limite de campos do PHP nas categorias grandes (Adulto, Apostas).
+  - A exceção vale só dentro da categoria: se o mesmo site estiver em outra categoria ativa (ex.: YouTube em Mídias Sociais e Streaming), ele continua bloqueado por ela.
+- **Status:** a aba Status mostra os perfis ativos, com redes, total de domínios e categorias.
+- **Página de boas-vindas da GUEST.** Nova pasta `captive-portal/` com a página do Portal Cativo do pfSense (regras da rede e botão "Aceitar e navegar") e o passo a passo. Avisa os visitantes das regras sem certificado e sem instalar nada nos aparelhos.
+
+### Correções
+- **Máscara das interfaces.** Quando o pfSense informava o IP pela `get_interface_ip`, a máscara não era consultada e ficava em `/24` (ex.: GUEST `192.168.60.0/26` aparecia como `/24`).
+- **View mais ampla que a interface não era aplicada.** O Unbound guarda `access-control` e `access-control-view` na mesma árvore e usa a entrada mais específica. O pfSense cria `access-control` para a sub-rede real de cada interface, e uma view numa rede mais ampla era ignorada. Agora a sub-rede de toda interface contida numa rede de perfil (ou numa faixa isenta) também recebe a view.
+- **Perfis gravados em `net_profiles/item`.** Uma versão de teste da 1.5.0 gravava os perfis numa tag que o pfSense convertia em `<0>`, `<1>`… (XML inválido): o pfSense descartava o `config.xml` e restaurava o backup.
+
+### Mudanças de comportamento
+- **Liberar um subdomínio de um domínio bloqueado agora funciona.** Antes, liberar `m.youtube.com` com `youtube.com` bloqueado não tinha efeito.
+  - Isso vale para a whitelist, as proteções corporativas, os sites liberados dos perfis e as exceções de categoria.
+  - É feito com uma zona `transparent` mais específica.
+  - Efeito colateral esperado: endpoints protegidos (ex.: `login.live.com`) passam a ser liberados mesmo quando o domínio pai está numa categoria ativa.
+- O teste de domínio da aba Status ganhou o campo opcional *IP do cliente*: sem ele testa a política padrão; com ele, a política da rede desse IP (perfil, IP isento ou padrão).
+- O Dashboard identifica a política de cada cliente ao ler o `resolver.log`: tentativas bloqueadas só num perfil por rede também aparecem.
+
+### Limitações
+- O redirecionamento da porta 53 (Anti-Bypass DNS) continua valendo para todas as redes.
+- Os fornecedores de VPN e de Mensageiros seguem as subopções do catálogo em todos os perfis.
+- Se o `unbound-checkconf` recusar os perfis, o pacote aplica o bloqueio máximo (com bypass) em todas as redes e mostra o aviso na aba Status.
+- Uma VLAN nova dentro das *Redes Corporativas Autorizadas* herda o perfil que contém essas redes (ex.: PADRAO) até ser marcada num perfil; a tela não salva enquanto ela não for marcada.
+
 ## 1.4.3
 - Projeto preparado para divulgação: licença MIT, aviso de versão em testes e remoção das referências específicas da empresa (domínios na migração da 1.3 e IPs internos nos exemplos).
 

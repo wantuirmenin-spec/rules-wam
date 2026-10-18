@@ -1,6 +1,6 @@
 # 🛡️ Manual do Administrador & Guia de Implantação
 ## Rules WAM — Web Access Manager para pfSense
-**Versão:** 1.4.3 (em testes)  
+**Versão:** 1.5.0 (em testes)  
 **Compatibilidade:** pfSense CE 2.7.x / 2.8.x / pfSense Plus  
 **Plataforma Base:** FreeBSD / Unbound DNS / NGINX (banner HTTP)  
 
@@ -27,6 +27,9 @@
    - [Auto-Whitelist & Proteção de Helpdesk, ITSM & Suporte Remoto (Zendesk, GLPI, ScreenConnect)](#410-auto-whitelist--proteção-de-helpdesk-itsm--suporte-remoto-zendesk-glpi-screenconnect)
    - [Proteção de Telefonia IP, PABX Cloud, Protocolo SIP & Aparelhos SIP Phone](#411-proteção-de-telefonia-ip-pabx-cloud-protocolo-sip--aparelhos-sip-phone)
    - [Acesso Administrativo à WebGUI & Regras de Firewall](#412-acesso-administrativo-à-webgui--regras-de-firewall)
+   - [Políticas por Rede (GUEST, CORP, ADMIN...)](#413-políticas-por-rede-guest-corp-admin)
+   - [Sites Liberados Dentro de uma Categoria](#414-sites-liberados-dentro-de-uma-categoria)
+   - [Página de Boas-Vindas da Rede GUEST (Portal Cativo)](#415-página-de-boas-vindas-da-rede-guest-portal-cativo)
 5. [Auditoria, Logs & Dashboard Forense](#5-auditoria-logs--dashboard-forense)
 6. [Guia de Implantação em Novos Firewalls (Passo a Passo)](#6-guia-de-implantação-em-novos-firewalls-passo-a-passo)
    - [Pré-Requisitos](#61-pré-requisitos)
@@ -186,7 +189,7 @@ Para computadores da Diretoria, Suporte Técnico ou servidores que não devem pa
 - Insira os endereços IP na caixa **IPs Isentos (Bypass IPs)**, um por linha ou separados por vírgula (ex: `192.168.1.50`, `192.168.1.100` ou até faixas CIDR como `192.168.10.0/24`).
 - O sistema gera no `/var/unbound/wam_blocklist.conf` uma *view* do Unbound:
   ```
-    # IPs isentos (bypass) - usam a view wam_bypass
+    # IPs isentos (bypass) - view wam_bypass
     access-control-view: 192.168.1.50/32 "wam_bypass"
     access-control-view: 192.168.10.0/24 "wam_bypass"
   view:
@@ -333,6 +336,73 @@ Regras criadas automaticamente (descrição começando com `Rules WAM - `, inser
 As regras de bloqueio só existem durante o horário de bloqueio. O pacote **não** altera bogons, redes privadas na WAN, DNS rebind nem a porta da WebGUI (exceto no instalador, com `--move-gui`). O config.xml só é regravado quando há mudança.
 
 **Privilégios:** o arquivo `/etc/inc/priv/rules_wam.priv.inc` permite delegar as telas do pacote em **System > User Manager** sem dar acesso total.
+
+### 4.13. Políticas por Rede (GUEST, CORP, ADMIN...)
+Permite que cada rede tenha o próprio conjunto de bloqueios. Exemplo: visitantes (GUEST) podem acessar Facebook e YouTube, e a rede corporativa (CORP) não.
+
+**Perfil obrigatório.** As categorias existem **só nos perfis**: o painel de cima é o *Catálogo de Categorias* (sites de cada categoria e fornecedores de VPN/Mensageiros). Toda interface interna com IP precisa estar marcada num perfil ativo; sem isso a tela não salva e mostra quais interfaces faltam.
+
+**Redes sem perfil** (VLAN criada depois, sub-rede roteada ou VPN que não está em nenhum perfil) recebem o **bloqueio máximo**: todas as categorias, exceto *Mensageiros* e *VPN* (para não derrubar Teams, WhatsApp e VPN corporativa). As abas *Status* e *Dashboard* listam essas redes como "Sem perfil (bloqueio máximo)".
+
+**Migração da 1.4:** na atualização, as categorias que estavam marcadas na política geral viram o perfil **PADRAO**, com as interfaces que ainda não tinham perfil e as *Redes Corporativas Autorizadas* (sub-redes roteadas/VPN). Nenhuma rede muda de bloqueio no dia da atualização. Depois é só ajustar ou dividir o PADRAO em perfis por rede.
+
+**Como configurar** (painel *Políticas por Rede* em `Services > Rules WAM`):
+1. Clique em **Adicionar perfil de rede**. O perfil novo já vem com o mesmo bloqueio das redes sem perfil.
+2. Dê um nome ao perfil (letras, números, `-` e `_`; ex.: `GUEST`).
+3. Marque as interfaces/VLANs da rede. A sub-rede de cada uma é obtida automaticamente. Se precisar, informe redes extras em *Redes adicionais (CIDR)* (ex.: sub-redes roteadas por switch L3).
+4. Marque as categorias que devem ficar **bloqueadas nesta rede**. No exemplo, o GUEST fica sem *Mídias Sociais* e sem *Streaming*. Os botões *Marcar todas* / *Limpar* ajudam.
+5. Se quiser, use *Sites liberados* e *Sites bloqueados* para ajustes só desta rede.
+6. Clique em **Salvar e Aplicar Regras**.
+
+**Regras de funcionamento:**
+- Cada rede só pode estar em um perfil. Um perfil desmarcado (*Ativo*) fica salvo, mas não é aplicado (e suas interfaces passam a contar como "sem perfil").
+- Uma rede digitada mais ampla que a sub-rede de uma interface (ex.: `10.0.0.0/8`) também cobre essa interface, se ela não estiver marcada em outro perfil.
+- Valem para todas as redes, inclusive as de perfil:
+  - a whitelist geral;
+  - as proteções corporativas (Netskope, IdP, ferramentas de TI, helpdesk, VoIP);
+  - os sites liberados dentro das categorias (seção 4.14);
+  - a lista negra personalizada (o perfil pode liberar um domínio dela em *Sites liberados*).
+- **IPs isentos (bypass)** continuam isentos mesmo dentro da rede de um perfil, porque o Unbound usa a rede mais específica.
+- Os fornecedores de **VPN** e de **Mensageiros** seguem as subopções do catálogo.
+- **Firewall por perfil:** as regras de DoT 853 e do WhatsApp (portas 5222/4244 e faixas Meta) valem só nas interfaces cujo perfil bloqueia *Anti-Bypass DoH* e *Mensageiros*. O redirecionamento da porta 53 (*Anti-Bypass DNS*) vale para todas as redes.
+
+**Como é gerado:** cada perfil vira uma *view* do Unbound (mesmo mecanismo do bypass), com as zonas de bloqueio do perfil:
+```
+  # Perfil de rede GUEST - view wam_p_guest
+  access-control-view: 10.20.0.0/24 "wam_p_guest"
+view:
+  name: "wam_p_guest"
+  view-first: no
+  local-zone: "wam-p-guest.invalid." static
+  local-zone: "pornhub.com" redirect
+  local-data: "pornhub.com 60 IN A 10.20.0.1"
+  ...
+  include: /var/unbound/host_entries.con[f]
+  include: /var/unbound/dhcpleases_entries.con[f]
+server:
+```
+- **Validação:** se o `unbound-checkconf` recusar os perfis, o pacote aplica o bloqueio máximo (com bypass) em todas as redes, registra o erro no log do sistema e mostra um aviso na aba *Status*.
+- **Conferência:** a aba *Status* lista os perfis ativos, com redes, total de domínios e categorias. No console:
+  ```
+  grep -E "^# Perfil|access-control-view" /var/unbound/wam_blocklist.conf
+  ```
+- **Teste a partir de uma máquina da rede do perfil:** `nslookup facebook.com <IP do firewall>` deve resolver normalmente no GUEST e devolver o IP do banner (ou 0.0.0.0) na CORP.
+
+### 4.14. Sites Liberados Dentro de uma Categoria
+No *Catálogo de Categorias*, cada categoria tem o link **Gerenciar sites**, que abre a lista dos domínios da categoria em caixas de seleção:
+- **Marcado = bloqueado.** Desmarque os sites que devem ficar liberados nos perfis que bloqueiam a categoria. Exemplo: bloquear *Mídias Sociais* mas liberar `linkedin.com`.
+- Há busca e os botões *Marcar exibidos* / *Desmarcar exibidos* (atuam só no que a busca está mostrando).
+- O link mostra quantos sites estão liberados na categoria. A alteração só vale depois de **Salvar e Aplicar Regras**.
+- A liberação vale **em todos os perfis** (e nas redes sem perfil).
+- A liberação vale **só dentro da categoria**. Se o site também estiver em outra categoria ativa (ex.: YouTube em *Mídias Sociais* e *Streaming*), ele continua bloqueado pela outra. Para liberar de vez, use a whitelist geral (ou *Sites liberados* do perfil).
+- Liberar um subdomínio com o domínio pai bloqueado na mesma categoria funciona: o pacote cria uma zona `transparent` para o subdomínio. A exceção de uma categoria nunca abre um bloqueio feito por outra categoria.
+
+### 4.15. Página de Boas-Vindas da Rede GUEST (Portal Cativo)
+Em sites HTTPS o banner não pode ser exibido sem um certificado instalado nos aparelhos (veja a seção 7). Para os visitantes saberem das regras, a rede GUEST pode mostrar uma **página de boas-vindas ao conectar no Wi-Fi**, como em hotéis e aeroportos:
+- Sem certificado e sem instalar nada nos aparelhos: Android, iPhone e Windows abrem a página sozinhos.
+- Usa o **Captive Portal nativo do pfSense** (Services > Captive Portal); o Rules WAM não muda.
+- A página pronta e o passo a passo estão na pasta **`captive-portal/`** do pacote (`portal-guest.html` e `LEIAME-portal-cativo.md`).
+- Resumo da configuração: zona `guest` na interface GUEST, *Authentication Method* = **None**, *Enable HTTPS login* **desmarcado**, *Hard timeout* = `1440`, *After authentication Redirection URL* = `https://www.suaempresa.com.br/`, *Use custom captive portal page* **marcado** e a página enviada em *Portal page contents*.
 
 ---
 
