@@ -206,6 +206,17 @@ case 'install':
         $cfg['migrated_v14'] = 'yes';
     }
 
+    // 3b. 1.5: as categorias passam a existir só nos perfis por rede (perfil obrigatório).
+    //     As categorias da política geral viram o perfil PADRAO, sem mudar o que cada rede bloqueia.
+    if (!rules_wam_profiles_required($cfg)) {
+        $cfg = rules_wam_migrate_profiles_required($cfg);
+        $mig_names = array();
+        foreach (rules_wam_get_profiles($cfg) as $mp) {
+            $mig_names[] = $mp['name'];
+        }
+        wam_out("Categorias convertidas para perfis por rede (perfis: " . (empty($mig_names) ? "nenhum" : implode(', ', $mig_names)) . ")");
+    }
+
     // 4. Portas 80/443: o banner precisa delas livres. Só mexe na WebGUI com autorização explícita.
     $orig_port = config_get_path('system/webgui/port', '');
     $orig_redirect = (config_get_path('system/webgui/disablehttpredirect') !== null) ? 'yes' : 'no';

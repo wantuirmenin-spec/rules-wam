@@ -24,6 +24,7 @@ if (function_exists('rules_wam_banner_conflict') && rules_wam_banner_conflict() 
 
 // Teste de domínio solicitado
 $test_domain = isset($_POST['test_domain']) ? trim($_POST['test_domain']) : '';
+$test_ip = isset($_POST['test_ip']) ? trim($_POST['test_ip']) : '';
 $test_result = null;
 
 $test_error = '';
@@ -34,33 +35,34 @@ if (!empty($test_domain)) {
         $test_domain = '';
     }
 }
+if ($test_ip !== '' && !filter_var($test_ip, FILTER_VALIDATE_IP)) {
+    $test_error = gettext('IP do cliente inválido.');
+    $test_domain = '';
+}
 if (!empty($test_domain)) {
-    
-    // 1. Verifica se o domínio está listado no arquivo de bloqueio ativo
-    $is_in_blocklist = false;
-    if (file_exists(WAM_CONF_FILE)) {
-        $conf_data = @file_get_contents(WAM_CONF_FILE);
-        if ($conf_data) {
-            if (preg_match('/local-zone:\s*"' . preg_quote($clean_test, '/') . '"/i', $conf_data)) {
-                $is_in_blocklist = true;
-            } else {
-                $parts = explode('.', $clean_test);
-                while (count($parts) > 1) {
-                    array_shift($parts);
-                    $parent = implode('.', $parts);
-                    if (preg_match('/local-zone:\s*"' . preg_quote($parent, '/') . '"/i', $conf_data)) {
-                        $is_in_blocklist = true;
-                        break;
-                    }
-                }
+
+    // 1. Política que vale para o cliente informado (perfil por rede, IP isento ou padrão)
+    $wam_idx = rules_wam_blocklist_index();
+    $test_view = ($test_ip !== '') ? rules_wam_view_for_ip($test_ip, $wam_idx) : 'global';
+    $test_policy = rules_wam_profiles_required(rules_wam_get_config()) ? gettext('rede sem perfil: bloqueio máximo') : gettext('política padrão');
+    if ($test_view === 'wam_bypass') {
+        $test_policy = gettext('IP isento (bypass)');
+    } elseif ($test_view !== 'global') {
+        $test_policy = sprintf(gettext('perfil de rede %s'), $test_view);
+        foreach (rules_wam_get_profiles(rules_wam_get_config()) as $tp) {
+            if (rules_wam_profile_view_name($tp['name']) === $test_view) {
+                $test_policy = sprintf(gettext('perfil de rede %s'), $tp['name']);
+                break;
             }
         }
     }
+    $is_in_blocklist = rules_wam_is_domain_blocked($clean_test, ($test_ip !== '') ? $test_ip : null);
 
-    // 2. Consulta diretamente o Unbound local na porta 53 via drill
+    // 2. Consulta o Unbound local via drill. A consulta sai de 127.0.0.1, então reflete só a política
+    //    padrão: com IP de cliente informado, vale o resultado do item 1.
     $drill_ip = null;
     $drill_out = array();
-    if (file_exists('/usr/bin/drill')) {
+    if ($test_ip === '' && file_exists('/usr/bin/drill')) {
         @exec("/usr/bin/drill @127.0.0.1 -p 53 " . escapeshellarg($clean_test) . " A 2>&1", $drill_out);
         foreach ($drill_out as $dline) {
             if (preg_match('/\b0\.0\.0\.0\b/', $dline)) {
@@ -82,8 +84,9 @@ if (!empty($test_domain)) {
         $test_result = array(
             'status' => 'BLOCKED',
             'domain' => $clean_test,
-            'ip' => ($drill_ip ? $drill_ip : '0.0.0.0') . ' (Interceptado pelo Rules WAM / Unbound)',
-            'msg' => 'Domínio BLOQUEADO pelo Rules WAM!'
+            'ip' => ($drill_ip ? $drill_ip : ($block_page_ip ?: '0.0.0.0')) . ' (Interceptado pelo Rules WAM / Unbound)',
+            'msg' => 'Domínio BLOQUEADO pelo Rules WAM!',
+            'policy' => $test_policy
         );
 
         // Testes do administrador não entram no log de auditoria
@@ -92,7 +95,8 @@ if (!empty($test_domain)) {
             'status' => 'ALLOWED',
             'domain' => $clean_test,
             'ip' => $drill_ip ? $drill_ip : 'Resolvido normalmente',
-            'msg' => 'Domínio não está nas categorias ativas de bloqueio (acesso liberado).'
+            'msg' => 'Domínio não está nas categorias ativas de bloqueio (acesso liberado).',
+            'policy' => $test_policy
         );
     }
 }
@@ -195,6 +199,30 @@ $categories_info = array(
             <dt><?=gettext("Whitelist")?></dt>
             <dd><?=intval($status_data['whitelist_count'])?> <?=gettext("domínio(s) liberados")?></dd>
 
+            <dt><?=gettext("Políticas por Rede")?></dt>
+            <dd>
+                <?php if (!empty($status_data['profiles_error'])): ?>
+                    <span class="label label-danger"><i class="fa fa-exclamation-triangle"></i> <?=!empty($status_data['profiles_required']) ? gettext("Perfis rejeitados pelo Unbound: todas as redes estão com o bloqueio máximo. Veja o log do sistema.") : gettext("Perfis rejeitados pelo Unbound: todas as redes estão na política padrão. Veja o log do sistema.")?></span>
+                <?php elseif (empty($status_data['profiles']) || !is_array($status_data['profiles'])): ?>
+                    <em><?=!empty($status_data['profiles_required']) ? gettext("Nenhum perfil ativo: todas as redes estão com o bloqueio máximo") : gettext("Nenhum perfil ativo: todas as redes usam a política padrão")?></em>
+                <?php else: ?>
+                    <?php foreach ($status_data['profiles'] as $ps): ?>
+                        <div style="margin-bottom: 4px;">
+                            <span class="label label-primary"><?=htmlspecialchars($ps['name'] ?? '')?></span>
+                            <code><?=htmlspecialchars(implode(', ', (array)($ps['networks'] ?? array())))?></code>
+                            &mdash; <?=number_format(intval($ps['total'] ?? 0))?> <?=gettext("domínios")?>
+                            <span class="text-muted small">(<?=htmlspecialchars(!empty($ps['categories']) ? implode(', ', (array)$ps['categories']) : gettext('nenhuma categoria'))?>)</span>
+                        </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+                <?php if (!empty($status_data['uncovered_interfaces']) && is_array($status_data['uncovered_interfaces'])): ?>
+                    <div style="margin-top: 6px;">
+                        <span class="label label-danger"><i class="fa fa-exclamation-triangle"></i> <?=gettext("Sem perfil (bloqueio máximo)")?></span>
+                        <?=htmlspecialchars(implode(', ', $status_data['uncovered_interfaces']))?>
+                    </div>
+                <?php endif; ?>
+            </dd>
+
             <dt><?=gettext("Anti-Bypass DNS")?></dt>
             <dd>
                 <?php if (rules_wam_is_checked($wam_cfg['block_dns_bypass'] ?? null)): ?>
@@ -223,7 +251,8 @@ $categories_info = array(
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($categories_info as $ckey => $cdata): 
+                <?php $cat_usage = rules_wam_category_usage($wam_cfg); ?>
+                <?php foreach ($categories_info as $ckey => $cdata):
                     $fpath = WAM_FEEDS_DIR . '/' . $cdata['file'];
                     $lines_cnt = 0;
                     if (file_exists($fpath)) {
@@ -233,7 +262,8 @@ $categories_info = array(
                             if (!empty($l) && $l[0] !== '#') $lines_cnt++;
                         }
                     }
-                    $is_cat_active = rules_wam_is_checked($wam_cfg[$ckey] ?? null);
+                    $cat_where = $cat_usage[$ckey] ?? array();
+                    $is_cat_active = !empty($cat_where);
                 ?>
                 <tr>
                     <td><strong><?=htmlspecialchars($cdata['name'])?></strong></td>
@@ -242,8 +272,9 @@ $categories_info = array(
                     <td>
                         <?php if ($status_data['enabled'] && $is_cat_active): ?>
                             <span class="label label-success"><i class="fa fa-shield"></i> <?=gettext("Bloqueando")?></span>
+                            <span class="small text-muted"><?=htmlspecialchars(implode(', ', $cat_where))?></span>
                         <?php else: ?>
-                            <span class="label label-default"><?=gettext("Desmarcado")?></span>
+                            <span class="label label-default"><?=gettext("Nenhum perfil")?></span>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -263,6 +294,9 @@ $categories_info = array(
             <div class="form-group">
                 <input type="text" name="test_domain" class="form-control" style="min-width: 320px;" placeholder="Ex: g1globo.com, xvideo.com, youtube.com, betano.com" value="<?=htmlspecialchars($test_domain)?>" required />
             </div>
+            <div class="form-group">
+                <input type="text" name="test_ip" class="form-control" style="min-width: 200px;" placeholder="<?=gettext("IP do cliente (opcional)")?>" value="<?=htmlspecialchars($test_ip)?>" title="<?=gettext("Informe o IP de uma máquina para testar a política da rede dela (perfil, IP isento ou padrão)")?>" />
+            </div>
             <button type="submit" class="btn btn-primary"><i class="fa fa-search"></i> <?=gettext("Testar Bloqueio")?></button>
         </form>
 
@@ -274,12 +308,12 @@ $categories_info = array(
                 <?php if ($test_result['status'] === 'BLOCKED'): ?>
                     <div class="alert alert-success">
                         <h4><i class="fa fa-shield"></i> <strong>BLOQUEADO COM SUCESSO!</strong></h4>
-                        <p>O domínio <strong><?=htmlspecialchars($test_result['domain'])?></strong> está bloqueado pelo Rules WAM. Resposta DNS: <code><?=htmlspecialchars($test_result['ip'])?></code>.</p>
+                        <p>O domínio <strong><?=htmlspecialchars($test_result['domain'])?></strong> está bloqueado pelo Rules WAM (<?=htmlspecialchars($test_result['policy'])?>). Resposta DNS: <code><?=htmlspecialchars($test_result['ip'])?></code>.</p>
                     </div>
                 <?php else: ?>
                     <div class="alert alert-warning">
                         <h4><i class="fa fa-check-circle"></i> <strong>PERMITIDO / NÃO BLOQUEADO</strong></h4>
-                        <p>O domínio <strong><?=htmlspecialchars($test_result['domain'])?></strong> não está ativo na lista de bloqueio. Status: <code><?=htmlspecialchars($test_result['ip'])?></code>.</p>
+                        <p>O domínio <strong><?=htmlspecialchars($test_result['domain'])?></strong> não está bloqueado (<?=htmlspecialchars($test_result['policy'])?>). Status: <code><?=htmlspecialchars($test_result['ip'])?></code>.</p>
                     </div>
                 <?php endif; ?>
             </div>

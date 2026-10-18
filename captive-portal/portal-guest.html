@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rede de Visitantes</title>
+<!--
+  Página do Portal Cativo do pfSense (Services > Captive Portal > Portal page contents).
+  Tudo é embutido (sem fontes, imagens ou scripts externos): antes de aceitar, o visitante
+  ainda não tem internet. Os campos $PORTAL_...$ são preenchidos pelo pfSense. Não altere o
+  formulário (action, redirurl, zone e o botão "accept"); os textos podem ser editados à vontade.
+-->
+<style>
+  :root {
+    --bg: #f1f5f9; --card: #ffffff; --text: #0f172a; --muted: #475569;
+    --line: #e2e8f0; --accent: #1d4ed8; --accent-dark: #1e40af; --block: #b91c1c; --block-bg: #fef2f2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 16px; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; line-height: 1.5;
+  }
+  .card {
+    width: 100%; max-width: 520px; background: var(--card); border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, .10); overflow: hidden;
+  }
+  .head { background: var(--accent); color: #fff; padding: 22px 24px; }
+  .head svg { width: 34px; height: 34px; display: block; margin-bottom: 10px; }
+  .head h1 { margin: 0; font-size: 21px; font-weight: 700; }
+  .head p { margin: 4px 0 0; font-size: 14px; opacity: .9; }
+  .body { padding: 22px 24px 24px; }
+  .body p { margin: 0 0 14px; color: var(--muted); font-size: 15px; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 18px 0 10px; }
+  ul.blocked { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+  ul.blocked li {
+    background: var(--block-bg); color: var(--block); border: 1px solid #fecaca;
+    border-radius: 999px; padding: 4px 12px; font-size: 13px; font-weight: 600;
+  }
+  ul.rules { margin: 0 0 6px; padding-left: 20px; color: var(--muted); font-size: 14px; }
+  ul.rules li { margin-bottom: 4px; }
+  .agree {
+    display: flex; gap: 10px; align-items: flex-start; margin: 20px 0 16px; padding: 12px 14px;
+    border: 1px solid var(--line); border-radius: 10px; font-size: 14px; cursor: pointer;
+  }
+  .agree input { width: 18px; height: 18px; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+  .btn {
+    width: 100%; border: 0; border-radius: 10px; padding: 14px; font-size: 16px; font-weight: 700;
+    color: #fff; background: var(--accent); cursor: pointer;
+  }
+  .btn:hover { background: var(--accent-dark); }
+  .foot { padding: 0 24px 20px; font-size: 12px; color: var(--muted); text-align: center; }
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="head">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>
+      </svg>
+      <h1>Bem-vindo à rede de visitantes</h1>
+      <p>Leia as regras de uso antes de navegar.</p>
+    </div>
+
+    <div class="body">
+      <p>Esta rede é oferecida para visitantes. O acesso à internet segue a política da empresa: alguns tipos de site <strong>são bloqueados</strong> e não abrem nesta rede.</p>
+
+      <h2>Bloqueados nesta rede</h2>
+      <!-- Edite a lista conforme as categorias marcadas no perfil GUEST do Rules WAM -->
+      <ul class="blocked">
+        <li>Redes sociais</li>
+        <li>Streaming e vídeo</li>
+        <li>Conteúdo adulto</li>
+        <li>Apostas e jogos de azar</li>
+        <li>Jogos online</li>
+        <li>Esportes e placares</li>
+        <li>Compras online</li>
+        <li>Torrents</li>
+        <li>VPN e proxies</li>
+        <li>Mensageiros</li>
+      </ul>
+
+      <h2>Regras de uso</h2>
+      <ul class="rules">
+        <li>Ao tentar abrir um site bloqueado, o navegador mostrará um erro de conexão: isso é o bloqueio, não uma falha da rede.</li>
+        <li>O acesso é registrado (endereço do aparelho, data e site) conforme a política de segurança.</li>
+        <li>É proibido usar a rede para atividades ilegais ou que prejudiquem outras pessoas.</li>
+      </ul>
+
+      <form method="post" action="$PORTAL_ACTION$">
+        <input name="redirurl" type="hidden" value="$PORTAL_REDIRURL$">
+        <input name="zone" type="hidden" value="$PORTAL_ZONE$">
+        <label class="agree">
+          <input type="checkbox" required>
+          <span>Li e aceito as regras de uso desta rede.</span>
+        </label>
+        <input class="btn" name="accept" type="submit" value="Aceitar e navegar">
+      </form>
+    </div>
+
+    <div class="foot">Dúvidas? Procure a recepção ou a equipe de TI.</div>
+  </main>
+</body>
+</html>

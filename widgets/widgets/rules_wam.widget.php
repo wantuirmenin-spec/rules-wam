@@ -102,9 +102,11 @@ $categories_def = array(
     'block_doh'       => array('name' => 'Anti-DoH',       'full' => 'Anti-Bypass DNS-over-HTTPS',   'icon' => 'fa-shield',        'color' => '#6c757d')
 );
 
+// Categoria ativa = bloqueada em ao menos um perfil (ou nas redes sem perfil / na política geral antiga)
 $active_categories = array();
+$cat_usage = function_exists('rules_wam_category_usage') ? rules_wam_category_usage($wam_cfg) : array();
 foreach ($categories_def as $cat_key => $cat_info) {
-    if (function_exists('rules_wam_is_checked') && rules_wam_is_checked($wam_cfg[$cat_key] ?? null)) {
+    if (!empty($cat_usage[$cat_key])) {
         $active_categories[$cat_key] = $cat_info;
     }
 }
