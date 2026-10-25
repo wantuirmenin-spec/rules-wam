@@ -15,6 +15,9 @@
   - Implementado com uma zona raiz (`local-zone: "."`) que bloqueia tudo e zonas `transparent` para cada domínio liberado.
   - A aba fica no privilégio de configuração (`page-services-ruleswam`).
 
+### Correções
+- **Zonas duplicadas com o pfSense 2.8.** O pfSense já declara zonas como `mask.icloud.com`, `mask-h2.icloud.com` e `doh.dns.apple.com`, que também estão no feed *Anti-Bypass DoH*. Declarar a mesma zona de novo gerava "duplicate local-zone", e o `unbound-checkconf` recusava a configuração (os perfis por rede caíam). Agora a política geral e o Modo de Contingência pulam as zonas que o pfSense já declara.
+
 ### Limitações
 - Host overrides do DNS Resolver em domínios diferentes do domínio do próprio pfSense deixam de resolver enquanto o modo estiver ligado (inclua o domínio deles na lista de liberados).
 - Bloqueio só por DNS: aplicativos que conectam direto por IP podem escapar.

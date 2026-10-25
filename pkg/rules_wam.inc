@@ -800,7 +800,7 @@ function rules_wam_blocked_parent($domain, &$blocked) {
  * Um domínio liberado cujo domínio pai continua bloqueado recebe uma zona "transparent",
  * que tem prioridade por ser mais específica (ex.: liberar m.youtube.com com youtube.com bloqueado).
  */
-function rules_wam_compile_policy($wam_cfg, $cat_keys, $whitelist, $extra, $block_action, $block_page_ip, &$cat_index) {
+function rules_wam_compile_policy($wam_cfg, $cat_keys, $whitelist, $extra, $block_action, $block_page_ip, &$cat_index, $skip = array()) {
     $map = rules_wam_category_map();
     $blocked = array();     // domínio => array(categoria => true)
     $exceptions = array();  // domínio desmarcado => categoria
@@ -884,6 +884,9 @@ function rules_wam_compile_policy($wam_cfg, $cat_keys, $whitelist, $extra, $bloc
 
     $zones = "";
     foreach ($final as $dom) {
+        if (isset($skip[$dom])) {
+            continue; // o pfSense já declara essa zona (declarar de novo é erro no Unbound)
+        }
         if ($block_action === 'always_null') {
             $zones .= "  local-zone: \"{$dom}\" always_null\n";
         } else {
@@ -892,10 +895,46 @@ function rules_wam_compile_policy($wam_cfg, $cat_keys, $whitelist, $extra, $bloc
         }
     }
     foreach (array_keys($holes) as $h) {
-        $zones .= "  local-zone: \"{$h}\" transparent\n";
+        if (!isset($skip[$h])) {
+            $zones .= "  local-zone: \"{$h}\" transparent\n";
+        }
     }
 
     return array('zones' => $zones, 'total' => count($final), 'labels' => $labels, 'holes' => count($holes));
+}
+
+/**
+ * Zonas que o próprio pfSense já declara no escopo server: do Unbound (ex.: mask.icloud.com e
+ * doh.dns.apple.com no pfSense 2.8, o domínio do sistema nos host overrides). Declarar a mesma zona
+ * de novo gera "duplicate local-zone" e o unbound-checkconf recusa a configuração inteira.
+ */
+function rules_wam_pfsense_local_zones() {
+    static $zones = null;
+    if ($zones !== null) {
+        return $zones;
+    }
+    $zones = array();
+    foreach (glob('/var/unbound/*.conf') ?: array() as $f) {
+        if (strpos(basename($f), 'wam_blocklist') === 0) {
+            continue;
+        }
+        $in_view = false;
+        foreach ((array)@file($f, FILE_IGNORE_NEW_LINES) as $line) {
+            $t = trim($line);
+            if (strpos($t, 'view:') === 0) {
+                $in_view = true;
+                continue;
+            }
+            if (strpos($t, 'server:') === 0) {
+                $in_view = false;
+                continue;
+            }
+            if (!$in_view && preg_match('/^local-zone:\s*"?([^"\s]+)"?/i', $t, $m)) {
+                $zones[strtolower(rtrim($m[1], '.'))] = true;
+            }
+        }
+    }
+    return $zones;
 }
 
 /**
@@ -1077,13 +1116,14 @@ function rules_wam_contingency_allowlist($wam_cfg) {
  */
 function rules_wam_compile_contingency($wam_cfg, $block_action, $block_page_ip) {
     $sys_domain = strtolower(trim((string)config_get_path('system/domain', '')));
+    $skip = rules_wam_pfsense_local_zones();
     $zones = ($block_action === 'always_null')
         ? "  local-zone: \".\" always_null\n"
         : "  local-zone: \".\" redirect\n  local-data: \". 60 IN A {$block_page_ip}\"\n";
     $allow = rules_wam_contingency_allowlist($wam_cfg);
     $count = 0;
     foreach (array_keys($allow) as $d) {
-        if ($d === '' || $d[0] === '*' || $d === $sys_domain || $d === 'localhost') {
+        if ($d === '' || $d[0] === '*' || $d === $sys_domain || $d === 'localhost' || isset($skip[$d])) {
             continue;
         }
         $zones .= "  local-zone: \"{$d}\" transparent\n";
@@ -1391,7 +1431,8 @@ function rules_wam_apply_rules($wam_cfg = null) {
             }
         }
     }
-    $global = rules_wam_compile_policy($wam_cfg, $global_cats, $whitelist, $global_extra, $block_action, $block_page_ip, $cat_index);
+    // Política geral fica no escopo server: pula as zonas que o pfSense já declara ali
+    $global = rules_wam_compile_policy($wam_cfg, $global_cats, $whitelist, $global_extra, $block_action, $block_page_ip, $cat_index, rules_wam_pfsense_local_zones());
     $zones = $global['zones'];
     $total = $global['total'];
     $categories_active = $global['labels'];
