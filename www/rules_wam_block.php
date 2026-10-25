@@ -39,6 +39,10 @@ if ($is_banner) {
         $req_host = 'website-bloqueado.com';
     }
     $category = rules_wam_get_domain_category($req_host);
+    // No Modo de Contingência tudo o que não está liberado chega aqui
+    if (rules_wam_contingency_active($wam_cfg) && $category === 'Regra Personalizada / Outros') {
+        $category = 'Modo de Contingência';
+    }
 
     // Só registra domínios que estão de fato na lista de bloqueio (evita poluir a auditoria com Hosts arbitrários)
     if (!$is_fw_direct && $category !== 'Regra Personalizada / Outros') {
@@ -56,6 +60,21 @@ if ($is_banner) {
 }
 
 $block_time = date('d/m/Y - H:i:s');
+
+// Modo de Contingência: o banner explica a restrição temporária e lista o que continua disponível
+$contingency = rules_wam_contingency_active($wam_cfg);
+$contingency_services = array();
+if ($contingency) {
+    $cont_presets = rules_wam_contingency_presets();
+    foreach (rules_wam_parse_list($wam_cfg['contingency_presets'] ?? '') as $pk) {
+        if (isset($cont_presets[$pk])) {
+            $contingency_services[] = $cont_presets[$pk]['label'];
+        }
+    }
+    if (!empty(rules_wam_parse_list($wam_cfg['contingency_allow'] ?? ''))) {
+        $contingency_services[] = 'Sistemas internos e sites autorizados pela TI';
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -351,11 +370,35 @@ $block_time = date('d/m/Y - H:i:s');
                 <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-1 6h2v6h-2V7zm1 10.25c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25 1.25.56 1.25 1.25-.56 1.25-1.25 1.25z"/>
             </svg>
         </div>
+        <?php if ($contingency): ?>
+        <h1>MODO DE CONTINGÊNCIA</h1>
+        <p>A unidade está operando em modo de contingência. Apenas sistemas e serviços essenciais estão disponíveis no momento.</p>
+        <?php else: ?>
         <h1>ACESSO BLOQUEADO</h1>
         <p>A navegação para este destino foi restrita em conformidade com as Políticas de Segurança da Informação da instituição.</p>
+        <?php endif; ?>
     </div>
 
     <div class="card-body">
+        <?php if ($contingency): ?>
+        <div class="policy-alert-box">
+            <h3><span>⚠️</span> Acesso temporariamente restrito</h3>
+            <p>
+                Para garantir o funcionamento dos sistemas críticos, a internet desta unidade está limitada aos serviços essenciais.
+                O acesso aos demais sites volta ao normal quando a contingência for encerrada pela TI.
+            </p>
+            <?php if (!empty($contingency_services)): ?>
+            <div class="policy-categories">
+                <?php foreach ($contingency_services as $svc): ?>
+                    <div class="cat-item" style="border-color: #bbf7d0; color: #166534;">
+                        <span class="icon">✅</span>
+                        <div><strong><?=htmlspecialchars($svc)?></strong></div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+        </div>
+        <?php else: ?>
         <div class="policy-alert-box">
             <h3>
                 <span>⚠️</span> Violação de Política de Acesso à Internet
@@ -416,6 +459,7 @@ $block_time = date('d/m/Y - H:i:s');
                 <?php endforeach; ?>
             </div>
         </div>
+        <?php endif; ?>
 
         <div class="tech-details">
             <h4>📋 Detalhes do Registro de Interceptação</h4>

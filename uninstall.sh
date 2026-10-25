@@ -37,6 +37,7 @@ rm -f /usr/local/pkg/wam.inc /usr/local/pkg/wam.xml /usr/local/pkg/wam_sync.php 
 rm -f /usr/local/pkg/register_menu.php /usr/local/pkg/wam_setup.php /etc/inc/priv/rules_wam.priv.inc
 rm -f /usr/local/www/rules_wam.php /usr/local/www/rules_wam_status.php /usr/local/www/rules_wam_dashboard.php
 rm -f /usr/local/www/rules_wam_block.php /usr/local/www/wam_status.php /usr/local/www/rules_wam_ca.crt
+rm -f /usr/local/www/rules_wam_contingency.php
 rm -f /usr/local/www/widgets/include/rules_wam.inc /usr/local/www/widgets/widgets/rules_wam.widget.php
 rm -f /var/etc/rules_wam_ca.crt /var/etc/rules_wam_ca.key /var/etc/rules_wam_ca.srl /var/etc/rules_wam_ssl.crt /var/etc/rules_wam_ssl.key
 rm -f /var/db/rules_wam_categories.json /var/log/wam_status.json /var/log/wam_checkconf_err.log /var/log/rules_wam_ssl.log

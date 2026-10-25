@@ -1,6 +1,6 @@
 # 🛡️ Manual do Administrador & Guia de Implantação
 ## Rules WAM — Web Access Manager para pfSense
-**Versão:** 1.5.0 (em testes)  
+**Versão:** 1.6.0 (em testes)  
 **Compatibilidade:** pfSense CE 2.7.x / 2.8.x / pfSense Plus  
 **Plataforma Base:** FreeBSD / Unbound DNS / NGINX (banner HTTP)  
 
@@ -30,6 +30,7 @@
    - [Políticas por Rede (GUEST, CORP, ADMIN...)](#413-políticas-por-rede-guest-corp-admin)
    - [Sites Liberados Dentro de uma Categoria](#414-sites-liberados-dentro-de-uma-categoria)
    - [Página de Boas-Vindas da Rede GUEST (Portal Cativo)](#415-página-de-boas-vindas-da-rede-guest-portal-cativo)
+   - [Modo de Contingência](#416-modo-de-contingência)
 5. [Auditoria, Logs & Dashboard Forense](#5-auditoria-logs--dashboard-forense)
 6. [Guia de Implantação em Novos Firewalls (Passo a Passo)](#6-guia-de-implantação-em-novos-firewalls-passo-a-passo)
    - [Pré-Requisitos](#61-pré-requisitos)
@@ -403,6 +404,35 @@ Em sites HTTPS o banner não pode ser exibido sem um certificado instalado nos a
 - Usa o **Captive Portal nativo do pfSense** (Services > Captive Portal); o Rules WAM não muda.
 - A página pronta e o passo a passo estão na pasta **`captive-portal/`** do pacote (`portal-guest.html` e `LEIAME-portal-cativo.md`).
 - Resumo da configuração: zona `guest` na interface GUEST, *Authentication Method* = **None**, *Enable HTTPS login* **desmarcado**, *Hard timeout* = `1440`, *After authentication Redirection URL* = `https://www.suaempresa.com.br/`, *Use custom captive portal page* **marcado** e a página enviada em *Portal page contents*.
+
+### 4.16. Modo de Contingência
+Para quando a unidade estiver operando pelo **link reserva** (ex.: Starlink, com pouca banda) ou numa **operação crítica** (inventário, fechamento, auditoria): tudo fica bloqueado, menos os serviços essenciais.
+
+**Como usar** (aba *Modo de Contingência* em `Services > Rules WAM`):
+1. Marque os **conjuntos prontos** que devem continuar funcionando (Microsoft 365, Google Workspace, TOTVS, Governo/gov.br, WhatsApp, antivírus Bitdefender).
+2. Em **Outros sites e sistemas liberados**, informe os domínios próprios (sistemas internos, bancos etc.), um por linha. Liberar um domínio libera os subdomínios.
+3. Clique em **Salvar lista** para deixar a lista pronta, ou direto em **LIGAR MODO DE CONTINGÊNCIA**.
+4. Para voltar ao normal, clique em **DESLIGAR MODO DE CONTINGÊNCIA**.
+
+**Regras de funcionamento:**
+- Vale para **todas as redes**. Os perfis por rede ficam suspensos enquanto o modo estiver ligado; os **IPs isentos (bypass)** continuam livres.
+- **Sempre liberados** (não precisa marcar): domínio do Active Directory, proteções corporativas (Netskope, login Microsoft/Google, ferramentas de TI, helpdesk, telefonia), verificação de conectividade do Windows e dos celulares, validação de certificados (OCSP/CRL) e hora (NTP). Sem eles o Windows considera a rede "sem internet" e aplicativos como Teams e Outlook param, mesmo liberados.
+- A whitelist geral só entra se a opção *Liberar também os domínios da whitelist geral* estiver marcada.
+- O modo é **manual**: o agendamento por horário não o pausa, e ele só é desligado pelo botão.
+- Enquanto ligado, as abas Configuração, Status e Dashboard e o widget mostram um aviso vermelho, com data e usuário que ligou. O log do sistema registra quem ligou e desligou.
+- Bloqueio por **DNS**: sites `http://` mostram o banner "Modo de Contingência" com a lista do que está disponível; sites `https://` mostram erro de conexão; aplicativos que conectam direto por IP podem escapar.
+
+**Como é gerado:** uma zona raiz bloqueia tudo e cada domínio liberado recebe uma zona `transparent`, que tem prioridade por ser mais específica:
+```
+  local-zone: "." redirect
+  local-data: ". 60 IN A <IP do banner>"
+  local-zone: "microsoft.com" transparent
+  local-zone: "gov.br" transparent
+  ...
+```
+- **Conferência no console:** `head -3 /var/unbound/wam_blocklist.conf` mostra `# MODO DE CONTINGENCIA ATIVO`.
+- **Teste numa estação:** `nslookup youtube.com <IP do firewall>` deve devolver o IP do banner; `nslookup teams.microsoft.com <IP do firewall>` deve resolver normalmente (com o conjunto Microsoft 365 marcado).
+- **Host overrides** do DNS Resolver em domínios diferentes do domínio do próprio pfSense deixam de resolver enquanto o modo estiver ligado: inclua o domínio deles na lista de liberados.
 
 ---
 

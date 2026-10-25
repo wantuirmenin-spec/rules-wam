@@ -15,6 +15,7 @@ $priv_list['page-services-ruleswam']['match'][] = "rules_wam.php*";
 $priv_list['page-services-ruleswam']['match'][] = "rules_wam_status.php*";
 $priv_list['page-services-ruleswam']['match'][] = "rules_wam_dashboard.php*";
 $priv_list['page-services-ruleswam']['match'][] = "rules_wam_block.php*";
+$priv_list['page-services-ruleswam']['match'][] = "rules_wam_contingency.php*";
 
 $priv_list['page-services-ruleswam-audit'] = array();
 $priv_list['page-services-ruleswam-audit']['name'] = "WebCfg - Services: Rules WAM (auditoria)";

@@ -2,6 +2,23 @@
 
 > **Versão em testes:** até agora o Rules WAM só foi executado em ambiente de laboratório.
 
+## 1.6.0 — Modo de Contingência
+
+### Novidades
+- **Modo de Contingência.** Nova aba *Modo de Contingência*, com botão para ligar e desligar (manual). Para quando a unidade estiver no link reserva (ex.: Starlink) ou numa operação crítica.
+  - Ligado, **tudo fica bloqueado no DNS**, menos a lista de serviços liberados. Vale para **todas as redes**: os perfis por rede ficam suspensos e os IPs isentos (bypass) continuam livres.
+  - Conjuntos prontos para liberar: Microsoft 365, Google Workspace, TOTVS, Governo (gov.br), WhatsApp e antivírus Bitdefender, além de um campo para domínios próprios e a opção de incluir a whitelist geral.
+  - **Sempre liberados:** domínio do Active Directory, proteções corporativas (Netskope, login Microsoft/Google, ferramentas de TI, helpdesk, telefonia), verificação de conectividade do Windows e dos celulares, validação de certificados (OCSP/CRL) e hora (NTP). Sem eles o Windows considera a rede "sem internet" e aplicativos como Teams e Outlook param.
+  - O agendamento por horário não pausa o modo.
+  - Sites `http://` mostram o banner "Modo de Contingência", com a lista do que está disponível; sites `https://` mostram erro de conexão.
+  - Avisos do modo ligado nas abas Configuração, Status e Dashboard e no widget; tentativas registradas no Dashboard com a categoria "Modo de Contingência".
+  - Implementado com uma zona raiz (`local-zone: "."`) que bloqueia tudo e zonas `transparent` para cada domínio liberado.
+  - A aba fica no privilégio de configuração (`page-services-ruleswam`).
+
+### Limitações
+- Host overrides do DNS Resolver em domínios diferentes do domínio do próprio pfSense deixam de resolver enquanto o modo estiver ligado (inclua o domínio deles na lista de liberados).
+- Bloqueio só por DNS: aplicativos que conectam direto por IP podem escapar.
+
 ## 1.5.0 — políticas por rede (perfil obrigatório) e sites liberados por categoria
 
 ### Novidades

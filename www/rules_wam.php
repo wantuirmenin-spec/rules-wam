@@ -162,7 +162,9 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
 
     // Mantém chaves internas que não estão no formulário
     $prev_cfg = rules_wam_get_config();
-    foreach (array('migrated_v14') as $ik) {
+    // (o Modo de Contingência é salvo pela própria aba e não pode se perder aqui)
+    foreach (array('migrated_v14', 'contingency_enable', 'contingency_since', 'contingency_by',
+                   'contingency_presets', 'contingency_allow', 'contingency_include_whitelist') as $ik) {
         if (isset($prev_cfg[$ik])) {
             $wam_cfg[$ik] = $prev_cfg[$ik];
         }
@@ -364,6 +366,7 @@ $tab_array = array();
 $tab_array[] = array(gettext("Configurações de Bloqueio"), true, "/rules_wam.php");
 $tab_array[] = array(gettext("Status & Teste de Bloqueio"), false, "/rules_wam_status.php");
 $tab_array[] = array(gettext("Dashboard & Tentativas de Acesso"), false, "/rules_wam_dashboard.php");
+$tab_array[] = array(gettext("Modo de Contingência"), false, "/rules_wam_contingency.php");
 $tab_array[] = array(gettext("Banner de Bloqueio (Prévia)"), false, "/rules_wam_block.php");
 display_top_tabs($tab_array);
 ?>
@@ -375,6 +378,8 @@ display_top_tabs($tab_array);
         <i class="fa fa-check-circle"></i> <strong><?=htmlspecialchars($save_msg)?></strong>
     </div>
 <?php endif; ?>
+
+<?=rules_wam_contingency_alert_html($wam_cfg)?>
 
 <form action="/rules_wam.php" method="post" name="iform" id="iform" class="form-horizontal">
     <div class="panel panel-default">

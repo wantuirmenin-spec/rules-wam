@@ -9,7 +9,7 @@ require_once("config.inc");
 require_once("util.inc");
 require_once("services.inc");
 
-define('RULES_WAM_VERSION', '1.5.0');
+define('RULES_WAM_VERSION', '1.6.0');
 define('WAM_FEEDS_DIR', '/usr/local/share/wam/feeds');
 define('WAM_CONF_FILE', '/var/unbound/wam_blocklist.conf');
 // Include com curinga: se o arquivo sumir (ex.: /var em RAM disk após reboot) o Unbound continua subindo
@@ -380,7 +380,9 @@ function rules_wam_resync() {
         return;
     }
 
-    if (rules_wam_is_checked($wam_cfg['schedule_enable'] ?? null) && !rules_wam_is_in_schedule_window($wam_cfg)) {
+    // O Modo de Contingência passa por cima do agendamento (não pausa no almoço nem à noite)
+    if (!rules_wam_contingency_active($wam_cfg) &&
+        rules_wam_is_checked($wam_cfg['schedule_enable'] ?? null) && !rules_wam_is_in_schedule_window($wam_cfg)) {
         rules_wam_suspend_schedule($wam_cfg);
         return;
     }
@@ -980,6 +982,117 @@ function rules_wam_fallback_categories() {
 }
 
 /**
+ * Modo de Contingência: tudo bloqueado no DNS, menos a lista de liberados. Vale para todas as redes
+ * (os perfis ficam suspensos; IPs isentos continuam livres) e passa por cima do agendamento.
+ */
+function rules_wam_contingency_active($wam_cfg) {
+    return rules_wam_is_checked($wam_cfg['contingency_enable'] ?? null);
+}
+
+/**
+ * Aviso exibido no topo das telas do pacote enquanto o Modo de Contingência estiver ligado
+ */
+function rules_wam_contingency_alert_html($wam_cfg) {
+    if (!rules_wam_contingency_active($wam_cfg)) {
+        return '';
+    }
+    $since = trim((string)($wam_cfg['contingency_since'] ?? ''));
+    $by = trim((string)($wam_cfg['contingency_by'] ?? ''));
+    $when = ($since !== '') ? ' desde ' . htmlspecialchars($since) . ($by !== '' ? ' (' . htmlspecialchars($by) . ')' : '') : '';
+    return '<div class="alert alert-danger"><i class="fa fa-exclamation-triangle"></i> <strong>MODO DE CONTINGÊNCIA LIGADO' . $when
+        . '.</strong> Toda a navegação está bloqueada, exceto os serviços liberados; os perfis por rede estão suspensos. '
+        . '<a href="/rules_wam_contingency.php" class="alert-link">Gerenciar ou desligar</a>.</div>';
+}
+
+/**
+ * Conjuntos prontos de serviços liberados no Modo de Contingência (chave => rótulo e domínios)
+ */
+function rules_wam_contingency_presets() {
+    return array(
+        'm365' => array('label' => 'Microsoft 365 (Outlook, Teams, OneDrive, SharePoint)', 'domains' => array(
+            'microsoft.com', 'microsoftonline.com', 'office.com', 'office.net', 'office365.com', 'outlook.com',
+            'sharepoint.com', 'onedrive.com', 'skype.com', 'lync.com', 'onmicrosoft.com', 'cloud.microsoft',
+            'static.microsoft', 'windows.net', 'msauth.net', 'msftauth.net', 'aka.ms', 'azureedge.net', 'msecnd.net')),
+        'google' => array('label' => 'Google Workspace (Gmail, Drive, Meet)', 'domains' => array(
+            'google.com', 'google.com.br', 'googleapis.com', 'gstatic.com', 'googleusercontent.com', 'gmail.com')),
+        'totvs' => array('label' => 'TOTVS (Protheus Cloud, Fluig)', 'domains' => array(
+            'totvs.com', 'totvs.com.br', 'totvs.app', 'cloudtotvs.com.br', 'totvscloud.com.br', 'fluig.com')),
+        'gov' => array('label' => 'Governo (gov.br: Receita, SEFAZ, NF-e, eSocial)', 'domains' => array('gov.br')),
+        'whatsapp' => array('label' => 'WhatsApp', 'domains' => array('whatsapp.com', 'whatsapp.net', 'wa.me')),
+        'antivirus' => array('label' => 'Antivírus Bitdefender (atualizações e console)', 'domains' => array(
+            'bitdefender.com', 'bitdefender.net')),
+    );
+}
+
+/**
+ * Domínios sempre liberados no Modo de Contingência: sem eles o Windows e os celulares acham que a
+ * rede está "sem internet", os certificados não são validados e o relógio dessincroniza.
+ */
+function rules_wam_contingency_essentials() {
+    return array(
+        // Verificação de conectividade (Windows, Android, Apple, Firefox, Linux)
+        'msftconnecttest.com', 'msftncsi.com', 'connectivitycheck.gstatic.com', 'connectivitycheck.android.com',
+        'clients3.google.com', 'captive.apple.com', 'detectportal.firefox.com', 'nmcheck.gnome.org',
+        // Validação de certificados (OCSP/CRL das principais autoridades)
+        'digicert.com', 'sectigo.com', 'usertrust.com', 'globalsign.com', 'globalsign.net', 'lencr.org',
+        'pki.goog', 'entrust.net', 'amazontrust.com', 'msocsp.com', 'crl.microsoft.com', 'oneocsp.microsoft.com',
+        'godaddy.com',
+        // Hora (NTP)
+        'time.windows.com', 'pool.ntp.org', 'ntp.br', 'time.google.com', 'time.apple.com',
+        // Resolução reversa
+        'in-addr.arpa', 'ip6.arpa',
+    );
+}
+
+/**
+ * Lista final de domínios liberados no Modo de Contingência (domínio => true)
+ */
+function rules_wam_contingency_allowlist($wam_cfg) {
+    // Proteções corporativas (Netskope, login Microsoft/Google, ferramentas de TI, helpdesk, VoIP) e domínio do AD;
+    // a whitelist geral só entra se marcada
+    $base_cfg = $wam_cfg;
+    if (!rules_wam_is_checked($wam_cfg['contingency_include_whitelist'] ?? null)) {
+        $base_cfg['custom_whitelist'] = '';
+    }
+    $allow = rules_wam_build_whitelist($base_cfg);
+    foreach (rules_wam_contingency_essentials() as $d) {
+        $allow[$d] = true;
+    }
+    $presets = rules_wam_contingency_presets();
+    foreach (rules_wam_parse_list($wam_cfg['contingency_presets'] ?? '') as $pk) {
+        if (isset($presets[$pk])) {
+            foreach ($presets[$pk]['domains'] as $d) {
+                $allow[$d] = true;
+            }
+        }
+    }
+    $allow += rules_wam_domain_set($wam_cfg['contingency_allow'] ?? '');
+    return $allow;
+}
+
+/**
+ * Zonas do Unbound do Modo de Contingência: a zona raiz "." bloqueia tudo e cada domínio liberado
+ * recebe uma zona "transparent" (mais específica, tem prioridade). O domínio do próprio pfSense não
+ * entra, porque o pfSense já declara uma zona para ele (declarar de novo é erro no Unbound).
+ */
+function rules_wam_compile_contingency($wam_cfg, $block_action, $block_page_ip) {
+    $sys_domain = strtolower(trim((string)config_get_path('system/domain', '')));
+    $zones = ($block_action === 'always_null')
+        ? "  local-zone: \".\" always_null\n"
+        : "  local-zone: \".\" redirect\n  local-data: \". 60 IN A {$block_page_ip}\"\n";
+    $allow = rules_wam_contingency_allowlist($wam_cfg);
+    $count = 0;
+    foreach (array_keys($allow) as $d) {
+        if ($d === '' || $d[0] === '*' || $d === $sys_domain || $d === 'localhost') {
+            continue;
+        }
+        $zones .= "  local-zone: \"{$d}\" transparent\n";
+        $count++;
+    }
+    return array('zones' => $zones, 'allowed' => $count);
+}
+
+/**
  * Converte uma configuração antiga (categorias na política geral) para o modo perfil obrigatório.
  * As categorias marcadas na política geral viram o perfil PADRAO, com as interfaces que ainda não
  * têm perfil e as redes corporativas autorizadas (sub-redes roteadas/VPN), para nada mudar na atualização.
@@ -1296,7 +1409,27 @@ function rules_wam_apply_rules($wam_cfg = null) {
         log_error("[Rules WAM] Interfaces sem perfil (bloqueio maximo): " . implode(', ', $uncovered));
     }
 
+    // Modo de Contingência: substitui a política geral e suspende os perfis (IPs isentos continuam livres).
+    // A compilação normal acima continua servindo para o índice de categorias do Dashboard.
+    $contingency = rules_wam_contingency_active($wam_cfg);
+    $contingency_allowed = 0;
+    if ($contingency) {
+        $cont = rules_wam_compile_contingency($wam_cfg, $block_action, $block_page_ip);
+        $zones = $cont['zones'];
+        $contingency_allowed = $cont['allowed'];
+        $total = 0;
+        $categories_active = array('Modo de Contingência');
+        $views = empty($bypass_list) ? array() : array($views[0]);
+        $profile_views = array();
+        $profiles_status = array();
+        $uncovered = array();
+        log_error("[Rules WAM] MODO DE CONTINGENCIA ATIVO: tudo bloqueado no DNS, exceto {$contingency_allowed} dominios liberados.");
+    }
+
     $head  = "# ====================================================\n";
+    if ($contingency) {
+        $head .= "# MODO DE CONTINGENCIA ATIVO - {$contingency_allowed} dominios liberados\n";
+    }
     $head .= "# Rules WAM " . RULES_WAM_VERSION . " - Auto-gerado (nao edite)\n";
     $head .= "# Atualizado em: " . date('Y-m-d H:i:s') . "\n";
     $head .= "# Categorias ativas (" . count($categories_active) . "): " . implode(', ', $categories_active) . "\n";
@@ -1367,6 +1500,10 @@ function rules_wam_apply_rules($wam_cfg = null) {
         'profiles' => $profiles_ok ? $profiles_status : array(),
         'profiles_error' => !$profiles_ok && !empty($profile_views),
         'profiles_required' => $profiles_required,
+        'contingency' => $contingency,
+        'contingency_allowed' => $contingency_allowed,
+        'contingency_since' => $contingency ? (string)($wam_cfg['contingency_since'] ?? '') : '',
+        'contingency_by' => $contingency ? (string)($wam_cfg['contingency_by'] ?? '') : '',
         'uncovered_interfaces' => $profiles_required ? $uncovered : array(),
         'block_action' => $block_action,
         'banner_conflict' => $conflict,
@@ -2563,7 +2700,8 @@ function rules_wam_is_domain_blocked($domain, $client_ip = null) {
         if (isset($zones['block'][$name])) return true;
         array_shift($parts);
     }
-    return false;
+    // Zona raiz "." (Modo de Contingência): bloqueia tudo o que não foi liberado acima
+    return isset($zones['block']['']);
 }
 
 /**
@@ -2812,7 +2950,7 @@ function rules_wam_get_audit_events($limit = 1000) {
                             'online' => $is_online,
                             'status_label' => $is_online ? 'Online' : 'Offline',
                             'domain' => $dom,
-                            'category' => rules_wam_get_domain_category($dom)
+                            'category' => (($cat = rules_wam_get_domain_category($dom)) === 'Regra Personalizada / Outros' && rules_wam_contingency_active($wam_cfg)) ? 'Modo de Contingência' : $cat
                         );
                         if ($limit > 0 && count($events) >= $limit) return $events;
                     }

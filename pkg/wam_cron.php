@@ -27,6 +27,15 @@ if (!$enabled || !rules_wam_is_checked($wam_cfg['schedule_enable'] ?? null)) {
     exit(0);
 }
 
+// Modo de Contingência ligado: o agendamento não pausa o bloqueio
+if (rules_wam_contingency_active($wam_cfg)) {
+    $status = rules_wam_read_status();
+    if (empty($status['contingency'])) {
+        rules_wam_apply_rules($wam_cfg);
+    }
+    exit(0);
+}
+
 // Decide pelo estado gravado na última aplicação (e não pela existência do arquivo,
 // que também existe durante a pausa - era isso que impedia o bloqueio de voltar)
 $status = rules_wam_read_status();

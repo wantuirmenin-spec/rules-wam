@@ -15,8 +15,10 @@ $tab_array = array();
 $tab_array[] = array(gettext("Configurações de Bloqueio"), false, "/rules_wam.php");
 $tab_array[] = array(gettext("Status & Teste de Bloqueio"), true, "/rules_wam_status.php");
 $tab_array[] = array(gettext("Dashboard & Tentativas de Acesso"), false, "/rules_wam_dashboard.php");
+$tab_array[] = array(gettext("Modo de Contingência"), false, "/rules_wam_contingency.php");
 $tab_array[] = array(gettext("Banner de Bloqueio (Prévia)"), false, "/rules_wam_block.php");
 display_top_tabs($tab_array);
+echo rules_wam_contingency_alert_html(rules_wam_get_config());
 
 if (function_exists('rules_wam_banner_conflict') && rules_wam_banner_conflict() !== '' && (rules_wam_get_config()['block_action'] ?? 'block_page') === 'block_page') {
     print_info_box(htmlspecialchars(rules_wam_banner_conflict()) . ' ' . gettext('O banner de bloqueio está desligado e os domínios bloqueados retornam 0.0.0.0. Para usar o banner, mova a WebGUI para outra porta (System > Advanced > Admin Access) e desative o redirecionamento HTTP.'), 'warning', false);
