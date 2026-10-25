@@ -840,6 +840,22 @@ function rules_wam_gambling_autoblock_scan($wam_cfg) {
         return 0;
     }
     fseek($fh, $off);
+
+    // Sufixos internos: o Windows também consulta "nome.dominio-interno" (ex.: betnacional.bet.br.empresa.local)
+    // e esses nomes não devem entrar na lista
+    $internal = array('local', 'lan', 'localdomain', 'internal', 'intranet', 'home.arpa', 'arpa', 'invalid', 'test', 'localhost');
+    $sys_domain = strtolower(trim((string)config_get_path('system/domain', '')));
+    if ($sys_domain !== '') {
+        $internal[] = $sys_domain;
+    }
+    foreach (rules_wam_parse_list($wam_cfg['corp_ad_domain'] ?? '') as $cd) {
+        $cd = rules_wam_clean_domain($cd);
+        if ($cd) {
+            $internal[] = $cd;
+        }
+    }
+    $internal = array_fill_keys($internal, true);
+
     $existing = array_fill_keys(rules_wam_gambling_auto_list(), true);
     $feed = array_fill_keys(rules_wam_read_feed('gambling.txt'), true);
     $whitelist = rules_wam_build_whitelist($wam_cfg);
@@ -851,7 +867,7 @@ function rules_wam_gambling_autoblock_scan($wam_cfg) {
         }
         $base = rules_wam_brand_base($m[1], $brands);
         $base = ($base !== null) ? rules_wam_clean_domain($base) : null;
-        if (!$base || isset($existing[$base]) || isset($new[$base])
+        if (!$base || rules_wam_is_whitelisted($base, $internal) || isset($existing[$base]) || isset($new[$base])
             || rules_wam_is_whitelisted($base, $feed) || rules_wam_is_whitelisted($base, $whitelist)) {
             continue; // já bloqueado pelo feed, já na lista automática ou liberado na whitelist
         }
