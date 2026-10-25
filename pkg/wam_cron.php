@@ -23,6 +23,12 @@ if ($is_boot) {
     exit(0);
 }
 
+// Bloqueio automático de apostas por marca: domínios novos entram na lista e as regras são reaplicadas
+if ($enabled && rules_wam_gambling_autoblock_scan($wam_cfg) > 0) {
+    rules_wam_resync();
+    exit(0);
+}
+
 if (!$enabled || !rules_wam_is_checked($wam_cfg['schedule_enable'] ?? null)) {
     exit(0);
 }

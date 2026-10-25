@@ -117,6 +117,13 @@ O Rules WAM possui **12 macro-categorias** prontas para ativação imediata:
 ### 2. 🎲 Apostas, Bets & Cassinos Online (`block_gambling`)
 - Casas de apostas esportivas, cassinos virtuais, jogos de azar: *Bet365, Betano, Sportingbet, Blaze, Stake, Pixbet, EstrelaBet, Superbet, Novibet, KTO, Betfair, 1xBet*, etc.
 - Feed: `gambling.txt` (~20 KB).
+- **Domínios inteiros:** o feed bloqueia qualquer site terminado em `.bet`, `.casino`, `.poker` e `.bingo` (domínios exclusivos de jogos de azar) e em `.bet.br` (domínio exigido das casas licenciadas no Brasil).
+- **Bloqueio automático por marca** (ligado por padrão, no catálogo da categoria): as casas de aposta criam domínios-espelho o tempo todo (ex.: `betano.fyi`). A cada 5 minutos o cron do pacote lê as consultas novas do `resolver.log`; um domínio com o nome de uma marca da lista (ex.: `betano`, `bet365`, `pixbet`, `tigrinho`) entra na lista automática `gambling-auto.txt` e as regras são reaplicadas.
+  - O primeiro acesso ao espelho ainda passa; o bloqueio vale em até 5 minutos, nos perfis que bloqueiam *Apostas*.
+  - O domínio bloqueado vai da marca até o fim do nome: `www.betano.fyi` → `betano.fyi`; `api.betano-br.xyz` → `betano-br.xyz`.
+  - A lista de marcas é editável (5+ caracteres por marca: a palavra solta "bet" bloquearia sites como `alphabet.com`).
+  - A tela mostra os domínios bloqueados automaticamente e tem a opção *Limpar esta lista ao salvar*. Para liberar um falso positivo, coloque o domínio na whitelist geral (ela sempre vence).
+  - Registro no log do sistema: `[Rules WAM] Bloqueio automatico de apostas: ...`.
 
 ### 3. 📰 Notícias, Portais & Jornalismo (`block_news`)
 - Portais de notícias nacionais e internacionais: *G1, UOL, Folha de S.Paulo, Estadão, CNN Brasil, R7, Metrópoles, Jovem Pan, Gazeta do Povo, Poder360, Veja, Exame, BBC, Reuters, Bloomberg, The Guardian, El País*, etc.

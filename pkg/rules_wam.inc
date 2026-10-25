@@ -19,6 +19,9 @@ define('WAM_AUDIT_LOG', '/var/log/wam_audit.log');
 define('WAM_AUDIT_MAX_BYTES', 10 * 1024 * 1024);
 define('WAM_CAT_INDEX', '/var/db/rules_wam_categories.json');
 define('WAM_DEFAULT_CORP_SUBNETS', "10.0.0.0/8\n172.16.0.0/12\n192.168.0.0/16");
+// Bloqueio automático de apostas por marca: lista gerada (feed extra da categoria Apostas) e posição de leitura do log
+define('WAM_GAMBLING_AUTO_FEED', 'gambling-auto.txt');
+define('WAM_AUTOBLOCK_STATE', '/var/db/rules_wam_autoblock.state');
 
 /**
  * Auxiliar para verificar se checkbox está marcada (aceita "yes", "on", 1, true)
@@ -299,7 +302,8 @@ function rules_wam_get_config() {
         // Checkboxes ausentes no XML representam 'no' (exceto proteções essenciais, ativas por padrão)
         $default_yes = array(
             'corp_protect_tools', 'corp_protect_cloudflare', 'corp_protect_netskope',
-            'corp_protect_idp', 'corp_protect_helpdesk', 'corp_protect_voip'
+            'corp_protect_idp', 'corp_protect_helpdesk', 'corp_protect_voip',
+            'gambling_autoblock'
         );
         $checkbox_keys = array(
             'enable', 'block_adult', 'block_gambling', 'block_news', 'block_social',
@@ -694,7 +698,12 @@ function rules_wam_category_feeds($cfg_key, $wam_cfg, $all = false) {
     }
     $sub_maps = rules_wam_category_sub_feeds();
     if (!isset($sub_maps[$cfg_key])) {
-        return array($map[$cfg_key]['file'] => $map[$cfg_key]['label']);
+        $feeds = array($map[$cfg_key]['file'] => $map[$cfg_key]['label']);
+        if ($cfg_key === 'block_gambling') {
+            // Domínios descobertos pelo bloqueio automático por marca (rules_wam_gambling_autoblock_scan)
+            $feeds[WAM_GAMBLING_AUTO_FEED] = $map[$cfg_key]['label'];
+        }
+        return $feeds;
     }
 
     $sub_map = $sub_maps[$cfg_key];
@@ -728,6 +737,137 @@ function rules_wam_category_feeds($cfg_key, $wam_cfg, $all = false) {
         }
     }
     return $feeds;
+}
+
+/**
+ * Marcas de casas de apostas usadas no bloqueio automático. Só nomes distintivos (5+ caracteres):
+ * a palavra solta "bet" pegaria sites legítimos (ex.: alphabet.com).
+ */
+function rules_wam_gambling_default_brands() {
+    return array(
+        'betano', 'bet365', 'sportingbet', 'superbet', 'novibet', 'pixbet', 'betpix', 'estrelabet',
+        'betnacional', 'betfair', 'betsson', 'betway', 'galerabet', 'vaidebet', 'f12bet', 'mrjack',
+        'parimatch', '1xbet', '22bet', 'betmotion', 'rivalo', 'bodog', 'brazino', 'bet7k', 'luvabet',
+        'esportesdasorte', 'esportivabet', 'apostaganha', 'lotogreen', 'tigrinho', 'fortunetiger', 'fortune-tiger',
+    );
+}
+
+/**
+ * Marcas configuradas (campo vazio = nenhuma; campo nunca salvo = lista padrão)
+ */
+function rules_wam_gambling_brands($wam_cfg) {
+    if (!isset($wam_cfg['gambling_brands'])) {
+        return rules_wam_gambling_default_brands();
+    }
+    $out = array();
+    foreach (rules_wam_parse_list($wam_cfg['gambling_brands']) as $b) {
+        $b = strtolower(trim($b));
+        if (preg_match('/^[a-z0-9-]{5,40}$/', $b)) {
+            $out[] = $b;
+        }
+    }
+    return array_values(array_unique($out));
+}
+
+/**
+ * Domínio a bloquear para um nome consultado que contém uma marca: do rótulo da marca até o fim
+ * (ex.: www.betano.fyi -> betano.fyi; api.betano-br.xyz -> betano-br.xyz). Null se não contém marca.
+ */
+function rules_wam_brand_base($name, $brands) {
+    $labels = explode('.', strtolower($name));
+    if (count($labels) < 2) {
+        return null;
+    }
+    foreach ($labels as $i => $lab) {
+        foreach ($brands as $b) {
+            if (strpos($lab, $b) !== false) {
+                $base = implode('.', array_slice($labels, $i));
+                return (strpos($base, '.') !== false) ? $base : null;
+            }
+        }
+    }
+    return null;
+}
+
+/**
+ * Domínios da lista automática de apostas (lidos direto do arquivo, sem o cache de rules_wam_read_feed)
+ */
+function rules_wam_gambling_auto_list() {
+    $path = WAM_FEEDS_DIR . '/' . WAM_GAMBLING_AUTO_FEED;
+    $out = array();
+    if (file_exists($path)) {
+        foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $l) {
+            $l = trim($l);
+            if ($l !== '' && $l[0] !== '#') {
+                $out[] = $l;
+            }
+        }
+    }
+    return $out;
+}
+
+/**
+ * Bloqueio automático de apostas por marca (chamado pelo cron): lê as consultas novas do resolver.log
+ * e acrescenta à lista automática os domínios com nome de marca que ainda não estão bloqueados.
+ * Retorna quantos domínios novos entraram (quem chama reaplica as regras quando for > 0).
+ */
+function rules_wam_gambling_autoblock_scan($wam_cfg) {
+    if (!rules_wam_is_checked($wam_cfg['gambling_autoblock'] ?? 'yes')) {
+        return 0;
+    }
+    $brands = rules_wam_gambling_brands($wam_cfg);
+    $log = '/var/log/resolver.log';
+    if (empty($brands) || !file_exists($log)) {
+        return 0;
+    }
+
+    // Continua de onde parou; se o log foi rotacionado (outro inode ou menor), recomeça.
+    // Na primeira vez lê só os últimos 2 MB.
+    clearstatcache(true, $log);
+    $size = (int)filesize($log);
+    $ino = (int)fileinode($log);
+    $state = @json_decode((string)@file_get_contents(WAM_AUTOBLOCK_STATE), true);
+    if (is_array($state) && isset($state['ino'], $state['off']) && (int)$state['ino'] === $ino && (int)$state['off'] <= $size) {
+        $off = (int)$state['off'];
+    } elseif (is_array($state) && isset($state['ino'])) {
+        $off = 0;
+    } else {
+        $off = max(0, $size - 2 * 1024 * 1024);
+    }
+
+    $fh = @fopen($log, 'r');
+    if (!$fh) {
+        return 0;
+    }
+    fseek($fh, $off);
+    $existing = array_fill_keys(rules_wam_gambling_auto_list(), true);
+    $feed = array_fill_keys(rules_wam_read_feed('gambling.txt'), true);
+    $whitelist = rules_wam_build_whitelist($wam_cfg);
+    $new = array();
+    while (($line = fgets($fh)) !== false) {
+        // Linha de consulta do Unbound: "info: <ip> <nome>. <tipo> IN"
+        if (!preg_match('/(?:info|query):\s+[0-9a-fA-F.:]+\s+([a-zA-Z0-9_.-]+?)\.?\s+(?:A|AAAA|HTTPS|CNAME)\s+IN/', $line, $m)) {
+            continue;
+        }
+        $base = rules_wam_brand_base($m[1], $brands);
+        $base = ($base !== null) ? rules_wam_clean_domain($base) : null;
+        if (!$base || isset($existing[$base]) || isset($new[$base])
+            || rules_wam_is_whitelisted($base, $feed) || rules_wam_is_whitelisted($base, $whitelist)) {
+            continue; // já bloqueado pelo feed, já na lista automática ou liberado na whitelist
+        }
+        $new[$base] = true;
+    }
+    @file_put_contents(WAM_AUTOBLOCK_STATE, json_encode(array('ino' => $ino, 'off' => ftell($fh))));
+    fclose($fh);
+
+    if (empty($new)) {
+        return 0;
+    }
+    $path = WAM_FEEDS_DIR . '/' . WAM_GAMBLING_AUTO_FEED;
+    $header = file_exists($path) ? '' : "# Rules WAM - dominios de apostas bloqueados automaticamente por marca\n";
+    @file_put_contents($path, $header . implode("\n", array_keys($new)) . "\n", FILE_APPEND | LOCK_EX);
+    log_error("[Rules WAM] Bloqueio automatico de apostas: " . count($new) . " dominio(s) novo(s): " . implode(', ', array_slice(array_keys($new), 0, 10)));
+    return count($new);
 }
 
 /**

@@ -36,6 +36,8 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
         'block_msg_slack'      => isset($_POST['block_msg_slack']) ? 'yes' : 'no',
         'block_msg_zoom_meet'  => isset($_POST['block_msg_zoom_meet']) ? 'yes' : 'no',
         'block_msg_others'     => isset($_POST['block_msg_others']) ? 'yes' : 'no',
+        'gambling_autoblock'   => isset($_POST['gambling_autoblock']) ? 'yes' : 'no',
+        'gambling_brands'      => rules_wam_list_to_store(strtolower($_POST['gambling_brands'] ?? '')),
         'schedule_enable'      => isset($_POST['schedule_enable']) ? 'yes' : 'no',
         'schedule_start'       => trim($_POST['schedule_start'] ?? ''),
         'schedule_end'         => trim($_POST['schedule_end'] ?? ''),
@@ -72,6 +74,13 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
         $wam_cfg[$lk] = rules_wam_list_to_store($wam_cfg[$lk] ?? '');
     }
     $wam_cfg['custom_hosts'] = rules_wam_hosts_to_store($wam_cfg['custom_hosts'] ?? '');
+
+    // Marcas do bloqueio automático de apostas: só nomes distintivos (5+ caracteres)
+    foreach (rules_wam_parse_list($wam_cfg['gambling_brands']) as $gb) {
+        if (!preg_match('/^[a-z0-9-]{5,40}$/', $gb)) {
+            $input_errors[] = sprintf(gettext("Marca de apostas '%s' inválida: use de 5 a 40 caracteres (letras, números e -). Nomes curtos bloqueariam sites legítimos."), htmlspecialchars($gb));
+        }
+    }
 
     // Sites liberados dentro de cada categoria (preenchidos pela lista de caixas de seleção)
     foreach (array_keys(rules_wam_category_map()) as $ck) {
@@ -224,6 +233,11 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
             config_set_path('installedpackages/rules_wam/state', $wam_state);
         }
         write_config("Rules WAM: configurações salvas via WebGUI");
+        // Limpar a lista automática de apostas (os domínios voltam a ser detectados se forem acessados de novo)
+        if (isset($_POST['gambling_auto_clear'])) {
+            @unlink(WAM_FEEDS_DIR . '/' . WAM_GAMBLING_AUTO_FEED);
+            log_error("[Rules WAM] Lista automatica de apostas limpa via WebGUI.");
+        }
 
         if ($wam_cfg['enable'] === 'yes') {
             rules_wam_resync();
@@ -446,8 +460,37 @@ display_top_tabs($tab_array);
                     <div class="checkbox">
                         <label>
                             <i class="fa fa-tag wam-cat-marker" data-cat="block_gambling" style="color: #64748b; margin-right: 4px;"></i>
-                            <?=gettext("Bloqueia casas de apostas esportivas, cassinos online, tigrinho, Blaze, Betano, Bet365, etc. - Mais de 1.500 domínios")?>
+                            <?=gettext("Bloqueia casas de apostas esportivas, cassinos online, tigrinho, Blaze, Betano, Bet365, etc. - Mais de 1.500 domínios, além de todos os sites .bet, .casino, .poker, .bingo e .bet.br")?>
                         </label>
+                    </div>
+                    <?php
+                        $wam_gb_auto = rules_wam_gambling_auto_list();
+                        $wam_gb_brands = isset($wam_cfg['gambling_brands']) ? rules_wam_list_to_text($wam_cfg['gambling_brands']) : implode("\n", rules_wam_gambling_default_brands());
+                    ?>
+                    <div style="margin-top: 10px; padding: 12px 16px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px;">
+                        <div class="checkbox" style="margin-top: 0;">
+                            <label>
+                                <input type="checkbox" name="gambling_autoblock" value="yes" <?=rules_wam_is_checked($wam_cfg['gambling_autoblock'] ?? 'yes') ? 'checked' : ''?> />
+                                <strong><?=gettext("Bloqueio automático por marca")?></strong>
+                                <span class="text-muted"><?=gettext("— domínios novos com o nome de uma marca abaixo (ex.: betano.fyi) entram sozinhos na categoria em até 5 minutos após o primeiro acesso")?></span>
+                            </label>
+                        </div>
+                        <div class="row">
+                            <div class="col-sm-6">
+                                <label class="small"><?=gettext("Marcas (uma por linha, 5+ caracteres)")?></label>
+                                <textarea name="gambling_brands" rows="5" class="form-control" style="font-family: monospace; font-size: 12px;"><?=htmlspecialchars($wam_gb_brands)?></textarea>
+                                <span class="help-block small"><?=gettext("Evite palavras genéricas: \"bet\" sozinho bloquearia sites como alphabet.com. Para liberar um falso positivo, coloque o domínio na whitelist geral.")?></span>
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="small"><?=sprintf(gettext("Bloqueados automaticamente (%d)"), count($wam_gb_auto))?></label>
+                                <textarea rows="5" class="form-control" readonly style="font-family: monospace; font-size: 12px; background: #fff;"><?=htmlspecialchars(implode("\n", $wam_gb_auto))?></textarea>
+                                <?php if (!empty($wam_gb_auto)): ?>
+                                    <div class="checkbox">
+                                        <label><input type="checkbox" name="gambling_auto_clear" value="yes" /> <?=gettext("Limpar esta lista ao salvar")?></label>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

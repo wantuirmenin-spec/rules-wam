@@ -1653,3 +1653,11 @@ jonbet.bet.br
 jonbet.com.br
 pagbet.bet.br
 pagbet.com.br
+
+# Domínios de topo exclusivos de jogos de azar: bloqueiam qualquer site terminado neles
+bet
+casino
+poker
+bingo
+# Casas de apostas licenciadas no Brasil (a regulamentação federal exige o domínio .bet.br)
+bet.br

@@ -14,6 +14,8 @@
   - Avisos do modo ligado nas abas Configuração, Status e Dashboard e no widget; tentativas registradas no Dashboard com a categoria "Modo de Contingência".
   - Implementado com uma zona raiz (`local-zone: "."`) que bloqueia tudo e zonas `transparent` para cada domínio liberado.
   - A aba fica no privilégio de configuração (`page-services-ruleswam`).
+- **Apostas: domínios inteiros.** O feed passa a bloquear tudo o que termina em `.bet`, `.casino`, `.poker`, `.bingo` e `.bet.br` (domínio exigido das casas licenciadas no Brasil), pegando casas que não estão na lista.
+- **Apostas: bloqueio automático por marca.** As casas criam domínios-espelho o tempo todo (ex.: `betano.fyi`). O cron lê as consultas novas do `resolver.log` a cada 5 minutos e bloqueia sozinho os domínios com nome de marca de apostas (lista editável, 5+ caracteres por marca), gravando em `gambling-auto.txt`. Ligado por padrão; a tela mostra a lista automática e permite limpá-la; a whitelist geral libera falsos positivos.
 
 ### Correções
 - **Zonas duplicadas com o pfSense 2.8.** O pfSense já declara zonas como `mask.icloud.com`, `mask-h2.icloud.com` e `doh.dns.apple.com`, que também estão no feed *Anti-Bypass DoH*. Declarar a mesma zona de novo gerava "duplicate local-zone", e o `unbound-checkconf` recusava a configuração (os perfis por rede caíam). Agora a política geral e o Modo de Contingência pulam as zonas que o pfSense já declara.

@@ -40,7 +40,7 @@ rm -f /usr/local/www/rules_wam_block.php /usr/local/www/wam_status.php /usr/loca
 rm -f /usr/local/www/rules_wam_contingency.php
 rm -f /usr/local/www/widgets/include/rules_wam.inc /usr/local/www/widgets/widgets/rules_wam.widget.php
 rm -f /var/etc/rules_wam_ca.crt /var/etc/rules_wam_ca.key /var/etc/rules_wam_ca.srl /var/etc/rules_wam_ssl.crt /var/etc/rules_wam_ssl.key
-rm -f /var/db/rules_wam_categories.json /var/log/wam_status.json /var/log/wam_checkconf_err.log /var/log/rules_wam_ssl.log
+rm -f /var/db/rules_wam_autoblock.state /var/db/rules_wam_categories.json /var/log/wam_status.json /var/log/wam_checkconf_err.log /var/log/rules_wam_ssl.log
 rm -rf /usr/local/share/wam
 rm -f /tmp/config.cache /tmp/menu.cache /tmp/pkg_menu.cache
 
