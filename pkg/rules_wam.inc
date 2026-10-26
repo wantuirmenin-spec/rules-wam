@@ -9,7 +9,7 @@ require_once("config.inc");
 require_once("util.inc");
 require_once("services.inc");
 
-define('RULES_WAM_VERSION', '1.5.0');
+define('RULES_WAM_VERSION', '1.6.0');
 define('WAM_FEEDS_DIR', '/usr/local/share/wam/feeds');
 define('WAM_CONF_FILE', '/var/unbound/wam_blocklist.conf');
 // Include com curinga: se o arquivo sumir (ex.: /var em RAM disk após reboot) o Unbound continua subindo
@@ -19,6 +19,9 @@ define('WAM_AUDIT_LOG', '/var/log/wam_audit.log');
 define('WAM_AUDIT_MAX_BYTES', 10 * 1024 * 1024);
 define('WAM_CAT_INDEX', '/var/db/rules_wam_categories.json');
 define('WAM_DEFAULT_CORP_SUBNETS', "10.0.0.0/8\n172.16.0.0/12\n192.168.0.0/16");
+// Bloqueio automático de apostas por marca: lista gerada (feed extra da categoria Apostas) e posição de leitura do log
+define('WAM_GAMBLING_AUTO_FEED', 'gambling-auto.txt');
+define('WAM_AUTOBLOCK_STATE', '/var/db/rules_wam_autoblock.state');
 
 /**
  * Auxiliar para verificar se checkbox está marcada (aceita "yes", "on", 1, true)
@@ -299,13 +302,14 @@ function rules_wam_get_config() {
         // Checkboxes ausentes no XML representam 'no' (exceto proteções essenciais, ativas por padrão)
         $default_yes = array(
             'corp_protect_tools', 'corp_protect_cloudflare', 'corp_protect_netskope',
-            'corp_protect_idp', 'corp_protect_helpdesk', 'corp_protect_voip'
+            'corp_protect_idp', 'corp_protect_helpdesk', 'corp_protect_voip',
+            'gambling_autoblock'
         );
         $checkbox_keys = array(
             'enable', 'block_adult', 'block_gambling', 'block_news', 'block_social',
             'block_sports', 'block_gaming', 'block_streaming', 'block_shopping',
             'block_p2p', 'block_doh', 'block_dns_bypass', 'block_vpn', 'block_messaging',
-            'block_wa_by_ip',
+            'block_wa_by_ip', 'https_notice',
             'schedule_enable', 'schedule_weekend',
             'corp_enable', 'corp_reverse_lookup',
             'enable_upstream_forwarding'
@@ -380,7 +384,9 @@ function rules_wam_resync() {
         return;
     }
 
-    if (rules_wam_is_checked($wam_cfg['schedule_enable'] ?? null) && !rules_wam_is_in_schedule_window($wam_cfg)) {
+    // O Modo de Contingência passa por cima do agendamento (não pausa no almoço nem à noite)
+    if (!rules_wam_contingency_active($wam_cfg) &&
+        rules_wam_is_checked($wam_cfg['schedule_enable'] ?? null) && !rules_wam_is_in_schedule_window($wam_cfg)) {
         rules_wam_suspend_schedule($wam_cfg);
         return;
     }
@@ -692,7 +698,12 @@ function rules_wam_category_feeds($cfg_key, $wam_cfg, $all = false) {
     }
     $sub_maps = rules_wam_category_sub_feeds();
     if (!isset($sub_maps[$cfg_key])) {
-        return array($map[$cfg_key]['file'] => $map[$cfg_key]['label']);
+        $feeds = array($map[$cfg_key]['file'] => $map[$cfg_key]['label']);
+        if ($cfg_key === 'block_gambling') {
+            // Domínios descobertos pelo bloqueio automático por marca (rules_wam_gambling_autoblock_scan)
+            $feeds[WAM_GAMBLING_AUTO_FEED] = $map[$cfg_key]['label'];
+        }
+        return $feeds;
     }
 
     $sub_map = $sub_maps[$cfg_key];
@@ -726,6 +737,153 @@ function rules_wam_category_feeds($cfg_key, $wam_cfg, $all = false) {
         }
     }
     return $feeds;
+}
+
+/**
+ * Marcas de casas de apostas usadas no bloqueio automático. Só nomes distintivos (5+ caracteres):
+ * a palavra solta "bet" pegaria sites legítimos (ex.: alphabet.com).
+ */
+function rules_wam_gambling_default_brands() {
+    return array(
+        'betano', 'bet365', 'sportingbet', 'superbet', 'novibet', 'pixbet', 'betpix', 'estrelabet',
+        'betnacional', 'betfair', 'betsson', 'betway', 'galerabet', 'vaidebet', 'f12bet', 'mrjack',
+        'parimatch', '1xbet', '22bet', 'betmotion', 'rivalo', 'bodog', 'brazino', 'bet7k', 'luvabet',
+        'esportesdasorte', 'esportivabet', 'apostaganha', 'lotogreen', 'tigrinho', 'fortunetiger', 'fortune-tiger',
+    );
+}
+
+/**
+ * Marcas configuradas (campo vazio = nenhuma; campo nunca salvo = lista padrão)
+ */
+function rules_wam_gambling_brands($wam_cfg) {
+    if (!isset($wam_cfg['gambling_brands'])) {
+        return rules_wam_gambling_default_brands();
+    }
+    $out = array();
+    foreach (rules_wam_parse_list($wam_cfg['gambling_brands']) as $b) {
+        $b = strtolower(trim($b));
+        if (preg_match('/^[a-z0-9-]{5,40}$/', $b)) {
+            $out[] = $b;
+        }
+    }
+    return array_values(array_unique($out));
+}
+
+/**
+ * Domínio a bloquear para um nome consultado que contém uma marca: do rótulo da marca até o fim
+ * (ex.: www.betano.fyi -> betano.fyi; api.betano-br.xyz -> betano-br.xyz). Null se não contém marca.
+ */
+function rules_wam_brand_base($name, $brands) {
+    $labels = explode('.', strtolower($name));
+    if (count($labels) < 2) {
+        return null;
+    }
+    foreach ($labels as $i => $lab) {
+        foreach ($brands as $b) {
+            if (strpos($lab, $b) !== false) {
+                $base = implode('.', array_slice($labels, $i));
+                return (strpos($base, '.') !== false) ? $base : null;
+            }
+        }
+    }
+    return null;
+}
+
+/**
+ * Domínios da lista automática de apostas (lidos direto do arquivo, sem o cache de rules_wam_read_feed)
+ */
+function rules_wam_gambling_auto_list() {
+    $path = WAM_FEEDS_DIR . '/' . WAM_GAMBLING_AUTO_FEED;
+    $out = array();
+    if (file_exists($path)) {
+        foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $l) {
+            $l = trim($l);
+            if ($l !== '' && $l[0] !== '#') {
+                $out[] = $l;
+            }
+        }
+    }
+    return $out;
+}
+
+/**
+ * Bloqueio automático de apostas por marca (chamado pelo cron): lê as consultas novas do resolver.log
+ * e acrescenta à lista automática os domínios com nome de marca que ainda não estão bloqueados.
+ * Retorna quantos domínios novos entraram (quem chama reaplica as regras quando for > 0).
+ */
+function rules_wam_gambling_autoblock_scan($wam_cfg) {
+    if (!rules_wam_is_checked($wam_cfg['gambling_autoblock'] ?? 'yes')) {
+        return 0;
+    }
+    $brands = rules_wam_gambling_brands($wam_cfg);
+    $log = '/var/log/resolver.log';
+    if (empty($brands) || !file_exists($log)) {
+        return 0;
+    }
+
+    // Continua de onde parou; se o log foi rotacionado (outro inode ou menor), recomeça.
+    // Na primeira vez lê só os últimos 2 MB.
+    clearstatcache(true, $log);
+    $size = (int)filesize($log);
+    $ino = (int)fileinode($log);
+    $state = @json_decode((string)@file_get_contents(WAM_AUTOBLOCK_STATE), true);
+    if (is_array($state) && isset($state['ino'], $state['off']) && (int)$state['ino'] === $ino && (int)$state['off'] <= $size) {
+        $off = (int)$state['off'];
+    } elseif (is_array($state) && isset($state['ino'])) {
+        $off = 0;
+    } else {
+        $off = max(0, $size - 2 * 1024 * 1024);
+    }
+
+    $fh = @fopen($log, 'r');
+    if (!$fh) {
+        return 0;
+    }
+    fseek($fh, $off);
+
+    // Sufixos internos: o Windows também consulta "nome.dominio-interno" (ex.: betnacional.bet.br.empresa.local)
+    // e esses nomes não devem entrar na lista
+    $internal = array('local', 'lan', 'localdomain', 'internal', 'intranet', 'home.arpa', 'arpa', 'invalid', 'test', 'localhost');
+    $sys_domain = strtolower(trim((string)config_get_path('system/domain', '')));
+    if ($sys_domain !== '') {
+        $internal[] = $sys_domain;
+    }
+    foreach (rules_wam_parse_list($wam_cfg['corp_ad_domain'] ?? '') as $cd) {
+        $cd = rules_wam_clean_domain($cd);
+        if ($cd) {
+            $internal[] = $cd;
+        }
+    }
+    $internal = array_fill_keys($internal, true);
+
+    $existing = array_fill_keys(rules_wam_gambling_auto_list(), true);
+    $feed = array_fill_keys(rules_wam_read_feed('gambling.txt'), true);
+    $whitelist = rules_wam_build_whitelist($wam_cfg);
+    $new = array();
+    while (($line = fgets($fh)) !== false) {
+        // Linha de consulta do Unbound: "info: <ip> <nome>. <tipo> IN"
+        if (!preg_match('/(?:info|query):\s+[0-9a-fA-F.:]+\s+([a-zA-Z0-9_.-]+?)\.?\s+(?:A|AAAA|HTTPS|CNAME)\s+IN/', $line, $m)) {
+            continue;
+        }
+        $base = rules_wam_brand_base($m[1], $brands);
+        $base = ($base !== null) ? rules_wam_clean_domain($base) : null;
+        if (!$base || rules_wam_is_whitelisted($base, $internal) || isset($existing[$base]) || isset($new[$base])
+            || rules_wam_is_whitelisted($base, $feed) || rules_wam_is_whitelisted($base, $whitelist)) {
+            continue; // já bloqueado pelo feed, já na lista automática ou liberado na whitelist
+        }
+        $new[$base] = true;
+    }
+    @file_put_contents(WAM_AUTOBLOCK_STATE, json_encode(array('ino' => $ino, 'off' => ftell($fh))));
+    fclose($fh);
+
+    if (empty($new)) {
+        return 0;
+    }
+    $path = WAM_FEEDS_DIR . '/' . WAM_GAMBLING_AUTO_FEED;
+    $header = file_exists($path) ? '' : "# Rules WAM - dominios de apostas bloqueados automaticamente por marca\n";
+    @file_put_contents($path, $header . implode("\n", array_keys($new)) . "\n", FILE_APPEND | LOCK_EX);
+    log_error("[Rules WAM] Bloqueio automatico de apostas: " . count($new) . " dominio(s) novo(s): " . implode(', ', array_slice(array_keys($new), 0, 10)));
+    return count($new);
 }
 
 /**
@@ -798,7 +956,7 @@ function rules_wam_blocked_parent($domain, &$blocked) {
  * Um domínio liberado cujo domínio pai continua bloqueado recebe uma zona "transparent",
  * que tem prioridade por ser mais específica (ex.: liberar m.youtube.com com youtube.com bloqueado).
  */
-function rules_wam_compile_policy($wam_cfg, $cat_keys, $whitelist, $extra, $block_action, $block_page_ip, &$cat_index) {
+function rules_wam_compile_policy($wam_cfg, $cat_keys, $whitelist, $extra, $block_action, $block_page_ip, &$cat_index, $skip = array()) {
     $map = rules_wam_category_map();
     $blocked = array();     // domínio => array(categoria => true)
     $exceptions = array();  // domínio desmarcado => categoria
@@ -882,6 +1040,9 @@ function rules_wam_compile_policy($wam_cfg, $cat_keys, $whitelist, $extra, $bloc
 
     $zones = "";
     foreach ($final as $dom) {
+        if (isset($skip[$dom])) {
+            continue; // o pfSense já declara essa zona (declarar de novo é erro no Unbound)
+        }
         if ($block_action === 'always_null') {
             $zones .= "  local-zone: \"{$dom}\" always_null\n";
         } else {
@@ -890,10 +1051,46 @@ function rules_wam_compile_policy($wam_cfg, $cat_keys, $whitelist, $extra, $bloc
         }
     }
     foreach (array_keys($holes) as $h) {
-        $zones .= "  local-zone: \"{$h}\" transparent\n";
+        if (!isset($skip[$h])) {
+            $zones .= "  local-zone: \"{$h}\" transparent\n";
+        }
     }
 
     return array('zones' => $zones, 'total' => count($final), 'labels' => $labels, 'holes' => count($holes));
+}
+
+/**
+ * Zonas que o próprio pfSense já declara no escopo server: do Unbound (ex.: mask.icloud.com e
+ * doh.dns.apple.com no pfSense 2.8, o domínio do sistema nos host overrides). Declarar a mesma zona
+ * de novo gera "duplicate local-zone" e o unbound-checkconf recusa a configuração inteira.
+ */
+function rules_wam_pfsense_local_zones() {
+    static $zones = null;
+    if ($zones !== null) {
+        return $zones;
+    }
+    $zones = array();
+    foreach (glob('/var/unbound/*.conf') ?: array() as $f) {
+        if (strpos(basename($f), 'wam_blocklist') === 0) {
+            continue;
+        }
+        $in_view = false;
+        foreach ((array)@file($f, FILE_IGNORE_NEW_LINES) as $line) {
+            $t = trim($line);
+            if (strpos($t, 'view:') === 0) {
+                $in_view = true;
+                continue;
+            }
+            if (strpos($t, 'server:') === 0) {
+                $in_view = false;
+                continue;
+            }
+            if (!$in_view && preg_match('/^local-zone:\s*"?([^"\s]+)"?/i', $t, $m)) {
+                $zones[strtolower(rtrim($m[1], '.'))] = true;
+            }
+        }
+    }
+    return $zones;
 }
 
 /**
@@ -977,6 +1174,118 @@ function rules_wam_profiles_required($wam_cfg) {
  */
 function rules_wam_fallback_categories() {
     return array_values(array_diff(array_keys(rules_wam_category_map()), array('block_messaging', 'block_vpn')));
+}
+
+/**
+ * Modo de Contingência: tudo bloqueado no DNS, menos a lista de liberados. Vale para todas as redes
+ * (os perfis ficam suspensos; IPs isentos continuam livres) e passa por cima do agendamento.
+ */
+function rules_wam_contingency_active($wam_cfg) {
+    return rules_wam_is_checked($wam_cfg['contingency_enable'] ?? null);
+}
+
+/**
+ * Aviso exibido no topo das telas do pacote enquanto o Modo de Contingência estiver ligado
+ */
+function rules_wam_contingency_alert_html($wam_cfg) {
+    if (!rules_wam_contingency_active($wam_cfg)) {
+        return '';
+    }
+    $since = trim((string)($wam_cfg['contingency_since'] ?? ''));
+    $by = trim((string)($wam_cfg['contingency_by'] ?? ''));
+    $when = ($since !== '') ? ' desde ' . htmlspecialchars($since) . ($by !== '' ? ' (' . htmlspecialchars($by) . ')' : '') : '';
+    return '<div class="alert alert-danger"><i class="fa fa-exclamation-triangle"></i> <strong>MODO DE CONTINGÊNCIA LIGADO' . $when
+        . '.</strong> Toda a navegação está bloqueada, exceto os serviços liberados; os perfis por rede estão suspensos. '
+        . '<a href="/rules_wam_contingency.php" class="alert-link">Gerenciar ou desligar</a>.</div>';
+}
+
+/**
+ * Conjuntos prontos de serviços liberados no Modo de Contingência (chave => rótulo e domínios)
+ */
+function rules_wam_contingency_presets() {
+    return array(
+        'm365' => array('label' => 'Microsoft 365 (Outlook, Teams, OneDrive, SharePoint)', 'domains' => array(
+            'microsoft.com', 'microsoftonline.com', 'office.com', 'office.net', 'office365.com', 'outlook.com',
+            'sharepoint.com', 'onedrive.com', 'skype.com', 'lync.com', 'onmicrosoft.com', 'cloud.microsoft',
+            'static.microsoft', 'windows.net', 'msauth.net', 'msftauth.net', 'aka.ms', 'azureedge.net', 'msecnd.net')),
+        'google' => array('label' => 'Google Workspace (Gmail, Drive, Meet)', 'domains' => array(
+            'google.com', 'google.com.br', 'googleapis.com', 'gstatic.com', 'googleusercontent.com', 'gmail.com')),
+        'totvs' => array('label' => 'TOTVS (Protheus Cloud, Fluig)', 'domains' => array(
+            'totvs.com', 'totvs.com.br', 'totvs.app', 'cloudtotvs.com.br', 'totvscloud.com.br', 'fluig.com')),
+        'gov' => array('label' => 'Governo (gov.br: Receita, SEFAZ, NF-e, eSocial)', 'domains' => array('gov.br')),
+        'whatsapp' => array('label' => 'WhatsApp', 'domains' => array('whatsapp.com', 'whatsapp.net', 'wa.me')),
+        'antivirus' => array('label' => 'Antivírus Bitdefender (atualizações e console)', 'domains' => array(
+            'bitdefender.com', 'bitdefender.net')),
+    );
+}
+
+/**
+ * Domínios sempre liberados no Modo de Contingência: sem eles o Windows e os celulares acham que a
+ * rede está "sem internet", os certificados não são validados e o relógio dessincroniza.
+ */
+function rules_wam_contingency_essentials() {
+    return array(
+        // Verificação de conectividade (Windows, Android, Apple, Firefox, Linux)
+        'msftconnecttest.com', 'msftncsi.com', 'connectivitycheck.gstatic.com', 'connectivitycheck.android.com',
+        'clients3.google.com', 'captive.apple.com', 'detectportal.firefox.com', 'nmcheck.gnome.org',
+        // Validação de certificados (OCSP/CRL das principais autoridades)
+        'digicert.com', 'sectigo.com', 'usertrust.com', 'globalsign.com', 'globalsign.net', 'lencr.org',
+        'pki.goog', 'entrust.net', 'amazontrust.com', 'msocsp.com', 'crl.microsoft.com', 'oneocsp.microsoft.com',
+        'godaddy.com',
+        // Hora (NTP)
+        'time.windows.com', 'pool.ntp.org', 'ntp.br', 'time.google.com', 'time.apple.com',
+        // Resolução reversa
+        'in-addr.arpa', 'ip6.arpa',
+    );
+}
+
+/**
+ * Lista final de domínios liberados no Modo de Contingência (domínio => true)
+ */
+function rules_wam_contingency_allowlist($wam_cfg) {
+    // Proteções corporativas (Netskope, login Microsoft/Google, ferramentas de TI, helpdesk, VoIP) e domínio do AD;
+    // a whitelist geral só entra se marcada
+    $base_cfg = $wam_cfg;
+    if (!rules_wam_is_checked($wam_cfg['contingency_include_whitelist'] ?? null)) {
+        $base_cfg['custom_whitelist'] = '';
+    }
+    $allow = rules_wam_build_whitelist($base_cfg);
+    foreach (rules_wam_contingency_essentials() as $d) {
+        $allow[$d] = true;
+    }
+    $presets = rules_wam_contingency_presets();
+    foreach (rules_wam_parse_list($wam_cfg['contingency_presets'] ?? '') as $pk) {
+        if (isset($presets[$pk])) {
+            foreach ($presets[$pk]['domains'] as $d) {
+                $allow[$d] = true;
+            }
+        }
+    }
+    $allow += rules_wam_domain_set($wam_cfg['contingency_allow'] ?? '');
+    return $allow;
+}
+
+/**
+ * Zonas do Unbound do Modo de Contingência: a zona raiz "." bloqueia tudo e cada domínio liberado
+ * recebe uma zona "transparent" (mais específica, tem prioridade). O domínio do próprio pfSense não
+ * entra, porque o pfSense já declara uma zona para ele (declarar de novo é erro no Unbound).
+ */
+function rules_wam_compile_contingency($wam_cfg, $block_action, $block_page_ip) {
+    $sys_domain = strtolower(trim((string)config_get_path('system/domain', '')));
+    $skip = rules_wam_pfsense_local_zones();
+    $zones = ($block_action === 'always_null')
+        ? "  local-zone: \".\" always_null\n"
+        : "  local-zone: \".\" redirect\n  local-data: \". 60 IN A {$block_page_ip}\"\n";
+    $allow = rules_wam_contingency_allowlist($wam_cfg);
+    $count = 0;
+    foreach (array_keys($allow) as $d) {
+        if ($d === '' || $d[0] === '*' || $d === $sys_domain || $d === 'localhost' || isset($skip[$d])) {
+            continue;
+        }
+        $zones .= "  local-zone: \"{$d}\" transparent\n";
+        $count++;
+    }
+    return array('zones' => $zones, 'allowed' => $count);
 }
 
 /**
@@ -1278,7 +1587,8 @@ function rules_wam_apply_rules($wam_cfg = null) {
             }
         }
     }
-    $global = rules_wam_compile_policy($wam_cfg, $global_cats, $whitelist, $global_extra, $block_action, $block_page_ip, $cat_index);
+    // Política geral fica no escopo server: pula as zonas que o pfSense já declara ali
+    $global = rules_wam_compile_policy($wam_cfg, $global_cats, $whitelist, $global_extra, $block_action, $block_page_ip, $cat_index, rules_wam_pfsense_local_zones());
     $zones = $global['zones'];
     $total = $global['total'];
     $categories_active = $global['labels'];
@@ -1296,7 +1606,27 @@ function rules_wam_apply_rules($wam_cfg = null) {
         log_error("[Rules WAM] Interfaces sem perfil (bloqueio maximo): " . implode(', ', $uncovered));
     }
 
+    // Modo de Contingência: substitui a política geral e suspende os perfis (IPs isentos continuam livres).
+    // A compilação normal acima continua servindo para o índice de categorias do Dashboard.
+    $contingency = rules_wam_contingency_active($wam_cfg);
+    $contingency_allowed = 0;
+    if ($contingency) {
+        $cont = rules_wam_compile_contingency($wam_cfg, $block_action, $block_page_ip);
+        $zones = $cont['zones'];
+        $contingency_allowed = $cont['allowed'];
+        $total = 0;
+        $categories_active = array('Modo de Contingência');
+        $views = empty($bypass_list) ? array() : array($views[0]);
+        $profile_views = array();
+        $profiles_status = array();
+        $uncovered = array();
+        log_error("[Rules WAM] MODO DE CONTINGENCIA ATIVO: tudo bloqueado no DNS, exceto {$contingency_allowed} dominios liberados.");
+    }
+
     $head  = "# ====================================================\n";
+    if ($contingency) {
+        $head .= "# MODO DE CONTINGENCIA ATIVO - {$contingency_allowed} dominios liberados\n";
+    }
     $head .= "# Rules WAM " . RULES_WAM_VERSION . " - Auto-gerado (nao edite)\n";
     $head .= "# Atualizado em: " . date('Y-m-d H:i:s') . "\n";
     $head .= "# Categorias ativas (" . count($categories_active) . "): " . implode(', ', $categories_active) . "\n";
@@ -1367,6 +1697,10 @@ function rules_wam_apply_rules($wam_cfg = null) {
         'profiles' => $profiles_ok ? $profiles_status : array(),
         'profiles_error' => !$profiles_ok && !empty($profile_views),
         'profiles_required' => $profiles_required,
+        'contingency' => $contingency,
+        'contingency_allowed' => $contingency_allowed,
+        'contingency_since' => $contingency ? (string)($wam_cfg['contingency_since'] ?? '') : '',
+        'contingency_by' => $contingency ? (string)($wam_cfg['contingency_by'] ?? '') : '',
         'uncovered_interfaces' => $profiles_required ? $uncovered : array(),
         'block_action' => $block_action,
         'banner_conflict' => $conflict,
@@ -2563,7 +2897,8 @@ function rules_wam_is_domain_blocked($domain, $client_ip = null) {
         if (isset($zones['block'][$name])) return true;
         array_shift($parts);
     }
-    return false;
+    // Zona raiz "." (Modo de Contingência): bloqueia tudo o que não foi liberado acima
+    return isset($zones['block']['']);
 }
 
 /**
@@ -2812,7 +3147,7 @@ function rules_wam_get_audit_events($limit = 1000) {
                             'online' => $is_online,
                             'status_label' => $is_online ? 'Online' : 'Offline',
                             'domain' => $dom,
-                            'category' => rules_wam_get_domain_category($dom)
+                            'category' => (($cat = rules_wam_get_domain_category($dom)) === 'Regra Personalizada / Outros' && rules_wam_contingency_active($wam_cfg)) ? 'Modo de Contingência' : $cat
                         );
                         if ($limit > 0 && count($events) >= $limit) return $events;
                     }
@@ -2921,34 +3256,70 @@ function rules_wam_effective_block_action($wam_cfg) {
     return $action;
 }
 
+define('WAM_NOTICE_CERT', '/usr/local/etc/nginx/rules_wam_notice.crt');
+define('WAM_NOTICE_KEY', '/usr/local/etc/nginx/rules_wam_notice.key');
+define('WAM_NOTICE_DEFAULT_NAME', 'acesso-bloqueado-pela-ti');
+
 /**
- * Gera a configuração do NGINX do banner.
- * - Escuta somente no IP do banner (nunca em todas as interfaces)
- * - Porta 80: página de bloqueio via PHP-FPM (mesmo usuário da WebGUI do pfSense, sem chmod no socket)
- * - Porta 443: recusa o handshake TLS (sem CA nas máquinas, falha rápida em vez de aviso de certificado)
- * - Limite de requisições por cliente
+ * Nome usado no certificado do aviso HTTPS (é o texto que o navegador mostra em "Avançado")
  */
-function rules_wam_banner_nginx_conf($banner_ip, $with_tls_reject = true) {
-    $c  = "# Gerado automaticamente pelo Rules WAM - nao edite\n";
-    $c .= "user root wheel;\n";
-    $c .= "worker_processes 1;\n";
-    $c .= "pid /var/run/rules_wam_ssl.pid;\n";
-    $c .= "error_log /var/log/rules_wam_ssl.log warn;\n";
-    $c .= "events {\n    worker_connections 512;\n}\n";
-    $c .= "http {\n";
-    $c .= "    access_log off;\n";
-    $c .= "    server_tokens off;\n";
-    $c .= "    default_type text/html;\n";
-    $c .= "    client_max_body_size 1k;\n";
-    $c .= "    client_body_timeout 5s;\n";
-    $c .= "    client_header_timeout 5s;\n";
-    $c .= "    keepalive_timeout 5s;\n";
-    $c .= "    limit_req_zone \$binary_remote_addr zone=wam_banner:1m rate=5r/s;\n";
-    $c .= "    limit_req_status 429;\n\n";
-    $c .= "    server {\n";
-    $c .= "        listen {$banner_ip}:80 default_server;\n";
-    $c .= "        server_name _;\n";
-    $c .= "        location = /favicon.ico { return 204; }\n";
+function rules_wam_https_notice_name($wam_cfg) {
+    $n = strtolower(trim((string)($wam_cfg['https_notice_name'] ?? '')));
+    return rules_wam_valid_notice_name($n) ? $n : WAM_NOTICE_DEFAULT_NAME;
+}
+
+/**
+ * Nome aceito pelo certificado: letras, números, hífen e ponto, como um nome de site
+ */
+function rules_wam_valid_notice_name($n) {
+    if ($n === '' || strlen($n) > 200 || !preg_match('/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/', $n)) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Aviso de bloqueio em HTTPS sem instalar nada nas máquinas: certificado autoassinado cujo nome é a
+ * mensagem. O navegador mostra "Sua conexão não é particular" e, em Avançado, o nome do certificado;
+ * em sites sem HSTS o usuário pode continuar e ver o banner. Gera o certificado se faltar ou se o nome mudou.
+ */
+function rules_wam_ensure_notice_cert($name) {
+    $name_file = WAM_NOTICE_CERT . '.name';
+    // "v2": certificado de servidor (a v1 saía com o perfil de CA do openssl.cnf e o Chrome recusava com ERR_SSL_KEY_USAGE_INCOMPATIBLE)
+    $stamp = "v2:{$name}";
+    if (file_exists(WAM_NOTICE_CERT) && file_exists(WAM_NOTICE_KEY) && trim((string)@file_get_contents($name_file)) === $stamp) {
+        return true;
+    }
+    @mkdir(dirname(WAM_NOTICE_CERT), 0755, true);
+    // Configuração própria: não herda as extensões de CA do openssl.cnf do sistema
+    $cnf = "[req]\nprompt = no\ndistinguished_name = dn\nx509_extensions = ext\n\n"
+        . "[dn]\nCN = {$name}\nO = Acesso bloqueado pela TI (Rules WAM)\n\n"
+        . "[ext]\nbasicConstraints = critical, CA:FALSE\nkeyUsage = critical, digitalSignature\n"
+        . "extendedKeyUsage = serverAuth\nsubjectAltName = DNS:{$name}\nsubjectKeyIdentifier = hash\n";
+    $cnf_file = '/tmp/rules_wam_notice.cnf';
+    file_put_contents($cnf_file, $cnf);
+    $cmd = '/usr/bin/openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 3650'
+        . ' -config ' . escapeshellarg($cnf_file)
+        . ' -keyout ' . escapeshellarg(WAM_NOTICE_KEY) . ' -out ' . escapeshellarg(WAM_NOTICE_CERT) . ' 2>&1';
+    $out = array();
+    $rc = 0;
+    exec($cmd, $out, $rc);
+    @unlink($cnf_file);
+    if ($rc !== 0 || !file_exists(WAM_NOTICE_CERT)) {
+        log_error("[Rules WAM] Falha ao gerar o certificado do aviso HTTPS: " . implode(' | ', array_slice($out, 0, 2)));
+        return false;
+    }
+    @chmod(WAM_NOTICE_KEY, 0600);
+    @file_put_contents($name_file, $stamp);
+    log_error("[Rules WAM] Certificado do aviso HTTPS gerado: {$name}");
+    return true;
+}
+
+/**
+ * Bloco location que entrega o banner via PHP-FPM (igual nas portas 80 e 443)
+ */
+function rules_wam_banner_location() {
+    $c  = "        location = /favicon.ico { return 204; }\n";
     $c .= "        location = /robots.txt { return 204; }\n";
     $c .= "        location / {\n";
     $c .= "            limit_req zone=wam_banner burst=20 nodelay;\n";
@@ -2976,12 +3347,61 @@ function rules_wam_banner_nginx_conf($banner_ip, $with_tls_reject = true) {
     $c .= "            fastcgi_send_timeout 10s;\n";
     $c .= "            fastcgi_connect_timeout 3s;\n";
     $c .= "        }\n";
+    return $c;
+}
+
+/**
+ * Gera a configuração do NGINX do banner.
+ * - Escuta somente no IP do banner (nunca em todas as interfaces)
+ * - Porta 80: página de bloqueio via PHP-FPM (mesmo usuário da WebGUI do pfSense, sem chmod no socket)
+ * - Porta 443 ($tls_mode):
+ *     'reject' recusa o handshake TLS (falha rápida, sem aviso de certificado; padrão)
+ *     'notice' responde com o certificado do aviso ("acesso-bloqueado-pela-ti") e entrega o banner
+ *     'none'   não escuta na 443 (NGINX antigo, sem ssl_reject_handshake)
+ * - Limite de requisições por cliente
+ */
+function rules_wam_banner_nginx_conf($banner_ip, $tls_mode = 'reject', $notice_name = '') {
+    if ($tls_mode === true) {
+        $tls_mode = 'reject';
+    } elseif ($tls_mode === false) {
+        $tls_mode = 'none';
+    }
+    $c  = "# Gerado automaticamente pelo Rules WAM - nao edite\n";
+    $c .= "user root wheel;\n";
+    $c .= "worker_processes 1;\n";
+    $c .= "pid /var/run/rules_wam_ssl.pid;\n";
+    $c .= "error_log /var/log/rules_wam_ssl.log warn;\n";
+    $c .= "events {\n    worker_connections 512;\n}\n";
+    $c .= "http {\n";
+    $c .= "    access_log off;\n";
+    $c .= "    server_tokens off;\n";
+    $c .= "    default_type text/html;\n";
+    $c .= "    client_max_body_size 1k;\n";
+    $c .= "    client_body_timeout 5s;\n";
+    $c .= "    client_header_timeout 5s;\n";
+    $c .= "    keepalive_timeout 5s;\n";
+    $c .= "    limit_req_zone \$binary_remote_addr zone=wam_banner:1m rate=5r/s;\n";
+    $c .= "    limit_req_status 429;\n\n";
+    $c .= "    server {\n";
+    $c .= "        listen {$banner_ip}:80 default_server;\n";
+    $c .= "        server_name _;\n";
+    $c .= rules_wam_banner_location();
     $c .= "    }\n";
-    if ($with_tls_reject) {
+    if ($tls_mode === 'reject') {
         $c .= "\n    server {\n";
         $c .= "        listen {$banner_ip}:443 ssl default_server;\n";
         $c .= "        server_name _;\n";
         $c .= "        ssl_reject_handshake on;\n";
+        $c .= "    }\n";
+    } elseif ($tls_mode === 'notice') {
+        $c .= "\n    server {\n";
+        $c .= "        listen {$banner_ip}:443 ssl default_server;\n";
+        $c .= "        server_name _;\n";
+        $c .= "        # certificado do aviso: {$notice_name} (certificado novo reinicia o banner)\n";
+        $c .= "        ssl_certificate " . WAM_NOTICE_CERT . ";\n";
+        $c .= "        ssl_certificate_key " . WAM_NOTICE_KEY . ";\n";
+        $c .= "        ssl_protocols TLSv1.2 TLSv1.3;\n";
+        $c .= rules_wam_banner_location();
         $c .= "    }\n";
     }
     $c .= "}\n";
@@ -3075,7 +3495,21 @@ function rules_wam_sync_banner_nginx($wam_cfg = null, $start = true) {
     @mkdir('/usr/local/etc/nginx', 0755, true);
     @mkdir('/usr/local/etc/rc.d', 0755, true);
 
-    $conf = rules_wam_banner_nginx_conf($banner_ip, true);
+    // Porta 443: aviso com certificado "acesso-bloqueado" (se ligado e o certificado existir) ou recusa do handshake
+    $tls_mode = 'reject';
+    if (rules_wam_is_checked($wam_cfg['https_notice'] ?? null)) {
+        if (rules_wam_ensure_notice_cert(rules_wam_https_notice_name($wam_cfg))) {
+            $tls_mode = 'notice';
+        } else {
+            log_error("[Rules WAM] Aviso HTTPS indisponivel (certificado nao gerado); porta 443 do banner volta a recusar a conexao.");
+        }
+    }
+    // A impressão do certificado vai no comentário: certificado refeito muda o arquivo e reinicia o NGINX
+    $notice_label = rules_wam_https_notice_name($wam_cfg);
+    if ($tls_mode === 'notice') {
+        $notice_label .= ' ' . substr((string)@md5_file(WAM_NOTICE_CERT), 0, 12);
+    }
+    $conf = rules_wam_banner_nginx_conf($banner_ip, $tls_mode, $notice_label);
     // Valida a configuração; se o NGINX não suportar ssl_reject_handshake (< 1.19.4), sobe só a porta 80
     $tmp = '/tmp/rules_wam_ssl.conf.test';
     file_put_contents($tmp, $conf);
@@ -3083,8 +3517,11 @@ function rules_wam_sync_banner_nginx($wam_cfg = null, $start = true) {
     $out = array();
     exec('/usr/local/sbin/nginx -t -c ' . escapeshellarg($tmp) . ' 2>&1', $out, $rc);
     if ($rc !== 0 && stripos(implode(' ', $out), 'ssl_reject_handshake') !== false) {
-        $conf = rules_wam_banner_nginx_conf($banner_ip, false);
+        $conf = rules_wam_banner_nginx_conf($banner_ip, 'none');
         log_error("[Rules WAM] NGINX sem suporte a ssl_reject_handshake; banner apenas na porta 80.");
+    } elseif ($rc !== 0 && $tls_mode === 'notice') {
+        $conf = rules_wam_banner_nginx_conf($banner_ip, 'reject');
+        log_error("[Rules WAM] Configuracao do aviso HTTPS recusada pelo NGINX; porta 443 volta a recusar a conexao: " . implode(' | ', array_slice($out, 0, 2)));
     } elseif ($rc !== 0) {
         log_error("[Rules WAM] Configuracao do NGINX do banner invalida: " . implode(' | ', array_slice($out, 0, 2)));
     }

@@ -235,8 +235,10 @@ $tab_array = array();
 $tab_array[] = array(gettext("Configurações de Bloqueio"), false, "/rules_wam.php");
 $tab_array[] = array(gettext("Status & Teste de Bloqueio"), false, "/rules_wam_status.php");
 $tab_array[] = array(gettext("Dashboard & Tentativas de Acesso"), true, "/rules_wam_dashboard.php");
+$tab_array[] = array(gettext("Modo de Contingência"), false, "/rules_wam_contingency.php");
 $tab_array[] = array(gettext("Banner de Bloqueio (Prévia)"), false, "/rules_wam_block.php");
 display_top_tabs($tab_array);
+echo rules_wam_contingency_alert_html(rules_wam_get_config());
 
 // Carrega eventos auditados recentes para visualização na tela
 $all_events = rules_wam_get_audit_events(2000);

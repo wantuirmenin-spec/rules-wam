@@ -23,7 +23,22 @@ if ($is_boot) {
     exit(0);
 }
 
+// Bloqueio automático de apostas por marca: domínios novos entram na lista e as regras são reaplicadas
+if ($enabled && rules_wam_gambling_autoblock_scan($wam_cfg) > 0) {
+    rules_wam_resync();
+    exit(0);
+}
+
 if (!$enabled || !rules_wam_is_checked($wam_cfg['schedule_enable'] ?? null)) {
+    exit(0);
+}
+
+// Modo de Contingência ligado: o agendamento não pausa o bloqueio
+if (rules_wam_contingency_active($wam_cfg)) {
+    $status = rules_wam_read_status();
+    if (empty($status['contingency'])) {
+        rules_wam_apply_rules($wam_cfg);
+    }
     exit(0);
 }
 

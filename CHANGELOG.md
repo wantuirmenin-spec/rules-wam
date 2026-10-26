@@ -2,6 +2,33 @@
 
 > **Versão em testes:** até agora o Rules WAM só foi executado em ambiente de laboratório.
 
+## 1.6.0 — Modo de Contingência
+
+### Novidades
+- **Modo de Contingência.** Nova aba *Modo de Contingência*, com botão para ligar e desligar (manual). Para quando a unidade estiver no link reserva (ex.: Starlink) ou numa operação crítica.
+  - Ligado, **tudo fica bloqueado no DNS**, menos a lista de serviços liberados. Vale para **todas as redes**: os perfis por rede ficam suspensos e os IPs isentos (bypass) continuam livres.
+  - Conjuntos prontos para liberar: Microsoft 365, Google Workspace, TOTVS, Governo (gov.br), WhatsApp e antivírus Bitdefender, além de um campo para domínios próprios e a opção de incluir a whitelist geral.
+  - **Sempre liberados:** domínio do Active Directory, proteções corporativas (Netskope, login Microsoft/Google, ferramentas de TI, helpdesk, telefonia), verificação de conectividade do Windows e dos celulares, validação de certificados (OCSP/CRL) e hora (NTP). Sem eles o Windows considera a rede "sem internet" e aplicativos como Teams e Outlook param.
+  - O agendamento por horário não pausa o modo.
+  - Sites `http://` mostram o banner "Modo de Contingência", com a lista do que está disponível; sites `https://` mostram erro de conexão.
+  - Avisos do modo ligado nas abas Configuração, Status e Dashboard e no widget; tentativas registradas no Dashboard com a categoria "Modo de Contingência".
+  - Implementado com uma zona raiz (`local-zone: "."`) que bloqueia tudo e zonas `transparent` para cada domínio liberado.
+  - A aba fica no privilégio de configuração (`page-services-ruleswam`).
+- **Apostas: domínios inteiros.** O feed passa a bloquear tudo o que termina em `.bet`, `.casino`, `.poker`, `.bingo` e `.bet.br` (domínio exigido das casas licenciadas no Brasil), pegando casas que não estão na lista.
+- **Apostas: bloqueio automático por marca.** As casas criam domínios-espelho o tempo todo (ex.: `betano.fyi`). O cron lê as consultas novas do `resolver.log` a cada 5 minutos e bloqueia sozinho os domínios com nome de marca de apostas (lista editável, 5+ caracteres por marca), gravando em `gambling-auto.txt`. Ligado por padrão; a tela mostra a lista automática e permite limpá-la; a whitelist geral libera falsos positivos.
+
+- **Aviso de bloqueio em HTTPS, sem instalar nada nas máquinas (opcional, desligado por padrão).** Nova opção *Aviso de Bloqueio em HTTPS* no painel do banner. Ligada, a porta 443 do banner passa a responder com um certificado autoassinado gerado no firewall, cujo nome é a mensagem (padrão `acesso-bloqueado-pela-ti`, editável).
+  - O navegador mostra o aviso vermelho *"Sua conexão não é particular"* em vez do erro de conexão; o texto aparece nos detalhes do certificado (no Firefox, direto no aviso).
+  - Em sites sem HSTS o usuário pode clicar em *Avançado > Continuar* e vê o banner da empresa (o acesso entra no Dashboard). Em sites com HSTS o navegador não deixa continuar.
+  - Certificado em `/usr/local/etc/nginx/rules_wam_notice.crt` (EC P-256, 10 anos), refeito quando o texto muda. Se a geração falhar, a 443 volta a recusar a conexão.
+
+### Correções
+- **Zonas duplicadas com o pfSense 2.8.** O pfSense já declara zonas como `mask.icloud.com`, `mask-h2.icloud.com` e `doh.dns.apple.com`, que também estão no feed *Anti-Bypass DoH*. Declarar a mesma zona de novo gerava "duplicate local-zone", e o `unbound-checkconf` recusava a configuração (os perfis por rede caíam). Agora a política geral e o Modo de Contingência pulam as zonas que o pfSense já declara.
+
+### Limitações
+- Host overrides do DNS Resolver em domínios diferentes do domínio do próprio pfSense deixam de resolver enquanto o modo estiver ligado (inclua o domínio deles na lista de liberados).
+- Bloqueio só por DNS: aplicativos que conectam direto por IP podem escapar.
+
 ## 1.5.0 — políticas por rede (perfil obrigatório) e sites liberados por categoria
 
 ### Novidades

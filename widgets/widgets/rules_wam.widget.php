@@ -549,6 +549,10 @@ if ($is_ajax) {
                 <span class="label label-danger" style="font-size: 11px; padding: 4px 7px;" title="<?=gettext('Filtragem do Rules WAM está desligada')?>">
                     <i class="fa fa-ban"></i> <?=gettext('Desativado')?>
                 </span>
+            <?php elseif (function_exists('rules_wam_contingency_active') && rules_wam_contingency_active($wam_cfg)): ?>
+                <a href="/rules_wam_contingency.php" class="label label-danger" style="font-size: 11px; padding: 4px 7px;" title="<?=gettext('Tudo bloqueado, exceto os serviços liberados. Clique para gerenciar.')?>">
+                    <i class="fa fa-exclamation-triangle"></i> <?=gettext('MODO DE CONTINGÊNCIA')?>
+                </a>
             <?php elseif ($schedule_enabled && !$in_schedule): ?>
                 <span class="label label-warning" style="font-size: 11px; padding: 4px 7px;" title="<?=gettext('Filtro pausado temporariamente pelo agendador de horário comercial / almoço')?>">
                     <i class="fa fa-clock-o"></i> <?=gettext('Pausado (Horário)')?>

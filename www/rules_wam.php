@@ -36,6 +36,8 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
         'block_msg_slack'      => isset($_POST['block_msg_slack']) ? 'yes' : 'no',
         'block_msg_zoom_meet'  => isset($_POST['block_msg_zoom_meet']) ? 'yes' : 'no',
         'block_msg_others'     => isset($_POST['block_msg_others']) ? 'yes' : 'no',
+        'gambling_autoblock'   => isset($_POST['gambling_autoblock']) ? 'yes' : 'no',
+        'gambling_brands'      => rules_wam_list_to_store(strtolower($_POST['gambling_brands'] ?? '')),
         'schedule_enable'      => isset($_POST['schedule_enable']) ? 'yes' : 'no',
         'schedule_start'       => trim($_POST['schedule_start'] ?? ''),
         'schedule_end'         => trim($_POST['schedule_end'] ?? ''),
@@ -48,6 +50,8 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
         'custom_hosts'         => isset($_POST['custom_hosts']) ? trim($_POST['custom_hosts']) : '',
         'block_action'         => isset($_POST['block_action']) ? trim($_POST['block_action']) : 'block_page',
         'block_page_ip'        => !empty($_POST['block_page_ip']) ? trim($_POST['block_page_ip']) : $lan_default_ip,
+        'https_notice'         => isset($_POST['https_notice']) ? 'yes' : 'no',
+        'https_notice_name'    => preg_replace('/\s+/', '-', strtolower(trim($_POST['https_notice_name'] ?? ''))),
         'block_wa_by_ip'       => isset($_POST['block_wa_by_ip']) ? 'yes' : 'no',
         'support_email'        => trim($_POST['support_email'] ?? ''),
         'gui_admin_sources'    => trim($_POST['gui_admin_sources'] ?? ''),
@@ -72,6 +76,13 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
         $wam_cfg[$lk] = rules_wam_list_to_store($wam_cfg[$lk] ?? '');
     }
     $wam_cfg['custom_hosts'] = rules_wam_hosts_to_store($wam_cfg['custom_hosts'] ?? '');
+
+    // Marcas do bloqueio automático de apostas: só nomes distintivos (5+ caracteres)
+    foreach (rules_wam_parse_list($wam_cfg['gambling_brands']) as $gb) {
+        if (!preg_match('/^[a-z0-9-]{5,40}$/', $gb)) {
+            $input_errors[] = sprintf(gettext("Marca de apostas '%s' inválida: use de 5 a 40 caracteres (letras, números e -). Nomes curtos bloqueariam sites legítimos."), htmlspecialchars($gb));
+        }
+    }
 
     // Sites liberados dentro de cada categoria (preenchidos pela lista de caixas de seleção)
     foreach (array_keys(rules_wam_category_map()) as $ck) {
@@ -162,7 +173,9 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
 
     // Mantém chaves internas que não estão no formulário
     $prev_cfg = rules_wam_get_config();
-    foreach (array('migrated_v14') as $ik) {
+    // (o Modo de Contingência é salvo pela própria aba e não pode se perder aqui)
+    foreach (array('migrated_v14', 'contingency_enable', 'contingency_since', 'contingency_by',
+                   'contingency_presets', 'contingency_allow', 'contingency_include_whitelist') as $ik) {
         if (isset($prev_cfg[$ik])) {
             $wam_cfg[$ik] = $prev_cfg[$ik];
         }
@@ -198,6 +211,11 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
     if (!in_array($wam_cfg['block_action'], array('block_page', 'always_null'), true)) {
         $wam_cfg['block_action'] = 'block_page';
     }
+    if ($wam_cfg['https_notice_name'] === '') {
+        $wam_cfg['https_notice_name'] = WAM_NOTICE_DEFAULT_NAME;
+    } elseif (!rules_wam_valid_notice_name($wam_cfg['https_notice_name'])) {
+        $input_errors[] = gettext("Texto do aviso HTTPS inválido: use só letras sem acento, números, hífen e ponto (ex.: acesso-bloqueado-pela-ti).");
+    }
     if ($wam_cfg['support_email'] !== '' && !filter_var($wam_cfg['support_email'], FILTER_VALIDATE_EMAIL)) {
         $input_errors[] = gettext("E-mail do suporte inválido.");
     }
@@ -222,6 +240,11 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
             config_set_path('installedpackages/rules_wam/state', $wam_state);
         }
         write_config("Rules WAM: configurações salvas via WebGUI");
+        // Limpar a lista automática de apostas (os domínios voltam a ser detectados se forem acessados de novo)
+        if (isset($_POST['gambling_auto_clear'])) {
+            @unlink(WAM_FEEDS_DIR . '/' . WAM_GAMBLING_AUTO_FEED);
+            log_error("[Rules WAM] Lista automatica de apostas limpa via WebGUI.");
+        }
 
         if ($wam_cfg['enable'] === 'yes') {
             rules_wam_resync();
@@ -364,6 +387,7 @@ $tab_array = array();
 $tab_array[] = array(gettext("Configurações de Bloqueio"), true, "/rules_wam.php");
 $tab_array[] = array(gettext("Status & Teste de Bloqueio"), false, "/rules_wam_status.php");
 $tab_array[] = array(gettext("Dashboard & Tentativas de Acesso"), false, "/rules_wam_dashboard.php");
+$tab_array[] = array(gettext("Modo de Contingência"), false, "/rules_wam_contingency.php");
 $tab_array[] = array(gettext("Banner de Bloqueio (Prévia)"), false, "/rules_wam_block.php");
 display_top_tabs($tab_array);
 ?>
@@ -375,6 +399,8 @@ display_top_tabs($tab_array);
         <i class="fa fa-check-circle"></i> <strong><?=htmlspecialchars($save_msg)?></strong>
     </div>
 <?php endif; ?>
+
+<?=rules_wam_contingency_alert_html($wam_cfg)?>
 
 <form action="/rules_wam.php" method="post" name="iform" id="iform" class="form-horizontal">
     <div class="panel panel-default">
@@ -441,8 +467,37 @@ display_top_tabs($tab_array);
                     <div class="checkbox">
                         <label>
                             <i class="fa fa-tag wam-cat-marker" data-cat="block_gambling" style="color: #64748b; margin-right: 4px;"></i>
-                            <?=gettext("Bloqueia casas de apostas esportivas, cassinos online, tigrinho, Blaze, Betano, Bet365, etc. - Mais de 1.500 domínios")?>
+                            <?=gettext("Bloqueia casas de apostas esportivas, cassinos online, tigrinho, Blaze, Betano, Bet365, etc. - Mais de 1.500 domínios, além de todos os sites .bet, .casino, .poker, .bingo e .bet.br")?>
                         </label>
+                    </div>
+                    <?php
+                        $wam_gb_auto = rules_wam_gambling_auto_list();
+                        $wam_gb_brands = isset($wam_cfg['gambling_brands']) ? rules_wam_list_to_text($wam_cfg['gambling_brands']) : implode("\n", rules_wam_gambling_default_brands());
+                    ?>
+                    <div style="margin-top: 10px; padding: 12px 16px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px;">
+                        <div class="checkbox" style="margin-top: 0;">
+                            <label>
+                                <input type="checkbox" name="gambling_autoblock" value="yes" <?=rules_wam_is_checked($wam_cfg['gambling_autoblock'] ?? 'yes') ? 'checked' : ''?> />
+                                <strong><?=gettext("Bloqueio automático por marca")?></strong>
+                                <span class="text-muted"><?=gettext("— domínios novos com o nome de uma marca abaixo (ex.: betano.fyi) entram sozinhos na categoria em até 5 minutos após o primeiro acesso")?></span>
+                            </label>
+                        </div>
+                        <div class="row">
+                            <div class="col-sm-6">
+                                <label class="small"><?=gettext("Marcas (uma por linha, 5+ caracteres)")?></label>
+                                <textarea name="gambling_brands" rows="5" class="form-control" style="font-family: monospace; font-size: 12px;"><?=htmlspecialchars($wam_gb_brands)?></textarea>
+                                <span class="help-block small"><?=gettext("Evite palavras genéricas: \"bet\" sozinho bloquearia sites como alphabet.com. Para liberar um falso positivo, coloque o domínio na whitelist geral.")?></span>
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="small"><?=sprintf(gettext("Bloqueados automaticamente (%d)"), count($wam_gb_auto))?></label>
+                                <textarea rows="5" class="form-control" readonly style="font-family: monospace; font-size: 12px; background: #fff;"><?=htmlspecialchars(implode("\n", $wam_gb_auto))?></textarea>
+                                <?php if (!empty($wam_gb_auto)): ?>
+                                    <div class="checkbox">
+                                        <label><input type="checkbox" name="gambling_auto_clear" value="yes" /> <?=gettext("Limpar esta lista ao salvar")?></label>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -966,7 +1021,7 @@ display_top_tabs($tab_array);
                         </option>
                     </select>
                     <span class="help-block">
-                        <?=gettext("No modo <strong>Banner</strong>, acessos HTTP (porta 80) a domínios bloqueados mostram a página institucional. Acessos HTTPS (porta 443) são recusados na hora, sem aviso de certificado: o navegador mostra erro de conexão. Exige a WebGUI fora das portas 80/443 e sem redirecionamento HTTP.")?><br/>
+                        <?=gettext("No modo <strong>Banner</strong>, acessos HTTP (porta 80) a domínios bloqueados mostram a página institucional. Acessos HTTPS (porta 443) são recusados na hora (erro de conexão), a menos que o aviso HTTPS abaixo esteja ligado. Exige a WebGUI fora das portas 80/443 e sem redirecionamento HTTP.")?><br/>
                         <?=gettext("No modo <strong>Silencioso (0.0.0.0)</strong>, a conexão é recusada imediatamente pelo navegador.")?>
                         <br/>
                         <a href="/rules_wam_block.php" target="_blank" class="btn btn-default btn-xs" style="margin-top: 5px;">
@@ -988,6 +1043,24 @@ display_top_tabs($tab_array);
                         </div>
                     </div>
                     <span class="help-block"><?=gettext("Endereço IP da interface interna do pfSense onde o banner institucional é respondido para as estações bloqueadas.")?></span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="col-sm-3 control-label"><?=gettext("Aviso de Bloqueio em HTTPS")?></label>
+                <div class="col-sm-9">
+                    <div class="checkbox" style="margin-top: 0;">
+                        <label>
+                            <input type="checkbox" name="https_notice" value="yes" <?=rules_wam_is_checked($wam_cfg['https_notice'] ?? 'no') ? 'checked' : ''?> />
+                            <?=gettext("Responder aos sites HTTPS bloqueados com um certificado cujo nome é a mensagem de bloqueio")?>
+                        </label>
+                    </div>
+                    <input type="text" name="https_notice_name" class="form-control" style="max-width: 480px;" maxlength="200"
+                           value="<?=htmlspecialchars(rules_wam_https_notice_name($wam_cfg))?>" placeholder="<?=WAM_NOTICE_DEFAULT_NAME?>" />
+                    <span class="help-block">
+                        <?=gettext("Nada é instalado nas máquinas. O navegador mostra o aviso vermelho <em>\"Sua conexão não é particular\"</em>; o texto acima aparece no certificado (detalhes do aviso, ou direto no Firefox). Em sites sem HSTS o usuário pode clicar em <em>Avançado &gt; Continuar</em> e vê o banner da empresa; em sites com HSTS (Google, Facebook, bancos e vários outros) o navegador não deixa continuar e fica só o aviso.")?><br/>
+                        <?=gettext("Desligado: a porta 443 recusa a conexão na hora (erro de conexão, sem aviso). Use só letras sem acento, números, hífen e ponto.")?>
+                    </span>
                 </div>
             </div>
 

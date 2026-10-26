@@ -43,7 +43,7 @@ done
 
 for f in pkg/rules_wam.inc pkg/rules_wam.xml pkg/rules_wam.priv.inc pkg/register_menu.php pkg/wam_cron.php \
          pkg/wam_setup.php www/rules_wam.php www/rules_wam_status.php www/rules_wam_dashboard.php \
-         www/rules_wam_block.php widgets/include/rules_wam.inc widgets/widgets/rules_wam.widget.php; do
+         www/rules_wam_block.php www/rules_wam_contingency.php widgets/include/rules_wam.inc widgets/widgets/rules_wam.widget.php; do
     if [ ! -f "$SCRIPT_DIR/$f" ]; then
         echo "Erro: arquivo ausente no pacote: $f"
         exit 1
@@ -112,6 +112,7 @@ install -m 0644 "$SCRIPT_DIR/www/rules_wam.php"            /usr/local/www/rules_
 install -m 0644 "$SCRIPT_DIR/www/rules_wam_status.php"     /usr/local/www/rules_wam_status.php
 install -m 0644 "$SCRIPT_DIR/www/rules_wam_dashboard.php"  /usr/local/www/rules_wam_dashboard.php
 install -m 0644 "$SCRIPT_DIR/www/rules_wam_block.php"      /usr/local/www/rules_wam_block.php
+install -m 0644 "$SCRIPT_DIR/www/rules_wam_contingency.php" /usr/local/www/rules_wam_contingency.php
 install -m 0644 "$SCRIPT_DIR/widgets/include/rules_wam.inc"         /usr/local/www/widgets/include/rules_wam.inc
 install -m 0644 "$SCRIPT_DIR/widgets/widgets/rules_wam.widget.php"  /usr/local/www/widgets/widgets/rules_wam.widget.php
 install -m 0644 "$SCRIPT_DIR/feeds/"*.txt /usr/local/share/wam/feeds/
