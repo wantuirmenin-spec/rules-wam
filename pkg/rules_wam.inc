@@ -3285,23 +3285,32 @@ function rules_wam_valid_notice_name($n) {
  */
 function rules_wam_ensure_notice_cert($name) {
     $name_file = WAM_NOTICE_CERT . '.name';
-    if (file_exists(WAM_NOTICE_CERT) && file_exists(WAM_NOTICE_KEY) && trim((string)@file_get_contents($name_file)) === $name) {
+    // "v2": certificado de servidor (a v1 saía com o perfil de CA do openssl.cnf e o Chrome recusava com ERR_SSL_KEY_USAGE_INCOMPATIBLE)
+    $stamp = "v2:{$name}";
+    if (file_exists(WAM_NOTICE_CERT) && file_exists(WAM_NOTICE_KEY) && trim((string)@file_get_contents($name_file)) === $stamp) {
         return true;
     }
     @mkdir(dirname(WAM_NOTICE_CERT), 0755, true);
+    // Configuração própria: não herda as extensões de CA do openssl.cnf do sistema
+    $cnf = "[req]\nprompt = no\ndistinguished_name = dn\nx509_extensions = ext\n\n"
+        . "[dn]\nCN = {$name}\nO = Acesso bloqueado pela TI (Rules WAM)\n\n"
+        . "[ext]\nbasicConstraints = critical, CA:FALSE\nkeyUsage = critical, digitalSignature\n"
+        . "extendedKeyUsage = serverAuth\nsubjectAltName = DNS:{$name}\nsubjectKeyIdentifier = hash\n";
+    $cnf_file = '/tmp/rules_wam_notice.cnf';
+    file_put_contents($cnf_file, $cnf);
     $cmd = '/usr/bin/openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 3650'
-        . ' -subj ' . escapeshellarg("/CN={$name}/O=Acesso bloqueado pela TI (Rules WAM)")
-        . ' -addext ' . escapeshellarg("subjectAltName=DNS:{$name}")
+        . ' -config ' . escapeshellarg($cnf_file)
         . ' -keyout ' . escapeshellarg(WAM_NOTICE_KEY) . ' -out ' . escapeshellarg(WAM_NOTICE_CERT) . ' 2>&1';
     $out = array();
     $rc = 0;
     exec($cmd, $out, $rc);
+    @unlink($cnf_file);
     if ($rc !== 0 || !file_exists(WAM_NOTICE_CERT)) {
         log_error("[Rules WAM] Falha ao gerar o certificado do aviso HTTPS: " . implode(' | ', array_slice($out, 0, 2)));
         return false;
     }
     @chmod(WAM_NOTICE_KEY, 0600);
-    @file_put_contents($name_file, $name);
+    @file_put_contents($name_file, $stamp);
     log_error("[Rules WAM] Certificado do aviso HTTPS gerado: {$name}");
     return true;
 }
@@ -3388,7 +3397,7 @@ function rules_wam_banner_nginx_conf($banner_ip, $tls_mode = 'reject', $notice_n
         $c .= "\n    server {\n";
         $c .= "        listen {$banner_ip}:443 ssl default_server;\n";
         $c .= "        server_name _;\n";
-        $c .= "        # certificado do aviso: {$notice_name} (mudar o texto reinicia o banner)\n";
+        $c .= "        # certificado do aviso: {$notice_name} (certificado novo reinicia o banner)\n";
         $c .= "        ssl_certificate " . WAM_NOTICE_CERT . ";\n";
         $c .= "        ssl_certificate_key " . WAM_NOTICE_KEY . ";\n";
         $c .= "        ssl_protocols TLSv1.2 TLSv1.3;\n";
@@ -3495,7 +3504,12 @@ function rules_wam_sync_banner_nginx($wam_cfg = null, $start = true) {
             log_error("[Rules WAM] Aviso HTTPS indisponivel (certificado nao gerado); porta 443 do banner volta a recusar a conexao.");
         }
     }
-    $conf = rules_wam_banner_nginx_conf($banner_ip, $tls_mode, rules_wam_https_notice_name($wam_cfg));
+    // A impressão do certificado vai no comentário: certificado refeito muda o arquivo e reinicia o NGINX
+    $notice_label = rules_wam_https_notice_name($wam_cfg);
+    if ($tls_mode === 'notice') {
+        $notice_label .= ' ' . substr((string)@md5_file(WAM_NOTICE_CERT), 0, 12);
+    }
+    $conf = rules_wam_banner_nginx_conf($banner_ip, $tls_mode, $notice_label);
     // Valida a configuração; se o NGINX não suportar ssl_reject_handshake (< 1.19.4), sobe só a porta 80
     $tmp = '/tmp/rules_wam_ssl.conf.test';
     file_put_contents($tmp, $conf);
