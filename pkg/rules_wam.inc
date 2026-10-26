@@ -309,7 +309,7 @@ function rules_wam_get_config() {
             'enable', 'block_adult', 'block_gambling', 'block_news', 'block_social',
             'block_sports', 'block_gaming', 'block_streaming', 'block_shopping',
             'block_p2p', 'block_doh', 'block_dns_bypass', 'block_vpn', 'block_messaging',
-            'block_wa_by_ip',
+            'block_wa_by_ip', 'https_notice',
             'schedule_enable', 'schedule_weekend',
             'corp_enable', 'corp_reverse_lookup',
             'enable_upstream_forwarding'
@@ -3256,34 +3256,61 @@ function rules_wam_effective_block_action($wam_cfg) {
     return $action;
 }
 
+define('WAM_NOTICE_CERT', '/usr/local/etc/nginx/rules_wam_notice.crt');
+define('WAM_NOTICE_KEY', '/usr/local/etc/nginx/rules_wam_notice.key');
+define('WAM_NOTICE_DEFAULT_NAME', 'acesso-bloqueado-pela-ti');
+
 /**
- * Gera a configuração do NGINX do banner.
- * - Escuta somente no IP do banner (nunca em todas as interfaces)
- * - Porta 80: página de bloqueio via PHP-FPM (mesmo usuário da WebGUI do pfSense, sem chmod no socket)
- * - Porta 443: recusa o handshake TLS (sem CA nas máquinas, falha rápida em vez de aviso de certificado)
- * - Limite de requisições por cliente
+ * Nome usado no certificado do aviso HTTPS (é o texto que o navegador mostra em "Avançado")
  */
-function rules_wam_banner_nginx_conf($banner_ip, $with_tls_reject = true) {
-    $c  = "# Gerado automaticamente pelo Rules WAM - nao edite\n";
-    $c .= "user root wheel;\n";
-    $c .= "worker_processes 1;\n";
-    $c .= "pid /var/run/rules_wam_ssl.pid;\n";
-    $c .= "error_log /var/log/rules_wam_ssl.log warn;\n";
-    $c .= "events {\n    worker_connections 512;\n}\n";
-    $c .= "http {\n";
-    $c .= "    access_log off;\n";
-    $c .= "    server_tokens off;\n";
-    $c .= "    default_type text/html;\n";
-    $c .= "    client_max_body_size 1k;\n";
-    $c .= "    client_body_timeout 5s;\n";
-    $c .= "    client_header_timeout 5s;\n";
-    $c .= "    keepalive_timeout 5s;\n";
-    $c .= "    limit_req_zone \$binary_remote_addr zone=wam_banner:1m rate=5r/s;\n";
-    $c .= "    limit_req_status 429;\n\n";
-    $c .= "    server {\n";
-    $c .= "        listen {$banner_ip}:80 default_server;\n";
-    $c .= "        server_name _;\n";
-    $c .= "        location = /favicon.ico { return 204; }\n";
+function rules_wam_https_notice_name($wam_cfg) {
+    $n = strtolower(trim((string)($wam_cfg['https_notice_name'] ?? '')));
+    return rules_wam_valid_notice_name($n) ? $n : WAM_NOTICE_DEFAULT_NAME;
+}
+
+/**
+ * Nome aceito pelo certificado: letras, números, hífen e ponto, como um nome de site
+ */
+function rules_wam_valid_notice_name($n) {
+    if ($n === '' || strlen($n) > 200 || !preg_match('/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/', $n)) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Aviso de bloqueio em HTTPS sem instalar nada nas máquinas: certificado autoassinado cujo nome é a
+ * mensagem. O navegador mostra "Sua conexão não é particular" e, em Avançado, o nome do certificado;
+ * em sites sem HSTS o usuário pode continuar e ver o banner. Gera o certificado se faltar ou se o nome mudou.
+ */
+function rules_wam_ensure_notice_cert($name) {
+    $name_file = WAM_NOTICE_CERT . '.name';
+    if (file_exists(WAM_NOTICE_CERT) && file_exists(WAM_NOTICE_KEY) && trim((string)@file_get_contents($name_file)) === $name) {
+        return true;
+    }
+    @mkdir(dirname(WAM_NOTICE_CERT), 0755, true);
+    $cmd = '/usr/bin/openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 3650'
+        . ' -subj ' . escapeshellarg("/CN={$name}/O=Acesso bloqueado pela TI (Rules WAM)")
+        . ' -addext ' . escapeshellarg("subjectAltName=DNS:{$name}")
+        . ' -keyout ' . escapeshellarg(WAM_NOTICE_KEY) . ' -out ' . escapeshellarg(WAM_NOTICE_CERT) . ' 2>&1';
+    $out = array();
+    $rc = 0;
+    exec($cmd, $out, $rc);
+    if ($rc !== 0 || !file_exists(WAM_NOTICE_CERT)) {
+        log_error("[Rules WAM] Falha ao gerar o certificado do aviso HTTPS: " . implode(' | ', array_slice($out, 0, 2)));
+        return false;
+    }
+    @chmod(WAM_NOTICE_KEY, 0600);
+    @file_put_contents($name_file, $name);
+    log_error("[Rules WAM] Certificado do aviso HTTPS gerado: {$name}");
+    return true;
+}
+
+/**
+ * Bloco location que entrega o banner via PHP-FPM (igual nas portas 80 e 443)
+ */
+function rules_wam_banner_location() {
+    $c  = "        location = /favicon.ico { return 204; }\n";
     $c .= "        location = /robots.txt { return 204; }\n";
     $c .= "        location / {\n";
     $c .= "            limit_req zone=wam_banner burst=20 nodelay;\n";
@@ -3311,12 +3338,61 @@ function rules_wam_banner_nginx_conf($banner_ip, $with_tls_reject = true) {
     $c .= "            fastcgi_send_timeout 10s;\n";
     $c .= "            fastcgi_connect_timeout 3s;\n";
     $c .= "        }\n";
+    return $c;
+}
+
+/**
+ * Gera a configuração do NGINX do banner.
+ * - Escuta somente no IP do banner (nunca em todas as interfaces)
+ * - Porta 80: página de bloqueio via PHP-FPM (mesmo usuário da WebGUI do pfSense, sem chmod no socket)
+ * - Porta 443 ($tls_mode):
+ *     'reject' recusa o handshake TLS (falha rápida, sem aviso de certificado; padrão)
+ *     'notice' responde com o certificado do aviso ("acesso-bloqueado-pela-ti") e entrega o banner
+ *     'none'   não escuta na 443 (NGINX antigo, sem ssl_reject_handshake)
+ * - Limite de requisições por cliente
+ */
+function rules_wam_banner_nginx_conf($banner_ip, $tls_mode = 'reject', $notice_name = '') {
+    if ($tls_mode === true) {
+        $tls_mode = 'reject';
+    } elseif ($tls_mode === false) {
+        $tls_mode = 'none';
+    }
+    $c  = "# Gerado automaticamente pelo Rules WAM - nao edite\n";
+    $c .= "user root wheel;\n";
+    $c .= "worker_processes 1;\n";
+    $c .= "pid /var/run/rules_wam_ssl.pid;\n";
+    $c .= "error_log /var/log/rules_wam_ssl.log warn;\n";
+    $c .= "events {\n    worker_connections 512;\n}\n";
+    $c .= "http {\n";
+    $c .= "    access_log off;\n";
+    $c .= "    server_tokens off;\n";
+    $c .= "    default_type text/html;\n";
+    $c .= "    client_max_body_size 1k;\n";
+    $c .= "    client_body_timeout 5s;\n";
+    $c .= "    client_header_timeout 5s;\n";
+    $c .= "    keepalive_timeout 5s;\n";
+    $c .= "    limit_req_zone \$binary_remote_addr zone=wam_banner:1m rate=5r/s;\n";
+    $c .= "    limit_req_status 429;\n\n";
+    $c .= "    server {\n";
+    $c .= "        listen {$banner_ip}:80 default_server;\n";
+    $c .= "        server_name _;\n";
+    $c .= rules_wam_banner_location();
     $c .= "    }\n";
-    if ($with_tls_reject) {
+    if ($tls_mode === 'reject') {
         $c .= "\n    server {\n";
         $c .= "        listen {$banner_ip}:443 ssl default_server;\n";
         $c .= "        server_name _;\n";
         $c .= "        ssl_reject_handshake on;\n";
+        $c .= "    }\n";
+    } elseif ($tls_mode === 'notice') {
+        $c .= "\n    server {\n";
+        $c .= "        listen {$banner_ip}:443 ssl default_server;\n";
+        $c .= "        server_name _;\n";
+        $c .= "        # certificado do aviso: {$notice_name} (mudar o texto reinicia o banner)\n";
+        $c .= "        ssl_certificate " . WAM_NOTICE_CERT . ";\n";
+        $c .= "        ssl_certificate_key " . WAM_NOTICE_KEY . ";\n";
+        $c .= "        ssl_protocols TLSv1.2 TLSv1.3;\n";
+        $c .= rules_wam_banner_location();
         $c .= "    }\n";
     }
     $c .= "}\n";
@@ -3410,7 +3486,16 @@ function rules_wam_sync_banner_nginx($wam_cfg = null, $start = true) {
     @mkdir('/usr/local/etc/nginx', 0755, true);
     @mkdir('/usr/local/etc/rc.d', 0755, true);
 
-    $conf = rules_wam_banner_nginx_conf($banner_ip, true);
+    // Porta 443: aviso com certificado "acesso-bloqueado" (se ligado e o certificado existir) ou recusa do handshake
+    $tls_mode = 'reject';
+    if (rules_wam_is_checked($wam_cfg['https_notice'] ?? null)) {
+        if (rules_wam_ensure_notice_cert(rules_wam_https_notice_name($wam_cfg))) {
+            $tls_mode = 'notice';
+        } else {
+            log_error("[Rules WAM] Aviso HTTPS indisponivel (certificado nao gerado); porta 443 do banner volta a recusar a conexao.");
+        }
+    }
+    $conf = rules_wam_banner_nginx_conf($banner_ip, $tls_mode, rules_wam_https_notice_name($wam_cfg));
     // Valida a configuração; se o NGINX não suportar ssl_reject_handshake (< 1.19.4), sobe só a porta 80
     $tmp = '/tmp/rules_wam_ssl.conf.test';
     file_put_contents($tmp, $conf);
@@ -3418,8 +3503,11 @@ function rules_wam_sync_banner_nginx($wam_cfg = null, $start = true) {
     $out = array();
     exec('/usr/local/sbin/nginx -t -c ' . escapeshellarg($tmp) . ' 2>&1', $out, $rc);
     if ($rc !== 0 && stripos(implode(' ', $out), 'ssl_reject_handshake') !== false) {
-        $conf = rules_wam_banner_nginx_conf($banner_ip, false);
+        $conf = rules_wam_banner_nginx_conf($banner_ip, 'none');
         log_error("[Rules WAM] NGINX sem suporte a ssl_reject_handshake; banner apenas na porta 80.");
+    } elseif ($rc !== 0 && $tls_mode === 'notice') {
+        $conf = rules_wam_banner_nginx_conf($banner_ip, 'reject');
+        log_error("[Rules WAM] Configuracao do aviso HTTPS recusada pelo NGINX; porta 443 volta a recusar a conexao: " . implode(' | ', array_slice($out, 0, 2)));
     } elseif ($rc !== 0) {
         log_error("[Rules WAM] Configuracao do NGINX do banner invalida: " . implode(' | ', array_slice($out, 0, 2)));
     }

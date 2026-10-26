@@ -31,6 +31,7 @@ fi
 
 echo "3. Removendo arquivos..."
 rm -f /usr/local/etc/nginx/rules_wam_ssl.conf /usr/local/etc/rc.d/rules_wam_ssl.sh
+rm -f /usr/local/etc/nginx/rules_wam_notice.crt /usr/local/etc/nginx/rules_wam_notice.key /usr/local/etc/nginx/rules_wam_notice.crt.name
 rm -f /var/unbound/wam_blocklist.conf /var/unbound/conf.d/wam_blocklist.conf
 rm -f /usr/local/pkg/rules_wam.inc /usr/local/pkg/rules_wam.xml /usr/local/pkg/rules_wam_hook.inc
 rm -f /usr/local/pkg/wam.inc /usr/local/pkg/wam.xml /usr/local/pkg/wam_sync.php /usr/local/pkg/wam_cron.php

@@ -50,7 +50,7 @@ O **Rules WAM** (*Web Access Manager*) é uma solução nativa desenvolvida para
 
 ### Principais Benefícios:
 - **Zero Dependência de Proxy Pesado:** Não utiliza Squid nem consome gigabytes de RAM com cache HTTP. Toda a filtragem ocorre em microssegundos no motor nativo do Unbound DNS.
-- **Página de Bloqueio Educativa (HTTP):** Quando um usuário acessa por HTTP um domínio restrito, recebe uma tela institucional explicando o bloqueio, identificando seu computador (IP e Hostname), horário e a categoria. Acessos HTTPS recebem erro de conexão imediato (não há CA nas estações — ver [seção 7](#7-banner-somente-http-sem-ca-nas-estações)).
+- **Página de Bloqueio Educativa (HTTP):** Quando um usuário acessa por HTTP um domínio restrito, recebe uma tela institucional explicando o bloqueio, identificando seu computador (IP e Hostname), horário e a categoria. Acessos HTTPS recebem erro de conexão imediato ou, com o *Aviso de Bloqueio em HTTPS* ligado, o aviso de certificado do navegador com a mensagem de bloqueio (não há CA nas estações — ver [seção 7](#7-banner-somente-http-sem-ca-nas-estações)).
 - **Tolerância Zero a Bypasses:** Bloqueia servidores de DoH (*DNS over HTTPS*) públicos e serviços de VPN/ZTNA que os funcionários costumam utilizar para burlar regras corporativas.
 - **Autônomo & Standalone:** Empacotado em um único instalador auto-extraível (`wam-install.sh`) que executa o mesmo `install.sh` do pacote, com detecção automática da interface LAN.
 - **Mínimo de alterações no firewall:** não cria regras na WAN por padrão, não desliga bogons/redes privadas/DNS rebind e não altera arquivos do núcleo do pfSense.
@@ -97,7 +97,7 @@ O **Rules WAM** (*Web Access Manager*) é uma solução nativa desenvolvida para
 | **Instalação / Remoção** | `/usr/local/pkg/wam_setup.php` | Aplica e reverte as alterações no config.xml (usado por `install.sh` e `uninstall.sh`) |
 | **Privilégios** | `/etc/inc/priv/rules_wam.priv.inc` | Permite delegar o acesso às telas do pacote a outros usuários/grupos |
 | **Configuração do Unbound** | `/var/unbound/wam_blocklist.conf` | Zonas de bloqueio geradas (incluídas por curinga: `include: /var/unbound/wam_blocklist*.conf`) |
-| **NGINX do Banner** | `/usr/local/etc/nginx/rules_wam_ssl.conf` + `/usr/local/etc/rc.d/rules_wam_ssl.sh` | Instância NGINX dedicada que escuta **só no IP do banner**: 80 → página de bloqueio; 443 → recusa o TLS |
+| **NGINX do Banner** | `/usr/local/etc/nginx/rules_wam_ssl.conf` + `/usr/local/etc/rc.d/rules_wam_ssl.sh` | Instância NGINX dedicada que escuta **só no IP do banner**: 80 → página de bloqueio; 443 → recusa o TLS (ou, com o aviso HTTPS ligado, certificado `rules_wam_notice.crt` + banner) |
 | **Agendador Cron** | `/usr/local/pkg/wam_cron.php` | A cada 5 min aplica/suspende o bloqueio conforme horário e almoço |
 | **Página de Bloqueio** | `/usr/local/www/rules_wam_block.php` | Página apresentada ao usuário bloqueado |
 | **Dashboard & Auditoria**| `/usr/local/www/rules_wam_dashboard.php`| Painel com métricas e exportação CSV/JSON |
@@ -263,7 +263,7 @@ O Rules WAM oferece dois modos de bloqueio configuráveis em **Ação de Bloquei
 1. 👉 **Exibir Banner de Bloqueio da Empresa (HTTP) (`block_page`) — [PADRÃO]**
    - **Como Opera:** o Unbound responde com o **IP do banner** (campo *IP do Firewall para o Banner*, que precisa ser o IP de uma interface interna; padrão: IP da LAN).
    - Conexões **HTTP (80)** chegam ao NGINX dedicado do banner, que escuta **só nesse IP**, e são encaminhadas ao `rules_wam_block.php`.
-   - Conexões **HTTPS (443)** têm o handshake TLS recusado na hora (`ssl_reject_handshake`): o navegador mostra erro de conexão, sem aviso de certificado. Ver [seção 7](#7-banner-somente-http-sem-ca-nas-estações).
+   - Conexões **HTTPS (443)** têm o handshake TLS recusado na hora (`ssl_reject_handshake`): o navegador mostra erro de conexão, sem aviso de certificado. Com o **Aviso de Bloqueio em HTTPS** ligado, aparece o aviso de certificado com a mensagem de bloqueio. Ver [seção 7](#7-banner-somente-http-sem-ca-nas-estações).
    - **Requisito:** WebGUI fora das portas 80/443 e com o redirecionamento HTTP desativado. Se houver conflito, o pacote **não mexe na WebGUI**: o bloqueio passa automaticamente para o modo silencioso (0.0.0.0) e a aba **Status & Teste de Bloqueio** mostra um aviso. Para resolver, mova a porta em **System > Advanced > Admin Access** ou reinstale com `--move-gui`.
    - **Proteções do NGINX do banner:** roda como o NGINX da WebGUI (`user root wheel`), limita requisições por cliente (5 req/s), aceita só GET/HEAD e não repassa cabeçalhos do cliente. A página usa apenas `REMOTE_ADDR` e o `Host` validado; `X-Forwarded-*` e `?domain=` são ignorados.
    - **E-mail do Suporte (Banner):** se preenchido, o banner mostra o botão "Contatar Suporte TI" (mailto com domínio, host e IP). Em branco, o botão não aparece.
@@ -570,6 +570,17 @@ As máquinas clientes **não recebem nenhuma CA** do Rules WAM. Sem uma CA confi
 
 Consequência prática: como a maioria dos sites usa HTTPS, a maior parte dos bloqueios aparece como erro de conexão; o banner aparece quando o usuário digita o endereço sem `https://` ou acessa links HTTP.
 
+### Aviso de Bloqueio em HTTPS (opcional, 1.6.0)
+
+Para quem prefere um aviso a um erro de conexão, sem instalar nada nas máquinas: em **Services > Rules WAM**, painel *Ação do Bloqueio & Banner*, marque **Aviso de Bloqueio em HTTPS** e, se quiser, troque o texto (padrão `acesso-bloqueado-pela-ti`; só letras sem acento, números, hífen e ponto).
+
+- O firewall gera um certificado autoassinado (`/usr/local/etc/nginx/rules_wam_notice.crt`, EC P-256, 10 anos) cujo nome é o texto, e a porta 443 do banner passa a usá-lo.
+- O navegador mostra o aviso vermelho **"Sua conexão não é particular"** (`NET::ERR_CERT_AUTHORITY_INVALID`). Clicando no código do erro ou em *Avançado*, o usuário vê o certificado emitido para `acesso-bloqueado-pela-ti`. No Firefox o nome aparece direto no aviso.
+- **Sites sem HSTS:** em *Avançado > Continuar* o usuário vê o banner da empresa e o acesso entra no Dashboard.
+- **Sites com HSTS** (Google, YouTube, Facebook, Instagram, bancos e muitos outros): o navegador não oferece o *Continuar*; fica só o aviso.
+- Orientar os usuários: aviso vermelho em um site que a política bloqueia = bloqueio da TI, não ataque. Em qualquer outro site, o aviso continua significando risco.
+- Desligado (padrão), a 443 recusa a conexão como descrito acima. Se a geração do certificado falhar, o pacote volta sozinho para a recusa e registra no log do sistema.
+
 Não há certificados, GPO nem `rules_wam_ca.crt` para distribuir. Na atualização a partir da 1.3, a CA e o certificado do banner HTTPS são removidos do **System > Cert. Manager** (exceto se o certificado estiver em uso pela WebGUI; nesse caso ele é mantido e o instalador avisa).
 
 ---
@@ -580,7 +591,7 @@ Não há certificados, GPO nem `rules_wam_ca.crt` para distribuir. Na atualizaç
 - **Habilitar Serviço:** Ativa ou desativa a filtragem globalmente com um clique.
 - **Seleção de Categorias:** Marque ou desmarque qualquer uma das 12 categorias.
 - **Ação de Bloqueio:**
-  - `block_page` (Padrão): HTTP mostra o banner e registra no log; HTTPS falha na hora.
+  - `block_page` (Padrão): HTTP mostra o banner e registra no log; HTTPS falha na hora (ou mostra o aviso de certificado, se o *Aviso de Bloqueio em HTTPS* estiver ligado).
   - `always_null`: Bloqueio silencioso (responde `0.0.0.0`).
 - **IP do Firewall para o Banner:** IP de uma interface interna onde o NGINX do banner escuta (validado no Save).
 - **E-mail do Suporte (Banner):** endereço do botão "Contatar Suporte TI". Em branco, o botão não aparece.
@@ -628,7 +639,8 @@ unbound-control -c /var/unbound/unbound.conf reload
 
 | Sintoma | Causa Provável | Solução |
 |---|---|---|
-| Usuários veem erro de conexão em sites HTTPS bloqueados | Comportamento esperado (banner só HTTP, sem CA) | Nada a fazer. Teste com `http://` para ver o banner. |
+| Usuários veem erro de conexão em sites HTTPS bloqueados | Comportamento esperado (banner só HTTP, sem CA) | Nada a fazer. Teste com `http://` para ver o banner, ou ligue o *Aviso de Bloqueio em HTTPS*. |
+| Aviso HTTPS ligado, mas o navegador ainda mostra erro de conexão | Certificado não gerado (veja o log do sistema) ou cache do navegador | `ls -l /usr/local/etc/nginx/rules_wam_notice.*` e `grep 443 -A6 /usr/local/etc/nginx/rules_wam_ssl.conf`; feche e abra o navegador. |
 | O banner não abre em HTTP | WebGUI em 80/443 ou redirecionamento HTTP ativo (bloqueio caiu para 0.0.0.0) | Veja o aviso na aba Status. Mova a WebGUI em **System > Advanced > Admin Access** (porta ≠ 80/443 e redirecionamento desativado) e salve o Rules WAM. |
 | O banner não abre e não há conflito de porta | NGINX do banner parado | Confira `sockstat -4 -l -p 80,443` e `/var/log/rules_wam_ssl.log`; rode `sh /usr/local/etc/rc.d/rules_wam_ssl.sh restart`. |
 | IPs isentos continuam bloqueados | View `wam_bypass` rejeitada pelo `unbound-checkconf` | Veja `/var/log/wam_checkconf_err.log` e a aba Status (contagem de bypass). |
