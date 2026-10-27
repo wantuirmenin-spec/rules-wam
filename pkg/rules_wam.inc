@@ -9,7 +9,7 @@ require_once("config.inc");
 require_once("util.inc");
 require_once("services.inc");
 
-define('RULES_WAM_VERSION', '1.6.0');
+define('RULES_WAM_VERSION', '1.6.1');
 define('WAM_FEEDS_DIR', '/usr/local/share/wam/feeds');
 define('WAM_CONF_FILE', '/var/unbound/wam_blocklist.conf');
 // Include com curinga: se o arquivo sumir (ex.: /var em RAM disk após reboot) o Unbound continua subindo
@@ -22,6 +22,12 @@ define('WAM_DEFAULT_CORP_SUBNETS', "10.0.0.0/8\n172.16.0.0/12\n192.168.0.0/16");
 // Bloqueio automático de apostas por marca: lista gerada (feed extra da categoria Apostas) e posição de leitura do log
 define('WAM_GAMBLING_AUTO_FEED', 'gambling-auto.txt');
 define('WAM_AUTOBLOCK_STATE', '/var/db/rules_wam_autoblock.state');
+define('WAM_RESOLVER_LOG', '/var/log/resolver.log');
+// Saúde do log do Unbound: última leitura de total.num.queries e tamanho do resolver.log
+define('WAM_LOGHEALTH_STATE', '/var/db/rules_wam_loghealth.json');
+// Tamanho de rotação do resolver.log sugerido/aplicado (o padrão do pfSense, 500 KiB, rotaciona a cada poucos minutos)
+define('WAM_RESOLVER_LOG_MIN', 50 * 1024 * 1024);
+define('WAM_RESOLVER_LOG_SET', 100 * 1024 * 1024);
 
 /**
  * Auxiliar para verificar se checkbox está marcada (aceita "yes", "on", 1, true)
@@ -807,6 +813,62 @@ function rules_wam_gambling_auto_list() {
 }
 
 /**
+ * Arquivos rotacionados do resolver.log, do mais novo para o mais antigo
+ * (o newsyslog do pfSense gera resolver.log.0, depois comprime em resolver.log.0.bz2)
+ */
+function rules_wam_resolver_rotated($max = 10) {
+    $out = array();
+    for ($i = 0; $i < $max; $i++) {
+        foreach (array('', '.bz2', '.gz') as $ext) {
+            $f = WAM_RESOLVER_LOG . '.' . $i . $ext;
+            if (file_exists($f)) {
+                $out[] = $f;
+                break;
+            }
+        }
+    }
+    return $out;
+}
+
+/**
+ * Abre um log para leitura sequencial (os comprimidos passam pelo bzcat/zcat)
+ */
+function rules_wam_log_open($path) {
+    if (substr($path, -4) === '.bz2') {
+        return @popen('/usr/bin/bzcat ' . escapeshellarg($path) . ' 2>/dev/null', 'r');
+    }
+    if (substr($path, -3) === '.gz') {
+        return @popen('/usr/bin/zcat ' . escapeshellarg($path) . ' 2>/dev/null', 'r');
+    }
+    return @fopen($path, 'r');
+}
+
+function rules_wam_log_close($path, $fh) {
+    if (substr($path, -4) === '.bz2' || substr($path, -3) === '.gz') {
+        @pclose($fh);
+    } else {
+        @fclose($fh);
+    }
+}
+
+/**
+ * Identifica um arquivo de log pela primeira linha completa: continua igual depois da rotação
+ * e da compressão (o inode não). Retorna null se o arquivo ainda não tem uma linha inteira.
+ */
+function rules_wam_log_head($path) {
+    $fh = rules_wam_log_open($path);
+    if (!$fh) {
+        return null;
+    }
+    $line = fgets($fh, 4096);
+    rules_wam_log_close($path, $fh);
+    if ($line === false || substr($line, -1) !== "\n") {
+        return null;
+    }
+    return md5($line);
+}
+
+/**
  * Bloqueio automático de apostas por marca (chamado pelo cron): lê as consultas novas do resolver.log
  * e acrescenta à lista automática os domínios com nome de marca que ainda não estão bloqueados.
  * Retorna quantos domínios novos entraram (quem chama reaplica as regras quando for > 0).
@@ -816,30 +878,45 @@ function rules_wam_gambling_autoblock_scan($wam_cfg) {
         return 0;
     }
     $brands = rules_wam_gambling_brands($wam_cfg);
-    $log = '/var/log/resolver.log';
+    $log = WAM_RESOLVER_LOG;
     if (empty($brands) || !file_exists($log)) {
         return 0;
     }
 
-    // Continua de onde parou; se o log foi rotacionado (outro inode ou menor), recomeça.
-    // Na primeira vez lê só os últimos 2 MB.
+    // Continua de onde parou. Se o log foi rotacionado (outro inode ou menor), primeiro termina
+    // o arquivo anterior a partir do offset salvo (ele vira resolver.log.0 ou .0.bz2) e depois
+    // lê o novo do início. Na primeira vez lê só os últimos 2 MB.
     clearstatcache(true, $log);
     $size = (int)filesize($log);
     $ino = (int)fileinode($log);
+    $head = rules_wam_log_head($log);
     $state = @json_decode((string)@file_get_contents(WAM_AUTOBLOCK_STATE), true);
+    $sources = array(); // lista de [arquivo, offset]
     if (is_array($state) && isset($state['ino'], $state['off']) && (int)$state['ino'] === $ino && (int)$state['off'] <= $size) {
-        $off = (int)$state['off'];
+        $sources[] = array($log, (int)$state['off']);
     } elseif (is_array($state) && isset($state['ino'])) {
-        $off = 0;
+        $rotated = rules_wam_resolver_rotated(5);
+        $found = -1;
+        foreach ($rotated as $ri => $rf) {
+            // Estado da 1.6.0 não tem 'head': assume o rotacionado mais recente
+            if (empty($state['head']) ? ($ri === 0) : (rules_wam_log_head($rf) === $state['head'])) {
+                $found = $ri;
+                break;
+            }
+        }
+        if ($found >= 0) {
+            $sources[] = array($rotated[$found], (int)$state['off']);
+            // Rotações a mais entre duas leituras: os arquivos mais novos entram inteiros
+            for ($ri = $found - 1; $ri >= 0; $ri--) {
+                $sources[] = array($rotated[$ri], 0);
+            }
+        } else {
+            log_error("[Rules WAM] Bloqueio automatico de apostas: o resolver.log foi rotacionado e o arquivo anterior nao foi encontrado; consultas entre a ultima leitura e a rotacao nao foram verificadas.");
+        }
+        $sources[] = array($log, 0);
     } else {
-        $off = max(0, $size - 2 * 1024 * 1024);
+        $sources[] = array($log, max(0, $size - 2 * 1024 * 1024));
     }
-
-    $fh = @fopen($log, 'r');
-    if (!$fh) {
-        return 0;
-    }
-    fseek($fh, $off);
 
     // Sufixos internos: o Windows também consulta "nome.dominio-interno" (ex.: betnacional.bet.br.empresa.local)
     // e esses nomes não devem entrar na lista
@@ -860,21 +937,46 @@ function rules_wam_gambling_autoblock_scan($wam_cfg) {
     $feed = array_fill_keys(rules_wam_read_feed('gambling.txt'), true);
     $whitelist = rules_wam_build_whitelist($wam_cfg);
     $new = array();
-    while (($line = fgets($fh)) !== false) {
-        // Linha de consulta do Unbound: "info: <ip> <nome>. <tipo> IN"
-        if (!preg_match('/(?:info|query):\s+[0-9a-fA-F.:]+\s+([a-zA-Z0-9_.-]+?)\.?\s+(?:A|AAAA|HTTPS|CNAME)\s+IN/', $line, $m)) {
+    $cur_off = null;
+    foreach ($sources as $src) {
+        list($path, $off) = $src;
+        $fh = rules_wam_log_open($path);
+        if (!$fh) {
             continue;
         }
-        $base = rules_wam_brand_base($m[1], $brands);
-        $base = ($base !== null) ? rules_wam_clean_domain($base) : null;
-        if (!$base || rules_wam_is_whitelisted($base, $internal) || isset($existing[$base]) || isset($new[$base])
-            || rules_wam_is_whitelisted($base, $feed) || rules_wam_is_whitelisted($base, $whitelist)) {
-            continue; // já bloqueado pelo feed, já na lista automática ou liberado na whitelist
+        if ($path === $log) {
+            fseek($fh, $off);
+        } else {
+            // Comprimido (pipe) não aceita fseek: descarta até o offset salvo
+            for ($skip = $off; $skip > 0; ) {
+                $chunk = fread($fh, (int)min($skip, 1048576));
+                if ($chunk === false || $chunk === '') {
+                    break;
+                }
+                $skip -= strlen($chunk);
+            }
         }
-        $new[$base] = true;
+        while (($line = fgets($fh)) !== false) {
+            // Linha de consulta do Unbound: "info: <ip> <nome>. <tipo> IN"
+            if (!preg_match('/(?:info|query):\s+[0-9a-fA-F.:]+\s+([a-zA-Z0-9_.-]+?)\.?\s+(?:A|AAAA|HTTPS|CNAME)\s+IN/', $line, $m)) {
+                continue;
+            }
+            $base = rules_wam_brand_base($m[1], $brands);
+            $base = ($base !== null) ? rules_wam_clean_domain($base) : null;
+            if (!$base || rules_wam_is_whitelisted($base, $internal) || isset($existing[$base]) || isset($new[$base])
+                || rules_wam_is_whitelisted($base, $feed) || rules_wam_is_whitelisted($base, $whitelist)) {
+                continue; // já bloqueado pelo feed, já na lista automática ou liberado na whitelist
+            }
+            $new[$base] = true;
+        }
+        if ($path === $log) {
+            $cur_off = ftell($fh);
+        }
+        rules_wam_log_close($path, $fh);
     }
-    @file_put_contents(WAM_AUTOBLOCK_STATE, json_encode(array('ino' => $ino, 'off' => ftell($fh))));
-    fclose($fh);
+    if ($cur_off !== null) {
+        @file_put_contents(WAM_AUTOBLOCK_STATE, json_encode(array('ino' => $ino, 'off' => $cur_off, 'head' => $head)));
+    }
 
     if (empty($new)) {
         return 0;
@@ -2575,8 +2677,16 @@ function rules_wam_reload_unbound() {
 
     // 4. Se o serviço já está rodando, efetua recarga em memória com ZERO DOWNTIME (sem parar o DNS)
     if ($is_running && file_exists('/usr/local/sbin/unbound-control') && file_exists($ub_conf)) {
+        clearstatcache(true, WAM_RESOLVER_LOG);
+        $log_before = file_exists(WAM_RESOLVER_LOG) ? (int)filesize(WAM_RESOLVER_LOG) : 0;
         // reload relê a configuração e já descarta o cache
         mwexec("/usr/local/sbin/unbound-control -c {$ub_conf} reload 2>/dev/null");
+        // Confirma que o Unbound continua gravando no log depois do reload (em produção ele já parou de
+        // gravar quando o reload coincidiu com o syslogd reabrindo os sockets)
+        $pid = rules_wam_unbound_pid();
+        if ($pid > 0 && !rules_wam_log_has_pid_since($pid, $log_before, 3)) {
+            log_error("[Rules WAM] Depois do reload, o Unbound (PID {$pid}) nao gravou nada no resolver.log. Se o log continuar parado, reinicie o servico em Status > Services.");
+        }
         return true;
     }
 
@@ -2590,6 +2700,116 @@ function rules_wam_reload_unbound() {
     return true;
 }
 
+
+function rules_wam_unbound_pid() {
+    $pid = (int)trim((string)@file_get_contents('/var/run/unbound.pid'));
+    if ($pid > 0 && function_exists('posix_kill') && !@posix_kill($pid, 0)) {
+        return 0;
+    }
+    return max(0, $pid);
+}
+
+/**
+ * Espera até $wait segundos alguma linha "unbound[PID]" aparecer no resolver.log depois do byte $from
+ * (o reload grava "start of service"). Se o log rotacionou nesse meio-tempo, lê o arquivo novo do início.
+ */
+function rules_wam_log_has_pid_since($pid, $from, $wait) {
+    $needle = "unbound[{$pid}]";
+    $deadline = microtime(true) + $wait;
+    do {
+        usleep(500000);
+        clearstatcache(true, WAM_RESOLVER_LOG);
+        $size = file_exists(WAM_RESOLVER_LOG) ? (int)filesize(WAM_RESOLVER_LOG) : 0;
+        $start = ($size < $from) ? 0 : $from;
+        if ($size > $start) {
+            $start = max($start, $size - 262144);
+            $chunk = (string)@file_get_contents(WAM_RESOLVER_LOG, false, null, $start, $size - $start);
+            if (strpos($chunk, $needle) !== false) {
+                return true;
+            }
+        }
+    } while (microtime(true) < $deadline);
+    return false;
+}
+
+/**
+ * Saúde do log do Unbound: o Unbound pode continuar respondendo e parar de gravar no syslog
+ * (visto em produção depois de um reload junto com mudança no log). Sem o log, o Dashboard e o
+ * bloqueio automático ficam cegos. Compara o total.num.queries com o resolver.log desde a última
+ * amostra (no mínimo 60 s antes; o cron chama a cada 5 min). Retorna o último resultado:
+ * array('ok' => true|false|null, 'checked_at' => 'Y-m-d H:i:s', 'detail' => texto).
+ */
+function rules_wam_log_health_check() {
+    $prev = @json_decode((string)@file_get_contents(WAM_LOGHEALTH_STATE), true);
+    if (!is_array($prev)) {
+        $prev = array();
+    }
+    $now = time();
+    if (!empty($prev['ts']) && ($now - (int)$prev['ts']) < 60) {
+        return $prev['result'] ?? array('ok' => null);
+    }
+
+    $pid = rules_wam_unbound_pid();
+    $queries = null;
+    if ($pid > 0 && file_exists('/usr/local/sbin/unbound-control')) {
+        $out = array();
+        @exec('/usr/local/sbin/unbound-control -c /var/unbound/unbound.conf stats_noreset 2>/dev/null', $out);
+        foreach ($out as $l) {
+            if (strpos($l, 'total.num.queries=') === 0) {
+                $queries = (int)substr($l, strlen('total.num.queries='));
+                break;
+            }
+        }
+    }
+    clearstatcache(true, WAM_RESOLVER_LOG);
+    $log_mtime = file_exists(WAM_RESOLVER_LOG) ? (int)filemtime(WAM_RESOLVER_LOG) : 0;
+
+    $result = array('ok' => null, 'checked_at' => date('Y-m-d H:i:s', $now), 'detail' => '');
+    // Só dá veredito com o mesmo processo nas duas amostras e com consultas novas no meio
+    if ($queries !== null && !empty($prev['pid']) && (int)$prev['pid'] === $pid
+        && isset($prev['queries']) && $queries >= (int)$prev['queries'] + 10) {
+        $tail = array();
+        @exec('/usr/bin/tail -n 200 ' . escapeshellarg(WAM_RESOLVER_LOG) . ' 2>/dev/null', $tail);
+        $has_pid = (strpos(implode("\n", $tail), "unbound[{$pid}]") !== false);
+        $stale = ($now - $log_mtime) > 120;
+        if ($stale || !$has_pid) {
+            $result['ok'] = false;
+            $result['detail'] = sprintf('%d consultas desde %s; resolver.log %s.', $queries - (int)$prev['queries'],
+                date('H:i:s', (int)$prev['ts']),
+                $stale ? 'sem alteração desde ' . ($log_mtime ? date('H:i:s', $log_mtime) : '-') : 'sem linhas do PID ' . $pid);
+            if (($prev['result']['ok'] ?? null) !== false) {
+                log_error("[Rules WAM] O Unbound (PID {$pid}) parou de registrar consultas no resolver.log ({$result['detail']}). Reinicie o servico em Status > Services.");
+            }
+        } else {
+            $result['ok'] = true;
+        }
+    } elseif (isset($prev['result']) && !empty($prev['pid']) && (int)$prev['pid'] === $pid) {
+        // Poucas consultas no intervalo: mantém o último veredito do mesmo processo
+        $result = $prev['result'];
+    }
+
+    @file_put_contents(WAM_LOGHEALTH_STATE, json_encode(array(
+        'ts' => $now, 'pid' => $pid, 'queries' => $queries, 'result' => $result
+    )));
+    return $result;
+}
+
+/**
+ * Alerta da saúde do log para as abas Status e Dashboard ('' quando está tudo bem)
+ */
+function rules_wam_log_health_alert_html($wam_cfg) {
+    if (!rules_wam_is_checked($wam_cfg['enable'] ?? null)) {
+        return '';
+    }
+    $h = rules_wam_log_health_check();
+    if (($h['ok'] ?? null) !== false) {
+        return '';
+    }
+    return '<div class="alert alert-danger"><i class="fa fa-exclamation-triangle"></i> <strong>'
+        . htmlspecialchars(gettext('O Unbound parou de registrar consultas: reinicie o serviço em Status > Services.'))
+        . '</strong> ' . htmlspecialchars(gettext('Enquanto isso, o Dashboard e o bloqueio automático de apostas não veem as consultas novas.'))
+        . ' <span class="small text-muted">(' . htmlspecialchars(($h['detail'] ?? '') . ' ' . gettext('Verificado em') . ' ' . ($h['checked_at'] ?? '-')) . ')</span></div>';
+}
 
 /**
  * Identifica o Hostname a partir do IP (via Mapeamento Manual, DHCP leases do pfSense, Unbound ou DNS Reverso)
@@ -3085,35 +3305,48 @@ function rules_wam_get_audit_events($limit = 1000) {
 
     // 2. Lê /var/log/resolver.log e /var/log/system.log do pfSense (consultas reais de rede de qualquer cliente)
     $log_lines = array();
-    $log_files = array('/var/log/resolver.log', '/var/log/system.log');
+    $log_files = array(WAM_RESOLVER_LOG, '/var/log/system.log');
     $tail_count = min(intval($limit * 3), 60000);
 
     foreach ($log_files as $lfile) {
         if (!file_exists($lfile)) continue;
+        $f_out = array();
 
         // Se for circular clog (FreeBSD/pfSense)
         if (file_exists('/usr/local/sbin/clog')) {
-            $clog_out = array();
-            @exec('/usr/local/sbin/clog -f ' . escapeshellarg($lfile) . ' 2>/dev/null | tail -n ' . $tail_count, $clog_out);
-            if (!empty($clog_out)) {
-                $log_lines = array_merge($log_lines, $clog_out);
-                continue;
-            }
+            @exec('/usr/local/sbin/clog -f ' . escapeshellarg($lfile) . ' 2>/dev/null | tail -n ' . $tail_count, $f_out);
         }
 
         // Tenta tail nativo do shell
-        $tail_out = array();
-        @exec('tail -n ' . $tail_count . ' ' . escapeshellarg($lfile) . ' 2>/dev/null', $tail_out);
-        if (!empty($tail_out)) {
-            $log_lines = array_merge($log_lines, $tail_out);
-            continue;
+        if (empty($f_out)) {
+            @exec('tail -n ' . $tail_count . ' ' . escapeshellarg($lfile) . ' 2>/dev/null', $f_out);
         }
 
         // Fallback PHP file()
-        $f_lines = @file($lfile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        if ($f_lines) {
-            $log_lines = array_merge($log_lines, array_slice($f_lines, -$tail_count));
+        if (empty($f_out)) {
+            $f_lines = @file($lfile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            if ($f_lines) {
+                $f_out = array_slice($f_lines, -$tail_count);
+            }
         }
+
+        // O resolver.log rotaciona a cada poucos minutos com o tamanho padrão: completa com os
+        // rotacionados das últimas 24 h (mais novo primeiro), no mesmo limite de linhas e até ~5 s
+        if ($lfile === WAM_RESOLVER_LOG && count($f_out) < $tail_count) {
+            $t0 = microtime(true);
+            foreach (rules_wam_resolver_rotated() as $rf) {
+                $missing = $tail_count - count($f_out);
+                if ($missing <= 0 || (time() - (int)@filemtime($rf)) > 86400 || (microtime(true) - $t0) > 5) {
+                    break;
+                }
+                $reader = (substr($rf, -4) === '.bz2') ? '/usr/bin/bzcat ' : ((substr($rf, -3) === '.gz') ? '/usr/bin/zcat ' : '/bin/cat ');
+                $r_out = array();
+                @exec($reader . escapeshellarg($rf) . ' 2>/dev/null | tail -n ' . intval($missing), $r_out);
+                $f_out = array_merge($r_out, $f_out);
+            }
+        }
+
+        $log_lines = array_merge($log_lines, $f_out);
     }
 
     if (!empty($log_lines)) {

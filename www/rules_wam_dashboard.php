@@ -239,6 +239,7 @@ $tab_array[] = array(gettext("Modo de Contingência"), false, "/rules_wam_contin
 $tab_array[] = array(gettext("Banner de Bloqueio (Prévia)"), false, "/rules_wam_block.php");
 display_top_tabs($tab_array);
 echo rules_wam_contingency_alert_html(rules_wam_get_config());
+echo rules_wam_log_health_alert_html(rules_wam_get_config());
 
 // Carrega eventos auditados recentes para visualização na tela
 $all_events = rules_wam_get_audit_events(2000);

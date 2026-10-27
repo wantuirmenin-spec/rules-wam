@@ -197,7 +197,13 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
     if (($wam_cfg['schedule_lunch_start'] === '') !== ($wam_cfg['schedule_lunch_end'] === '')) {
         $input_errors[] = gettext("Preencha início e fim do almoço, ou deixe os dois em branco.");
     }
-    if (!filter_var($wam_cfg['block_page_ip'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+    if (!in_array($wam_cfg['block_action'], array('block_page', 'always_null'), true)) {
+        $wam_cfg['block_action'] = 'block_page';
+    }
+    // O IP do banner só vale no modo Banner; no modo silencioso fica o valor que já estava salvo
+    if ($wam_cfg['block_action'] !== 'block_page') {
+        $wam_cfg['block_page_ip'] = $prev_cfg['block_page_ip'] ?? $lan_default_ip;
+    } elseif (!filter_var($wam_cfg['block_page_ip'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
         $input_errors[] = gettext("IP do banner inválido.");
     } else {
         $ip_ok = false;
@@ -207,9 +213,6 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
         if (!$ip_ok) {
             $input_errors[] = gettext("O IP do banner precisa ser o IP de uma interface interna do firewall.");
         }
-    }
-    if (!in_array($wam_cfg['block_action'], array('block_page', 'always_null'), true)) {
-        $wam_cfg['block_action'] = 'block_page';
     }
     if ($wam_cfg['https_notice_name'] === '') {
         $wam_cfg['https_notice_name'] = WAM_NOTICE_DEFAULT_NAME;
@@ -1042,7 +1045,7 @@ display_top_tabs($tab_array);
                             </button>
                         </div>
                     </div>
-                    <span class="help-block"><?=gettext("Endereço IP da interface interna do pfSense onde o banner institucional é respondido para as estações bloqueadas.")?></span>
+                    <span class="help-block"><?=gettext("Endereço IP da interface interna do pfSense onde o banner institucional é respondido para as estações bloqueadas. Só é usado no modo Banner: para o modo silencioso, escolha \"Retornar 0.0.0.0\" em <strong>Comportamento do Bloqueio</strong> (não digite 0.0.0.0 aqui).")?></span>
                 </div>
             </div>
 

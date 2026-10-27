@@ -1,6 +1,23 @@
 # Changelog
 
-> **Versão em testes:** até agora o Rules WAM só foi executado em ambiente de laboratório.
+> **Versão em testes:** a primeira instalação em produção foi em 27/10/2026 (pfSense 2.7.2 CE). A 1.6.1 reúne as correções dela.
+
+## 1.6.1 — correções da primeira instalação em produção
+
+Atualização por cima da 1.6.0, sem mudança de padrão, de formato da configuração nem categoria nova. Perfis, integração corporativa, banner, aviso HTTPS, `gambling-auto.txt` e o estado do bloqueio automático são preservados.
+
+### Correções
+- **Rotação do `resolver.log`.** Com o tamanho padrão do pfSense (500 KiB) e o registro de consultas ligado, o log rotaciona a cada poucos minutos.
+  - **Bloqueio automático de apostas:** quando o log rotaciona, o cron primeiro termina o arquivo anterior (`resolver.log.0` ou `resolver.log.0.bz2`) a partir de onde tinha parado, e só depois lê o novo. Antes, as consultas entre a última leitura e a rotação se perdiam (caso real: `betano.fyi`). Se o arquivo anterior não for encontrado, um aviso vai para o log do sistema.
+  - **Dashboard:** completa o histórico com os arquivos rotacionados das últimas 24 h, no mesmo limite de linhas e com até ~5 s de leitura. Antes, o histórico sumia a cada rotação.
+  - **Instalação/atualização:** se o *Log Rotation Size* do DNS Resolver estiver vazio, passa a 100 MB (só regrava a configuração do newsyslog, sem reiniciar o syslogd). Um valor já definido nunca é alterado; abaixo de 50 MB, o instalador e a aba Status recomendam o aumento.
+- **Unbound parou de gravar no log depois de um Salvar.** Em produção, um reload coincidiu com a mudança do log do DNS Resolver: o Unbound continuou respondendo, mas parou de gravar no `resolver.log` até ser reiniciado. O reload continua sendo usado (o restart derruba o DNS de todas as redes), e agora:
+  - depois do reload, o pacote espera até 3 s pela linha do PID atual no log e registra um aviso no log do sistema se ela não aparecer;
+  - uma checagem de saúde (cron de 5 minutos e abas Status/Dashboard) compara o `total.num.queries` do Unbound com o `resolver.log`. Se há consultas novas e o log está parado há mais de 2 minutos, ou sem linhas do PID atual, aparece o aviso "O Unbound parou de registrar consultas: reinicie o serviço em Status > Services".
+- **IP do banner validado no modo silencioso.** O campo *IP do Firewall para o Banner* só é validado no modo *Banner*. No modo *Retornar 0.0.0.0*, o valor salvo antes é mantido, e o texto de ajuda explica onde se escolhe o modo silencioso.
+
+### Documentação
+- Manual do administrador: comportamento do *Anti-Bypass DoH* com conexões já abertas, DoH fixo no navegador, DNS privado do Android e GPO `DnsOverHttpsMode`.
 
 ## 1.6.0 — Modo de Contingência
 
