@@ -157,6 +157,11 @@ O Rules WAM possui **12 macro-categorias** prontas para ativação imediata:
 - Servidores públicos de DNS-over-HTTPS utilizados por navegadores e celulares para fugir do DNS local: *Cloudflare 1.1.1.1, Google 8.8.8.8, Quad9 9.9.9.9, OpenDNS, AdGuard DoH*, etc.
 - Feed: `doh-providers.txt`.
 - Com esta categoria marcada, também é criada uma regra *reject* para DNS-over-TLS (porta **853**).
+- **Comportamento observado em produção:**
+  - O bloqueio por DNS **não derruba conexões DoH que já estão abertas**. Um navegador que já estava conectado ao `cloudflare-dns.com` continua resolvendo por ele até ser fechado ou trocar de rede. Para validar o bloqueio, feche o navegador por completo ou desligue e ligue o Wi-Fi do aparelho.
+  - Navegador com provedor DoH fixo (opção *Personalizado* / *Custom*) pode ficar **sem resolver nada**. Em máquinas do domínio, desligue o DoH por GPO: `DnsOverHttpsMode = off` no Chrome e no Edge.
+  - Android com **DNS privado** fixo num servidor fica sem DNS, porque a porta 853 é bloqueada. Volte o aparelho para *Automático* ou *Desativado*.
+  - Navegadores e celulares no modo *Automático* voltam sozinhos para o DNS do sistema.
 
 ### 11. 🔒 VPN, ZTNA & Proxies Anônimos (`block_vpn`)
 Controle modular permitindo ativar a categoria geral ou **isolar fornecedores específicos**:

@@ -19,6 +19,15 @@ $tab_array[] = array(gettext("Modo de Contingência"), false, "/rules_wam_contin
 $tab_array[] = array(gettext("Banner de Bloqueio (Prévia)"), false, "/rules_wam_block.php");
 display_top_tabs($tab_array);
 echo rules_wam_contingency_alert_html(rules_wam_get_config());
+echo rules_wam_log_health_alert_html(rules_wam_get_config());
+
+// Rotação do resolver.log muito pequena: o histórico do Dashboard fica curto
+$wam_logsize = trim((string)config_get_path('syslog/resolver_settings/logfilesize', ''));
+if ($wam_logsize === '' || (int)$wam_logsize < WAM_RESOLVER_LOG_MIN) {
+    print_info_box(sprintf(gettext('O log do DNS Resolver rotaciona a cada %s. Com o registro de consultas do Rules WAM isso acontece a cada poucos minutos. Recomendado: %d MB (%d bytes) em Status > System Logs > DNS Resolver > Log Rotation Size.'),
+        $wam_logsize === '' ? gettext('500 KiB (padrão do pfSense)') : round((int)$wam_logsize / 1024) . ' KiB',
+        WAM_RESOLVER_LOG_SET / 1048576, WAM_RESOLVER_LOG_SET), 'warning', false);
+}
 
 if (function_exists('rules_wam_banner_conflict') && rules_wam_banner_conflict() !== '' && (rules_wam_get_config()['block_action'] ?? 'block_page') === 'block_page') {
     print_info_box(htmlspecialchars(rules_wam_banner_conflict()) . ' ' . gettext('O banner de bloqueio está desligado e os domínios bloqueados retornam 0.0.0.0. Para usar o banner, mova a WebGUI para outra porta (System > Advanced > Admin Access) e desative o redirecionamento HTTP.'), 'warning', false);

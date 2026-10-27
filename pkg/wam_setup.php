@@ -252,8 +252,30 @@ case 'install':
     wam_remove_core_patches();
     wam_remove_legacy_certs();
 
+    // 5b. Rotação do resolver.log: com o padrão do pfSense (500 KiB) o log das consultas rotaciona a cada
+    //     poucos minutos. Só preenche quando está vazio; um valor já definido nunca é alterado.
+    $rotate_changed = false;
+    $log_size = trim((string)config_get_path('syslog/resolver_settings/logfilesize', ''));
+    if ($log_size === '') {
+        config_set_path('syslog/resolver_settings/logfilesize', (string)WAM_RESOLVER_LOG_SET);
+        $rotate_changed = true;
+        wam_out("Tamanho de rotação do log do DNS Resolver definido em " . (WAM_RESOLVER_LOG_SET / 1048576) . " MB");
+    } elseif ((int)$log_size < WAM_RESOLVER_LOG_MIN) {
+        wam_out("Aviso: o log do DNS Resolver rotaciona a cada " . round((int)$log_size / 1024) . " KiB. Recomendado: " . (WAM_RESOLVER_LOG_SET / 1048576) . " MB (" . WAM_RESOLVER_LOG_SET . " bytes) em Status > System Logs > DNS Resolver > Log Rotation Size.");
+    }
+
     config_set_path('installedpackages/rules_wam/config/0', $cfg);
     write_config("Rules WAM " . RULES_WAM_VERSION . ": instalacao/atualizacao");
+
+    // Regrava só a configuração do newsyslog (sem reiniciar o syslogd)
+    if ($rotate_changed) {
+        if (!function_exists('system_log_rotation_setup') && file_exists('/etc/inc/syslog.inc')) {
+            require_once('syslog.inc');
+        }
+        if (function_exists('system_log_rotation_setup')) {
+            system_log_rotation_setup();
+        }
+    }
 
     // 6. Aplica (gera regras do Unbound, banner e firewall)
     rules_wam_resync();
