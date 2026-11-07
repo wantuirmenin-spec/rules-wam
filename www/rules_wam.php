@@ -112,6 +112,7 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
                 'networks'   => rules_wam_list_to_store($pp['networks'] ?? ''),
                 'allow'      => rules_wam_list_to_store($pp['allow'] ?? ''),
                 'block'      => rules_wam_list_to_store($pp['block'] ?? ''),
+                'gui_access' => isset($pp['gui_access']) ? 'yes' : 'no',
             );
             $pcats = (array)($pp['cats'] ?? array());
             foreach (array_keys(rules_wam_category_map()) as $ck) {
@@ -252,6 +253,17 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
         if ($wam_cfg['enable'] === 'yes') {
             rules_wam_resync();
             $save_msg = "Configurações salvas e aplicadas.";
+            // Quem está salvando pode estar numa rede que acabou de perder a regra da WebGUI
+            $my_ip = $_SERVER['REMOTE_ADDR'] ?? '';
+            if (filter_var($my_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                foreach (rules_wam_interface_policies($wam_cfg) as $pk => $pol) {
+                    $pcidr = $iface_list[$pk]['cidr'] ?? '';
+                    if (empty($pol['gui']) && $pcidr !== '' && rules_wam_cidr_contains($pcidr, $my_ip . '/32')) {
+                        $save_msg .= " Atenção: o seu IP ({$my_ip}) está numa rede sem a regra de acesso à WebGUI do Rules WAM. Se nenhuma outra regra liberar o acesso, você perde a conexão com o firewall.";
+                        break;
+                    }
+                }
+            }
             if (rules_wam_banner_conflict() !== '' && $wam_cfg['block_action'] === 'block_page') {
                 $save_msg .= " Atenção: " . rules_wam_banner_conflict() . " O banner fica desligado e o bloqueio usa 0.0.0.0.";
             }
@@ -368,6 +380,16 @@ function wam_render_profile($idx, $p, $ifaces, $catmap) {
                 <div class="col-sm-5">
                     <textarea name="<?=$n?>[block]" rows="3" class="form-control" placeholder="Ex.: exemplo.com.br"><?=$h(rules_wam_list_to_text($p['block'] ?? ''))?></textarea>
                     <span class="help-block"><?=gettext("Bloqueados: só nesta rede, além das categorias marcadas.")?></span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="col-sm-3 control-label"><?=gettext("Acesso à WebGUI")?></label>
+                <div class="col-sm-9">
+                    <label class="checkbox-inline" style="padding-top: 0;">
+                        <input type="checkbox" name="<?=$n?>[gui_access]" value="yes" <?=rules_wam_is_checked($p['gui_access'] ?? 'yes') ? 'checked' : ''?> />
+                        <?=gettext("Criar regra de acesso à WebGUI nas interfaces deste perfil")?>
+                    </label>
+                    <span class="help-block"><?=gettext("Desmarque em redes de convidados. A regra só deixa de ser criada pelo Rules WAM: regras suas que liberam o firewall (destino * ou This Firewall) continuam valendo. Para bloquear de fato, crie na interface uma regra Block com destino This Firewall acima delas, liberando antes a porta 53 (DNS).")?></span>
                 </div>
             </div>
         </div>

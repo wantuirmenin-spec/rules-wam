@@ -334,11 +334,11 @@ Painel **Acesso Administrativo à WebGUI** em **Services > Rules WAM**:
 - **Origens Internas Autorizadas** (`gui_admin_sources`, alias `WAM_GUI_Admins`): IPs/redes que podem acessar a WebGUI pelas redes internas. Em branco = qualquer origem interna. Recomendado: só as redes da TI.
 - **Origens Autorizadas pela WAN** (`gui_wan_sources`, alias `WAM_GUI_WAN_Sources`): em branco = **nenhuma regra na WAN** (recomendado). Preencha só com IPs públicos fixos da TI.
 
-Regras criadas automaticamente (descrição começando com `Rules WAM - `, inseridas no topo):
+Regras criadas automaticamente (descrição começando com `Rules WAM - `). As de bloqueio e a do banner vão para o topo; as de acesso à WebGUI vão para o **final**, depois das regras do administrador:
 
 | Regra | Onde | Quando |
 |---|---|---|
-| *pass* TCP → `(self)` na porta da WebGUI, origem `WAM_GUI_Admins` (ou qualquer) | Cada interface interna | Sempre |
+| *pass* TCP → `(self)` na porta da WebGUI, origem `WAM_GUI_Admins` (ou qualquer) | Cada interface interna | Sempre, exceto nas interfaces de perfis com *Acesso à WebGUI* desmarcado |
 | *pass* TCP de `WAM_GUI_WAN_Sources` → `(self)` na porta da WebGUI | WAN | Só se *Origens Autorizadas pela WAN* estiver preenchido |
 | *pass* TCP → IP do banner, portas 80/443 (`WAM_Banner_Ports`) | Floating (interfaces internas) | Modo Banner ativo e sem conflito de porta |
 | *reject* TCP/UDP porta 853 (DoT) | Floating | Categoria Anti-Bypass DoH marcada |
@@ -347,6 +347,21 @@ Regras criadas automaticamente (descrição começando com `Rules WAM - `, inser
 | NAT porta 53 → `127.0.0.1` (+ exceção/pass para `WAM_Corp_AD_DNS`) | Cada interface interna | Anti-Bypass DNS (porta 53) marcado |
 
 As regras de bloqueio só existem durante o horário de bloqueio. O pacote **não** altera bogons, redes privadas na WAN, DNS rebind nem a porta da WebGUI (exceto no instalador, com `--move-gui`). O config.xml só é regravado quando há mudança.
+
+**Como o pacote convive com as suas regras.** A cada Salvar (e quando o cron reaplica as regras), o Rules WAM remove e recria **só** as regras cuja descrição começa com `Rules WAM - `. As demais ficam como estão, na mesma ordem. Por isso:
+- não comece a descrição das suas regras com `Rules WAM - ` (elas seriam apagadas na próxima sincronização);
+- não edite nem apague as regras `Rules WAM - …` à mão: elas voltam como o pacote as gera. Use as opções da tela (origens da WebGUI, *Acesso à WebGUI* do perfil).
+
+**Rede de convidados sem acesso ao firewall.** Desmarcar *Acesso à WebGUI* no perfil (ex.: GUEST) só evita que o Rules WAM crie a regra dele. Se uma regra sua já libera destino `*` (ou um alias com as redes privadas, que inclui os IPs do próprio firewall), o convidado continua alcançando a WebGUI. Para isolar a rede, na aba da interface, acima das regras de liberação:
+
+| # | Ação | Protocolo | Origem | Destino | Porta |
+|---|---|---|---|---|---|
+| 1 | Pass | TCP/UDP | *rede da interface* | This Firewall (self) | 53 (DNS do Rules WAM) |
+| 2 | Block | * | *rede da interface* | This Firewall (self) | * |
+| 3 | Block | * | *rede da interface* | redes privadas (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) | * |
+| 4 | Pass | * | *rede da interface* | * | * (internet) |
+
+O banner continua funcionando, porque a regra do banner fica na aba Floating e vale antes destas. Com portal cativo, libere também as portas dele no firewall (8002/8003) antes da regra 2. Depois de aplicar, limpe os estados da rede em *Diagnostics > States*: conexões já abertas continuam até expirar.
 
 **Privilégios:** o arquivo `/etc/inc/priv/rules_wam.priv.inc` permite delegar as telas do pacote em **System > User Manager** sem dar acesso total.
 
@@ -365,7 +380,8 @@ Permite que cada rede tenha o próprio conjunto de bloqueios. Exemplo: visitante
 3. Marque as interfaces/VLANs da rede. A sub-rede de cada uma é obtida automaticamente. Se precisar, informe redes extras em *Redes adicionais (CIDR)* (ex.: sub-redes roteadas por switch L3).
 4. Marque as categorias que devem ficar **bloqueadas nesta rede**. No exemplo, o GUEST fica sem *Mídias Sociais* e sem *Streaming*. Os botões *Marcar todas* / *Limpar* ajudam.
 5. Se quiser, use *Sites liberados* e *Sites bloqueados* para ajustes só desta rede.
-6. Clique em **Salvar e Aplicar Regras**.
+6. Em redes de convidados, desmarque **Acesso à WebGUI** para o pacote não criar a regra de acesso à WebGUI nas interfaces do perfil (veja *Rede de convidados sem acesso ao firewall* na seção 4.12). Marcado por padrão.
+7. Clique em **Salvar e Aplicar Regras**.
 
 **Regras de funcionamento:**
 - Cada rede só pode estar em um perfil. Um perfil desmarcado (*Ativo*) fica salvo, mas não é aplicado (e suas interfaces passam a contar como "sem perfil").

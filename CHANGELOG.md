@@ -2,6 +2,16 @@
 
 > **Versão em testes:** a primeira instalação em produção foi em 27/10/2026 (pfSense 2.7.2 CE). A 1.6.1 reúne as correções dela.
 
+## 1.6.2 — acesso à WebGUI por perfil de rede
+
+Atualização por cima da 1.6.1. Nada muda para quem não mexer na opção nova.
+
+### Novidades
+- **Acesso à WebGUI por perfil.** Nova opção *Acesso à WebGUI* em cada perfil de Políticas por Rede, **marcada por padrão** (e também nos perfis que já existem). Desmarcada, o pacote deixa de criar a regra "Rules WAM - Acesso WebGUI" nas interfaces desse perfil, por exemplo na rede de convidados. Ao salvar, a tela avisa se o IP de quem salvou está numa rede que ficou sem a regra.
+
+### Documentação
+- Manual do administrador: como o pacote convive com as regras do administrador (só recria as que começam com "Rules WAM - "), a ordem real das regras da WebGUI (no final, não no topo) e uma receita para isolar a rede de convidados do firewall e das redes internas sem perder o DNS e o banner.
+
 ## 1.6.1 — correções da primeira instalação em produção
 
 Atualização por cima da 1.6.0, sem mudança de padrão, de formato da configuração nem categoria nova. Perfis, integração corporativa, banner, aviso HTTPS, `gambling-auto.txt` e o estado do bloqueio automático são preservados.

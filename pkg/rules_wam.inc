@@ -9,7 +9,7 @@ require_once("config.inc");
 require_once("util.inc");
 require_once("services.inc");
 
-define('RULES_WAM_VERSION', '1.6.1');
+define('RULES_WAM_VERSION', '1.6.2');
 define('WAM_FEEDS_DIR', '/usr/local/share/wam/feeds');
 define('WAM_CONF_FILE', '/var/unbound/wam_blocklist.conf');
 // Include com curinga: se o arquivo sumir (ex.: /var em RAM disk após reboot) o Unbound continua subindo
@@ -1490,7 +1490,7 @@ function rules_wam_category_usage($wam_cfg) {
 /**
  * Política efetiva de cada interface interna (modo perfil obrigatório): o perfil que marcou a interface,
  * senão o primeiro perfil com uma rede que contém a sub-rede dela, senão o bloqueio das redes sem perfil.
- * Retorna if_key => array('profile' => nome ou '', 'cats' => categorias).
+ * Retorna if_key => array('profile' => nome ou '', 'cats' => categorias, 'gui' => cria a regra de acesso à WebGUI).
  */
 function rules_wam_interface_policies($wam_cfg, $ifaces = null) {
     if ($ifaces === null) {
@@ -1521,9 +1521,10 @@ function rules_wam_interface_policies($wam_cfg, $ifaces = null) {
                 }
             }
         }
+        // gui_access (1.6.2): sem a chave, a regra da WebGUI continua sendo criada, como antes
         $out[$k] = ($hit !== null)
-            ? array('profile' => $hit['name'], 'cats' => rules_wam_profile_categories($hit))
-            : array('profile' => '', 'cats' => rules_wam_fallback_categories());
+            ? array('profile' => $hit['name'], 'cats' => rules_wam_profile_categories($hit), 'gui' => rules_wam_is_checked($hit['gui_access'] ?? 'yes'))
+            : array('profile' => '', 'cats' => rules_wam_fallback_categories(), 'gui' => true);
     }
     return $out;
 }
@@ -2215,10 +2216,16 @@ function rules_wam_sync_firewall_rules($wam_cfg = null, $blocking = true) {
     $alias_changed = rules_wam_set_alias("WAM_GUI_Admins", "network", $admin_sources, "Origens autorizadas a acessar a WebGUI pelas redes internas") || $alias_changed;
     $gui_src = empty($admin_sources) ? array("any" => "") : array("address" => "WAM_GUI_Admins");
 
+    // Perfis com "Criar regra de acesso à WebGUI" desmarcado (ex.: rede de convidados) ficam sem a regra
+    $gui_policies = rules_wam_profiles_required($wam_cfg) ? rules_wam_interface_policies($wam_cfg, $configured_internal) : array();
     $tracker = 1700000011;
     foreach ($configured_internal as $if_key => $if_data) {
+        $if_tracker = $tracker++; // o tracker de cada interface não muda quando outra fica sem a regra
+        if (isset($gui_policies[$if_key]) && empty($gui_policies[$if_key]['gui'])) {
+            continue;
+        }
         $if_label = !empty($if_data['descr']) ? $if_data['descr'] : strtoupper($if_key);
-        $gui_rules[] = rules_wam_make_rule($tracker++, "pass", $if_key, "tcp", $gui_src,
+        $gui_rules[] = rules_wam_make_rule($if_tracker, "pass", $if_key, "tcp", $gui_src,
             array("network" => "(self)", "port" => (string)$gui_port),
             "Acesso WebGUI {$if_label} (Porta {$gui_port})");
     }
