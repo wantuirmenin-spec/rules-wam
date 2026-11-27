@@ -9,7 +9,7 @@ require_once("config.inc");
 require_once("util.inc");
 require_once("services.inc");
 
-define('RULES_WAM_VERSION', '1.6.1');
+define('RULES_WAM_VERSION', '1.6.3');
 define('WAM_FEEDS_DIR', '/usr/local/share/wam/feeds');
 define('WAM_CONF_FILE', '/var/unbound/wam_blocklist.conf');
 // Include com curinga: se o arquivo sumir (ex.: /var em RAM disk após reboot) o Unbound continua subindo
@@ -315,6 +315,7 @@ function rules_wam_get_config() {
             'enable', 'block_adult', 'block_gambling', 'block_news', 'block_social',
             'block_sports', 'block_gaming', 'block_streaming', 'block_shopping',
             'block_p2p', 'block_doh', 'block_dns_bypass', 'block_vpn', 'block_messaging',
+            'block_ads', 'block_doh_by_ip',
             'block_wa_by_ip', 'https_notice',
             'schedule_enable', 'schedule_weekend',
             'corp_enable', 'corp_reverse_lookup',
@@ -339,6 +340,7 @@ function rules_wam_get_config() {
         'block_gaming'               => 'yes',
         'block_dns_bypass'           => 'no',
         'block_wa_by_ip'             => 'no',
+        'block_doh_by_ip'            => 'no',
         'enable_upstream_forwarding' => 'no',
         'block_action'               => 'block_page',
         'corp_protect_netskope'      => 'yes',
@@ -662,6 +664,8 @@ function rules_wam_category_map() {
         'block_doh'       => array('label' => 'Anti-Bypass DoH',        'file' => 'doh-providers.txt'),
         'block_vpn'       => array('label' => 'VPN, ZTNA & Proxies',    'file' => 'vpn-ztna.txt'),
         'block_messaging' => array('label' => 'Mensageiros & Chat',     'file' => 'messaging.txt'),
+        // 1.6.3: desligada por padrão e fora do bloqueio das redes sem perfil (rules_wam_fallback_categories)
+        'block_ads'       => array('label' => 'Anúncios',               'file' => 'ads.txt'),
     );
 }
 
@@ -1016,6 +1020,44 @@ function rules_wam_read_feed($feed_file) {
 }
 
 /**
+ * IPs de resolvedores DNS públicos para o bloqueio de DoH por IP (alias WAM_DoH_IPs): o feed
+ * doh-ips.txt mais a lista extra da configuração geral (doh_ips_extra). Itens que não são IP são ignorados.
+ * Com a proteção do Cloudflare marcada, os IPs do Cloudflare Gateway/Zero Trust nunca entram.
+ */
+function rules_wam_doh_ips($wam_cfg) {
+    $lines = array();
+    $path = WAM_FEEDS_DIR . '/doh-ips.txt';
+    if (file_exists($path)) {
+        $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    }
+    $lines = array_merge($lines, rules_wam_parse_list($wam_cfg['doh_ips_extra'] ?? ''));
+    $protect_cf = !isset($wam_cfg['corp_protect_cloudflare']) || rules_wam_is_checked($wam_cfg['corp_protect_cloudflare']);
+    $out = array();
+    foreach ($lines as $line) {
+        $ip = strtolower(trim(preg_replace('/#.*$/', '', $line)));
+        if ($ip === '' || !filter_var($ip, FILTER_VALIDATE_IP)) {
+            continue;
+        }
+        if ($protect_cf && rules_wam_is_cloudflare_gateway_ip($ip)) {
+            continue;
+        }
+        $out[$ip] = true;
+    }
+    return array_keys($out);
+}
+
+/**
+ * IPs do resolvedor do Cloudflare Gateway (Zero Trust/WARP corporativo): 172.64.36.0/24 e 162.159.36.0/24.
+ * Não podem ser bloqueados com a proteção ligada. Os resolvedores públicos (1.1.1.1 etc.) não são do Gateway.
+ */
+function rules_wam_is_cloudflare_gateway_ip($ip) {
+    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+        return rules_wam_cidr_contains('172.64.36.0/24', "{$ip}/32") || rules_wam_cidr_contains('162.159.36.0/24', "{$ip}/32");
+    }
+    return false;
+}
+
+/**
  * Lista de domínios (texto gravado) -> array domínio => $value
  */
 function rules_wam_domain_set($str, $value = true) {
@@ -1245,6 +1287,84 @@ function rules_wam_profile_categories($profile) {
 }
 
 /**
+ * Opções de proteção de um perfil que não são categoria (não têm feed de domínios). 1.6.3.
+ *  - dns_bypass: redireciona para o Unbound o DNS (porta 53) enviado a servidores de fora
+ *  - block_private_relay: responde NXDOMAIN para o iCloud Private Relay (mask.icloud.com),
+ *    mesmo com a exceção geral da categoria Anti-Bypass DoH
+ * Ausentes no XML (config de versões anteriores) valem "no".
+ */
+function rules_wam_profile_options($profile) {
+    return array(
+        'dns_bypass'          => rules_wam_is_checked($profile['dns_bypass'] ?? 'no'),
+        'block_private_relay' => rules_wam_is_checked($profile['block_private_relay'] ?? 'no'),
+    );
+}
+
+/**
+ * Domínios do iCloud Private Relay. A Apple recomenda resposta negativa (NXDOMAIN): o aparelho avisa
+ * o usuário que a rede bloqueia a Retransmissão Privada e volta a usar o DNS da rede.
+ */
+function rules_wam_private_relay_domains() {
+    return array('mask.icloud.com', 'mask-h2.icloud.com');
+}
+
+/**
+ * Perfis ativos com uma opção marcada (rules_wam_profile_options), na ordem da configuração.
+ * O anti-bypass DNS por perfil só vale no modo perfil obrigatório (as regras são por interface).
+ */
+function rules_wam_profiles_with_option($wam_cfg, $opt) {
+    $names = array();
+    if ($opt === 'dns_bypass' && !rules_wam_profiles_required($wam_cfg)) {
+        return $names;
+    }
+    foreach (rules_wam_get_profiles($wam_cfg) as $p) {
+        if (rules_wam_is_checked($p['enabled'] ?? 'yes')) {
+            $o = rules_wam_profile_options($p);
+            if (!empty($o[$opt])) {
+                $names[] = $p['name'];
+            }
+        }
+    }
+    return $names;
+}
+
+/**
+ * Situação do anti-bypass DNS (porta 53) para as telas: geral, por perfil ou desativado
+ */
+function rules_wam_dns_bypass_summary($wam_cfg) {
+    if (rules_wam_is_checked($wam_cfg['block_dns_bypass'] ?? null)) {
+        return 'Ativo (NAT da porta 53 para o firewall)';
+    }
+    $names = rules_wam_profiles_with_option($wam_cfg, 'dns_bypass');
+    if (!empty($names)) {
+        return 'Ativo nos perfis: ' . implode(', ', $names);
+    }
+    return 'Desativado';
+}
+
+/**
+ * O NAT do anti-bypass DNS manda as consultas para 127.0.0.1:53. Confere no unbound.conf gerado pelo
+ * pfSense se o Unbound escuta em localhost: sem linhas "interface:" ele escuta só em localhost; com elas,
+ * precisa haver 127.0.0.1 ou 0.0.0.0 (o pfSense inclui 127.0.0.1 quando as interfaces são escolhidas).
+ */
+function rules_wam_unbound_listens_localhost() {
+    $f = '/var/unbound/unbound.conf';
+    if (!file_exists($f)) {
+        return true; // sem como conferir (ex.: fora do pfSense)
+    }
+    $found = false;
+    foreach ((array)@file($f, FILE_IGNORE_NEW_LINES) as $line) {
+        if (preg_match('/^\s*interface:\s*"?([0-9a-fA-F:.]+)/', $line, $m)) {
+            $found = true;
+            if ($m[1] === '127.0.0.1' || $m[1] === '0.0.0.0') {
+                return true;
+            }
+        }
+    }
+    return !$found;
+}
+
+/**
  * Redes (CIDR) informadas num perfil: sub-redes das interfaces marcadas + redes digitadas.
  * As sub-redes de interface que só caem dentro de uma rede digitada são somadas depois,
  * em rules_wam_build_profile_views (2ª passada).
@@ -1273,9 +1393,10 @@ function rules_wam_profiles_required($wam_cfg) {
 /**
  * Categorias bloqueadas nas redes sem perfil (modo perfil obrigatório).
  * Mensageiros e VPN ficam de fora: uma VLAN esquecida não perde Teams, WhatsApp nem a VPN corporativa.
+ * Anúncios (1.6.3) também: entrar nela mudaria o bloqueio de quem atualiza da 1.6.x sem marcar nada.
  */
 function rules_wam_fallback_categories() {
-    return array_values(array_diff(array_keys(rules_wam_category_map()), array('block_messaging', 'block_vpn')));
+    return array_values(array_diff(array_keys(rules_wam_category_map()), array('block_messaging', 'block_vpn', 'block_ads')));
 }
 
 /**
@@ -1490,7 +1611,7 @@ function rules_wam_category_usage($wam_cfg) {
 /**
  * Política efetiva de cada interface interna (modo perfil obrigatório): o perfil que marcou a interface,
  * senão o primeiro perfil com uma rede que contém a sub-rede dela, senão o bloqueio das redes sem perfil.
- * Retorna if_key => array('profile' => nome ou '', 'cats' => categorias).
+ * Retorna if_key => array('profile' => nome ou '', 'cats' => categorias, 'gui' => cria a regra de acesso à WebGUI).
  */
 function rules_wam_interface_policies($wam_cfg, $ifaces = null) {
     if ($ifaces === null) {
@@ -1521,9 +1642,14 @@ function rules_wam_interface_policies($wam_cfg, $ifaces = null) {
                 }
             }
         }
+        // gui_access (1.6.2): sem a chave, a regra da WebGUI continua sendo criada, como antes.
+        // opts (1.6.3): opções do perfil que não são categoria; sem a chave, valem "no".
+        // Interface sem perfil não ganha nenhuma delas (o anti-bypass global continua valendo).
         $out[$k] = ($hit !== null)
-            ? array('profile' => $hit['name'], 'cats' => rules_wam_profile_categories($hit))
-            : array('profile' => '', 'cats' => rules_wam_fallback_categories());
+            ? array('profile' => $hit['name'], 'cats' => rules_wam_profile_categories($hit), 'gui' => rules_wam_is_checked($hit['gui_access'] ?? 'yes'),
+                    'opts' => rules_wam_profile_options($hit))
+            : array('profile' => '', 'cats' => rules_wam_fallback_categories(), 'gui' => true,
+                    'opts' => rules_wam_profile_options(array()));
     }
     return $out;
 }
@@ -1624,12 +1750,27 @@ function rules_wam_build_profile_views($wam_cfg, $whitelist, $global_extra, $blo
             $p_extra[$d] = $label;
         }
 
-        $res = rules_wam_compile_policy($wam_cfg, rules_wam_profile_categories($p), $p_whitelist, $p_extra, $block_action, $block_page_ip, $cat_index);
+        // iCloud Private Relay (1.6.3): NXDOMAIN só neste perfil, passando por cima da exceção geral da
+        // categoria Anti-Bypass DoH. Os domínios saem da compilação normal para não declarar a zona duas vezes.
+        $p_opts = rules_wam_profile_options($p);
+        $p_skip = array();
+        $relay_zones = "";
+        if ($p_opts['block_private_relay']) {
+            foreach (rules_wam_private_relay_domains() as $rd) {
+                $p_skip[$rd] = true;
+                $relay_zones .= "  local-zone: \"{$rd}\" always_nxdomain\n";
+                if (!isset($cat_index[$rd])) {
+                    $cat_index[$rd] = 'iCloud Private Relay';
+                }
+            }
+        }
+
+        $res = rules_wam_compile_policy($wam_cfg, rules_wam_profile_categories($p), $p_whitelist, $p_extra, $block_action, $block_page_ip, $cat_index, $p_skip);
         $views[] = array(
             'name'     => $view_name,
             'comment'  => "Perfil de rede {$p['name']}",
             'networks' => $nets,
-            'zones'    => $res['zones'],
+            'zones'    => $res['zones'] . $relay_zones,
         );
         $profiles_status[] = array(
             'name'       => $p['name'],
@@ -1806,7 +1947,11 @@ function rules_wam_apply_rules($wam_cfg = null) {
         'uncovered_interfaces' => $profiles_required ? $uncovered : array(),
         'block_action' => $block_action,
         'banner_conflict' => $conflict,
-        'dns_bypass_protection' => rules_wam_is_checked($wam_cfg['block_dns_bypass'] ?? null) ? 'Ativo (NAT da porta 53 para o firewall)' : 'Desativado',
+        'dns_bypass_protection' => rules_wam_dns_bypass_summary($wam_cfg),
+        'dns_bypass_profiles' => rules_wam_is_checked($wam_cfg['block_dns_bypass'] ?? null) ? array() : rules_wam_profiles_with_option($wam_cfg, 'dns_bypass'),
+        'dns_bypass_localhost_ok' => rules_wam_unbound_listens_localhost(),
+        'private_relay_profiles' => $contingency ? array() : rules_wam_profiles_with_option($wam_cfg, 'block_private_relay'),
+        'doh_by_ip' => rules_wam_is_checked($wam_cfg['block_doh_by_ip'] ?? null),
         'corp_integration' => $corp_enable ? 'Ativo (AD & NPS via IPsec)' : 'Desativado',
         'netskope_protection' => $protect_netskope ? 'Ativo (Auto-Whitelist)' : 'Desativado',
         'helpdesk_protection' => (!isset($wam_cfg['corp_protect_helpdesk']) || rules_wam_is_checked($wam_cfg['corp_protect_helpdesk'])) ? 'Ativo (Zendesk, GLPI, ScreenConnect)' : 'Desativado',
@@ -1849,7 +1994,8 @@ function rules_wam_feed_label($file) {
         'msg-slack.txt'        => 'Slack',
         'msg-zoom-meet.txt'    => 'Zoom',
         'msg-others.txt'       => 'Mensageiros Instantâneos',
-        'messaging.txt'        => 'Mensageiros & Chat'
+        'messaging.txt'        => 'Mensageiros & Chat',
+        'ads.txt'              => 'Anúncios'
     );
     return $map[$file] ?? 'Regra Personalizada / Outros';
 }
@@ -2215,10 +2361,16 @@ function rules_wam_sync_firewall_rules($wam_cfg = null, $blocking = true) {
     $alias_changed = rules_wam_set_alias("WAM_GUI_Admins", "network", $admin_sources, "Origens autorizadas a acessar a WebGUI pelas redes internas") || $alias_changed;
     $gui_src = empty($admin_sources) ? array("any" => "") : array("address" => "WAM_GUI_Admins");
 
+    // Perfis com "Criar regra de acesso à WebGUI" desmarcado (ex.: rede de convidados) ficam sem a regra
+    $gui_policies = rules_wam_profiles_required($wam_cfg) ? rules_wam_interface_policies($wam_cfg, $configured_internal) : array();
     $tracker = 1700000011;
     foreach ($configured_internal as $if_key => $if_data) {
+        $if_tracker = $tracker++; // o tracker de cada interface não muda quando outra fica sem a regra
+        if (isset($gui_policies[$if_key]) && empty($gui_policies[$if_key]['gui'])) {
+            continue;
+        }
         $if_label = !empty($if_data['descr']) ? $if_data['descr'] : strtoupper($if_key);
-        $gui_rules[] = rules_wam_make_rule($tracker++, "pass", $if_key, "tcp", $gui_src,
+        $gui_rules[] = rules_wam_make_rule($if_tracker, "pass", $if_key, "tcp", $gui_src,
             array("network" => "(self)", "port" => (string)$gui_port),
             "Acesso WebGUI {$if_label} (Porta {$gui_port})");
     }
@@ -2240,6 +2392,7 @@ function rules_wam_sync_firewall_rules($wam_cfg = null, $blocking = true) {
     // (ou o bloqueio das redes sem perfil) tem a categoria; nas configurações antigas, em todas.
     $doh_ifaces = array();
     $msg_ifaces = array();
+    $dnsbp_profile_ifaces = array(); // perfis com "Anti-Bypass DNS (porta 53)" marcado (1.6.3)
     if (rules_wam_profiles_required($wam_cfg)) {
         foreach (rules_wam_interface_policies($wam_cfg, $configured_internal) as $pk => $pol) {
             if (in_array('block_doh', $pol['cats'], true)) {
@@ -2247,6 +2400,9 @@ function rules_wam_sync_firewall_rules($wam_cfg = null, $blocking = true) {
             }
             if (in_array('block_messaging', $pol['cats'], true)) {
                 $msg_ifaces[] = $pk;
+            }
+            if (!empty($pol['opts']['dns_bypass'])) {
+                $dnsbp_profile_ifaces[] = $pk;
             }
         }
     } else {
@@ -2288,8 +2444,19 @@ function rules_wam_sync_firewall_rules($wam_cfg = null, $blocking = true) {
             }
         }
     }
-    $block_dns_bypass = $blocking && rules_wam_is_checked($wam_cfg['block_dns_bypass'] ?? 'no');
+    // Anti-bypass DNS: a opção geral vale para todas as interfaces internas (como até a 1.6.2);
+    // sem ela, só nas interfaces dos perfis que marcaram a opção
+    if (rules_wam_is_checked($wam_cfg['block_dns_bypass'] ?? 'no')) {
+        $dnsbp_ifaces = $internal_ifaces;
+    } else {
+        $dnsbp_ifaces = $dnsbp_profile_ifaces;
+    }
+    $block_dns_bypass = $blocking && !empty($dnsbp_ifaces);
     $alias_changed = rules_wam_set_alias("WAM_Corp_AD_DNS", "host", $block_dns_bypass ? $valid_ad_ips : array(), "Servidores DNS/AD e NPS RADIUS da matriz") || $alias_changed;
+
+    // DoH por IP (1.6.3, opcional): resolvedores públicos acessados direto pelo IP na porta 443
+    $doh_ip_rule_on = $blocking && !empty($doh_ifaces) && rules_wam_is_checked($wam_cfg['block_doh_by_ip'] ?? 'no');
+    $alias_changed = rules_wam_set_alias("WAM_DoH_IPs", "host", $doh_ip_rule_on ? rules_wam_doh_ips($wam_cfg) : array(), "Resolvedores DNS publicos (DoH por IP)") || $alias_changed;
 
     if ($banner_on) {
         $rules_to_add[] = rules_wam_make_rule(1700000099, "pass", $if_list, "tcp",
@@ -2306,6 +2473,15 @@ function rules_wam_sync_firewall_rules($wam_cfg = null, $blocking = true) {
             "Anti-Bypass DNS-over-TLS (853)", true);
     }
 
+    // Anti-bypass DoH por IP (443 tcp/udp: o udp cobre o HTTP/3). O upstream do próprio Unbound sai pela
+    // WAN, então a regra nas interfaces internas não o afeta.
+    if ($doh_ip_rule_on) {
+        $rules_to_add[] = rules_wam_make_rule(1700000102, "reject", implode(",", $doh_ifaces), "tcp/udp",
+            array("any" => ""),
+            array("address" => "WAM_DoH_IPs", "port" => "443"),
+            "Anti-Bypass DoH por IP (443)", true);
+    }
+
     if ($wa_rules_on) {
         $rules_to_add[] = rules_wam_make_rule(1700000202, "reject", implode(",", $msg_ifaces), "tcp/udp",
             array("any" => ""),
@@ -2319,15 +2495,29 @@ function rules_wam_sync_firewall_rules($wam_cfg = null, $blocking = true) {
         }
     }
 
-    // Anti-bypass DNS porta 53 (NAT para o Unbound local)
+    // Anti-bypass DNS porta 53 (NAT para o Unbound local). O rdr preserva o IP de origem, então a view
+    // do perfil continua valendo para o cliente redirecionado.
     if ($block_dns_bypass) {
         if (!empty($valid_ad_ips)) {
-            $rules_to_add[] = rules_wam_make_rule(1700000504, "pass", $if_list, "tcp/udp",
+            $rules_to_add[] = rules_wam_make_rule(1700000504, "pass", implode(",", $dnsbp_ifaces), "tcp/udp",
                 array("any" => ""),
                 array("address" => "WAM_Corp_AD_DNS", "port" => "53"),
                 "Liberacao Direta de DNS para Controladores de Dominio AD", true);
         }
+        // O NAT é só IPv4. Nas interfaces dos perfis com a opção, o DNS IPv6 para fora é recusado
+        // (o aparelho volta para o DNS da rede). A opção geral continua como até a 1.6.2.
+        $dnsbp_v6 = $blocking ? array_values(array_intersect($dnsbp_profile_ifaces, $dnsbp_ifaces)) : array();
+        if (!empty($dnsbp_v6)) {
+            $rules_to_add[] = rules_wam_make_rule(1700000505, "reject", implode(",", $dnsbp_v6), "tcp/udp",
+                array("any" => ""),
+                array("not" => "", "network" => "(self)", "port" => "53"),
+                "Anti-Bypass DNS IPv6 (Porta 53)", true, "inet6");
+        }
         foreach ($internal_ifaces as $idx => $intf) {
+            // O índice continua sendo o da lista de interfaces: o tracker não muda quando outra sai
+            if (!in_array($intf, $dnsbp_ifaces, true)) {
+                continue;
+            }
             $intf_label = !empty($configured_internal[$intf]['descr']) ? $configured_internal[$intf]['descr'] : strtoupper($intf);
             if (!empty($valid_ad_ips)) {
                 $nat_to_add[] = array(
@@ -2974,7 +3164,8 @@ function rules_wam_get_domain_category($domain) {
             'msg-slack.txt'        => 'Slack',
             'msg-zoom-meet.txt'    => 'Zoom & Google Meet',
             'msg-others.txt'       => 'Mensageiros Instantâneos',
-            'messaging.txt'        => 'Mensageiros & Chat'
+            'messaging.txt'        => 'Mensageiros & Chat',
+            'ads.txt'              => 'Anúncios'
         );
         foreach ($map as $f => $label) {
             $path = WAM_FEEDS_DIR . '/' . $f;
@@ -3051,8 +3242,8 @@ function rules_wam_blocklist_index() {
         }
         if ($cur !== null && preg_match('/^local-zone:\s*"([^"]+)"\s+(\S+)/', $t, $m)) {
             $zone = strtolower(rtrim($m[1], '.'));
-            if ($m[2] === 'redirect' || $m[2] === 'always_null') {
-                $set = 'block';
+            if ($m[2] === 'redirect' || $m[2] === 'always_null' || $m[2] === 'always_nxdomain') {
+                $set = 'block'; // always_nxdomain: iCloud Private Relay bloqueado no perfil (1.6.3)
             } elseif ($m[2] === 'transparent') {
                 $set = 'allow'; // domínio liberado dentro de um domínio bloqueado
             } else {

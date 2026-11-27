@@ -101,7 +101,7 @@ O **Rules WAM** (*Web Access Manager*) é uma solução nativa desenvolvida para
 | **Agendador Cron** | `/usr/local/pkg/wam_cron.php` | A cada 5 min aplica/suspende o bloqueio conforme horário e almoço |
 | **Página de Bloqueio** | `/usr/local/www/rules_wam_block.php` | Página apresentada ao usuário bloqueado |
 | **Dashboard & Auditoria**| `/usr/local/www/rules_wam_dashboard.php`| Painel com métricas e exportação CSV/JSON |
-| **Listas de Bloqueio** | `/usr/local/share/wam/feeds/*.txt` | 28 arquivos de feed das 12 categorias |
+| **Listas de Bloqueio** | `/usr/local/share/wam/feeds/*.txt` | 29 arquivos de feed das 13 categorias e a lista de IPs de DNS públicos (`doh-ips.txt`) |
 | **Desinstalador** | `/usr/local/share/wam/uninstall.sh` | Remove o pacote revertendo a configuração |
 
 ---
@@ -157,6 +157,11 @@ O Rules WAM possui **12 macro-categorias** prontas para ativação imediata:
 - Servidores públicos de DNS-over-HTTPS utilizados por navegadores e celulares para fugir do DNS local: *Cloudflare 1.1.1.1, Google 8.8.8.8, Quad9 9.9.9.9, OpenDNS, AdGuard DoH*, etc.
 - Feed: `doh-providers.txt`.
 - Com esta categoria marcada, também é criada uma regra *reject* para DNS-over-TLS (porta **853**).
+- **DoH por IP (1.6.3, opcional).** O bloqueio por nome não pega quem acessa o resolvedor direto pelo IP (ex.: `https://8.8.8.8/dns-query`). Com **Bloquear também o DoH por IP** (`block_doh_by_ip`, desligado por padrão) marcado, o pacote cria o alias `WAM_DoH_IPs` e uma regra *reject* TCP/UDP na porta **443** para esses IPs, nas mesmas interfaces da regra 853. O UDP cobre o HTTP/3.
+  - A lista vem de `feeds/doh-ips.txt` (Google, Cloudflare, Quad9, AdGuard, OpenDNS, CleanBrowsing, ControlD e NextDNS, IPv4 e IPv6), mais o campo *IPs extras* (`doh_ips_extra`).
+  - Com a proteção do Cloudflare ligada, os IPs do Cloudflare Gateway/Zero Trust (172.64.36.x e 162.159.36.x) nunca entram, mesmo se digitados.
+  - O upstream do próprio Unbound (ex.: 1.1.1.3) sai pela WAN, então a regra nas interfaces internas não o afeta.
+- **iCloud Private Relay.** `mask.icloud.com` e `mask-h2.icloud.com` estão neste feed. Se eles forem liberados na categoria (Gerenciar sites), o iPhone com Retransmissão Privada manda **todo** o DNS para a Apple e nenhum bloqueio vale para ele. Para bloquear só em algumas redes, use a opção **Bloquear o iCloud Private Relay** do perfil (seção 4.13), que responde NXDOMAIN, como a Apple recomenda.
 - **Comportamento observado em produção:**
   - O bloqueio por DNS **não derruba conexões DoH que já estão abertas**. Um navegador que já estava conectado ao `cloudflare-dns.com` continua resolvendo por ele até ser fechado ou trocar de rede. Para validar o bloqueio, feche o navegador por completo ou desligue e ligue o Wi-Fi do aparelho.
   - Navegador com provedor DoH fixo (opção *Personalizado* / *Custom*) pode ficar **sem resolver nada**. Em máquinas do domínio, desligue o DoH por GPO: `DnsOverHttpsMode = off` no Chrome e no Edge.
@@ -184,6 +189,13 @@ Controle granular por aplicativo:
 - `block_msg_slack`: Workspaces e chat Slack.
 - `block_msg_zoom_meet`: Salas Zoom e reuniões Google Meet.
 - `block_msg_others`: Signal, WeChat, Viber, LINE, KakaoTalk, Omegle.
+
+### 13. 📢 Anúncios (`block_ads`, 1.6.3)
+- Redes de anúncio e SDKs de anúncio de apps: anúncios do Google (`googleads.g.doubleclick.net`, `googlesyndication.com`, `googleadservices.com`, `adservice.google.com`...), Pangle, AppLovin, Unity Ads, ironSource, InMobi, Vungle/Liftoff, Mintegral, Criteo, Taboola, Outbrain, redes de pop-up etc.
+- Feed: `ads.txt`, enxuto de propósito (cerca de 90 domínios): cada perfil com a categoria repete as zonas numa view do Unbound.
+- **Desligada por padrão** e **fora do bloqueio das redes sem perfil**: quem atualiza não ganha bloqueio novo sem marcar a categoria num perfil.
+- Nunca entram no feed (nem o domínio pai): `doubleclick.net` inteiro (o `accounts.doubleclick.net` é usado no login do Google), `clarity.ms`, `googletagmanager.com`, `google-analytics.com`, `app-measurement.com`, `fonts.googleapis.com`, `fonts.gstatic.com` e `gstatic.com`.
+- Antes de ligar numa rede de coletores ou sistemas web internos, teste num aparelho: login, telas principais e o que o sistema carrega de terceiros.
 
 ---
 
@@ -238,6 +250,11 @@ Em ambientes corporativos e filiais conectadas via túnel IPsec com a Matriz:
 - **Status Padrão:** **Desativado por padrão (Opt-in).** Qualquer modificação em regras de redirecionamento NAT afeta diretamente o fluxo de pacotes da rede local, devendo ser ativada apenas após validação consciente do administrador.
 - **O Problema do Bypass:** Quando um colaborador altera manualmente o servidor DNS na placa de rede para `8.8.8.8` ou `1.1.1.1`, as consultas deixam de passar pelo Unbound do pfSense.
 - **Como Opera quando Ativado:** O sistema cria, em cada interface interna, uma regra em **Firewall > NAT > Port Forward** capturando consultas na porta 53 (UDP/TCP) destinadas a outros servidores e redirecionando para `127.0.0.1:53` (Unbound local). Fora do horário de bloqueio, o NAT é suspenso.
+- **Geral ou por perfil (1.6.3).** A opção geral **Anti-Bypass DNS (Porta 53)** vale para **todas** as interfaces internas, inclusive a rede corporativa com AD e Netskope. Para ligar só em algumas redes (ex.: rede operacional), deixe a opção geral desmarcada e marque **Anti-Bypass DNS (porta 53)** no perfil, em *Políticas por Rede*. O NAT, a exceção do AD e a regra *pass* do AD passam a existir só nas interfaces desses perfis.
+  - O redirecionamento preserva o IP de origem, então o Unbound continua aplicando a view do perfil.
+  - O NAT é só IPv4. Nas interfaces dos perfis com a opção, o DNS IPv6 para fora do firewall é recusado (regra *reject* `inet6` na porta 53), e o aparelho volta para o DNS da rede.
+  - A aba *Status* avisa se o DNS Resolver não escuta em `127.0.0.1` (o NAT não funcionaria). Nesse caso, inclua *Localhost* nas interfaces de rede do DNS Resolver.
+  - Uma rede sem perfil não ganha o anti-bypass por perfil, só o geral.
 - **Exceção Automática para Controladores de Domínio (`WAM_Corp_AD_DNS`):** Quando a integração corporativa estiver ativa, o Rules WAM cria uma regra de exceção no NAT (`nordr`) e uma regra *pass* na porta 53 para os IPs configurados em `corp_ad_dns_ips` (alias `WAM_Corp_AD_DNS`). Assim, consultas ao AD e registros dinâmicos (RFC 2136 / Netlogon) continuam passando direto sem interceptação.
 
 #### Checklist de Homologação antes de Ativar em Produção:
@@ -334,19 +351,37 @@ Painel **Acesso Administrativo à WebGUI** em **Services > Rules WAM**:
 - **Origens Internas Autorizadas** (`gui_admin_sources`, alias `WAM_GUI_Admins`): IPs/redes que podem acessar a WebGUI pelas redes internas. Em branco = qualquer origem interna. Recomendado: só as redes da TI.
 - **Origens Autorizadas pela WAN** (`gui_wan_sources`, alias `WAM_GUI_WAN_Sources`): em branco = **nenhuma regra na WAN** (recomendado). Preencha só com IPs públicos fixos da TI.
 
-Regras criadas automaticamente (descrição começando com `Rules WAM - `, inseridas no topo):
+Regras criadas automaticamente (descrição começando com `Rules WAM - `). As de bloqueio e a do banner vão para o topo; as de acesso à WebGUI vão para o **final**, depois das regras do administrador:
 
 | Regra | Onde | Quando |
 |---|---|---|
-| *pass* TCP → `(self)` na porta da WebGUI, origem `WAM_GUI_Admins` (ou qualquer) | Cada interface interna | Sempre |
+| *pass* TCP → `(self)` na porta da WebGUI, origem `WAM_GUI_Admins` (ou qualquer) | Cada interface interna | Sempre, exceto nas interfaces de perfis com *Acesso à WebGUI* desmarcado |
 | *pass* TCP de `WAM_GUI_WAN_Sources` → `(self)` na porta da WebGUI | WAN | Só se *Origens Autorizadas pela WAN* estiver preenchido |
 | *pass* TCP → IP do banner, portas 80/443 (`WAM_Banner_Ports`) | Floating (interfaces internas) | Modo Banner ativo e sem conflito de porta |
 | *reject* TCP/UDP porta 853 (DoT) | Floating | Categoria Anti-Bypass DoH marcada |
+| *reject* TCP/UDP porta 443 para `WAM_DoH_IPs` | Floating | Categoria Anti-Bypass DoH marcada **e** "Bloquear também o DoH por IP" marcado |
 | *reject* TCP/UDP portas 5222/4244 (`WAM_WhatsApp_Ports`) | Floating | WhatsApp bloqueado |
 | *reject* para `WAM_WhatsApp_Nets` (faixas Meta) | Floating | WhatsApp bloqueado **e** "Bloquear também por faixa IP" marcado |
-| NAT porta 53 → `127.0.0.1` (+ exceção/pass para `WAM_Corp_AD_DNS`) | Cada interface interna | Anti-Bypass DNS (porta 53) marcado |
+| NAT porta 53 → `127.0.0.1` (+ exceção/pass para `WAM_Corp_AD_DNS`) | Cada interface interna, ou só as dos perfis com a opção | Anti-Bypass DNS (porta 53) marcado na configuração geral ou no perfil |
+| *reject* TCP/UDP IPv6 porta 53 para fora do firewall | Floating (interfaces dos perfis com a opção) | Anti-Bypass DNS (porta 53) marcado no perfil |
 
 As regras de bloqueio só existem durante o horário de bloqueio. O pacote **não** altera bogons, redes privadas na WAN, DNS rebind nem a porta da WebGUI (exceto no instalador, com `--move-gui`). O config.xml só é regravado quando há mudança.
+
+**Como o pacote convive com as suas regras.** A cada Salvar (e quando o cron reaplica as regras), o Rules WAM remove e recria **só** as regras cuja descrição começa com `Rules WAM - `. As demais ficam como estão, na mesma ordem. Por isso:
+- não comece a descrição das suas regras com `Rules WAM - ` (elas seriam apagadas na próxima sincronização);
+- não edite nem apague as regras `Rules WAM - …` à mão: elas voltam como o pacote as gera. Use as opções da tela (origens da WebGUI, *Acesso à WebGUI* do perfil).
+- na **desinstalação** o critério é mais amplo: são apagadas as regras de filtro e NAT cuja descrição **contém** `Rules WAM` em qualquer posição, e todo alias cujo nome começa com `WAM_`. Uma regra manual chamada, por exemplo, "OPER - Anti-bypass (igual ao Rules WAM)" ou um alias seu chamado `WAM_Coletores` somem junto. Use outro nome nas suas regras e aliases.
+
+**Rede de convidados sem acesso ao firewall.** Desmarcar *Acesso à WebGUI* no perfil (ex.: GUEST) só evita que o Rules WAM crie a regra dele. Se uma regra sua já libera destino `*` (ou um alias com as redes privadas, que inclui os IPs do próprio firewall), o convidado continua alcançando a WebGUI. Para isolar a rede, na aba da interface, acima das regras de liberação:
+
+| # | Ação | Protocolo | Origem | Destino | Porta |
+|---|---|---|---|---|---|
+| 1 | Pass | TCP/UDP | *rede da interface* | This Firewall (self) | 53 (DNS do Rules WAM) |
+| 2 | Block | * | *rede da interface* | This Firewall (self) | * |
+| 3 | Block | * | *rede da interface* | redes privadas (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) | * |
+| 4 | Pass | * | *rede da interface* | * | * (internet) |
+
+O banner continua funcionando, porque a regra do banner fica na aba Floating e vale antes destas. Com portal cativo, libere também as portas dele no firewall (8002/8003) antes da regra 2. Depois de aplicar, limpe os estados da rede em *Diagnostics > States*: conexões já abertas continuam até expirar.
 
 **Privilégios:** o arquivo `/etc/inc/priv/rules_wam.priv.inc` permite delegar as telas do pacote em **System > User Manager** sem dar acesso total.
 
@@ -365,7 +400,11 @@ Permite que cada rede tenha o próprio conjunto de bloqueios. Exemplo: visitante
 3. Marque as interfaces/VLANs da rede. A sub-rede de cada uma é obtida automaticamente. Se precisar, informe redes extras em *Redes adicionais (CIDR)* (ex.: sub-redes roteadas por switch L3).
 4. Marque as categorias que devem ficar **bloqueadas nesta rede**. No exemplo, o GUEST fica sem *Mídias Sociais* e sem *Streaming*. Os botões *Marcar todas* / *Limpar* ajudam.
 5. Se quiser, use *Sites liberados* e *Sites bloqueados* para ajustes só desta rede.
-6. Clique em **Salvar e Aplicar Regras**.
+6. Em redes de convidados, desmarque **Acesso à WebGUI** para o pacote não criar a regra de acesso à WebGUI nas interfaces do perfil (veja *Rede de convidados sem acesso ao firewall* na seção 4.12). Marcado por padrão.
+7. Se a rede precisa fechar os escapes do filtro por DNS, marque em **Proteções contra escape do DNS** (desmarcadas por padrão):
+   - **Anti-Bypass DNS (porta 53):** veja a seção 4.5;
+   - **Bloquear o iCloud Private Relay:** responde NXDOMAIN para `mask.icloud.com` e `mask-h2.icloud.com` só nesta rede, mesmo que esses domínios estejam liberados na categoria *Anti-Bypass DoH*. Com a Retransmissão Privada ligada, o iPhone resolve tudo pela Apple e não consulta o firewall; com a opção, ele avisa que a rede bloqueia a Retransmissão Privada e passa a usar o DNS da rede.
+8. Clique em **Salvar e Aplicar Regras**.
 
 **Regras de funcionamento:**
 - Cada rede só pode estar em um perfil. Um perfil desmarcado (*Ativo*) fica salvo, mas não é aplicado (e suas interfaces passam a contar como "sem perfil").
@@ -377,7 +416,8 @@ Permite que cada rede tenha o próprio conjunto de bloqueios. Exemplo: visitante
   - a lista negra personalizada (o perfil pode liberar um domínio dela em *Sites liberados*).
 - **IPs isentos (bypass)** continuam isentos mesmo dentro da rede de um perfil, porque o Unbound usa a rede mais específica.
 - Os fornecedores de **VPN** e de **Mensageiros** seguem as subopções do catálogo.
-- **Firewall por perfil:** as regras de DoT 853 e do WhatsApp (portas 5222/4244 e faixas Meta) valem só nas interfaces cujo perfil bloqueia *Anti-Bypass DoH* e *Mensageiros*. O redirecionamento da porta 53 (*Anti-Bypass DNS*) vale para todas as redes.
+- **Firewall por perfil:** as regras de DoT 853, de DoH por IP e do WhatsApp (portas 5222/4244 e faixas Meta) valem só nas interfaces cujo perfil bloqueia *Anti-Bypass DoH* e *Mensageiros*. O redirecionamento da porta 53 (*Anti-Bypass DNS*) vale para todas as redes quando marcado na configuração geral, ou só nas interfaces dos perfis que marcaram a opção.
+- **Private Relay e o pfSense 2.8:** o pfSense 2.8 já declara `mask.icloud.com` no escopo `server:` do Unbound. As zonas da view do perfil valem para os clientes dela (`view-first: no`), então o NXDOMAIN do perfil prevalece. O pacote só pula as zonas do pfSense no escopo `server:`; dentro das views ele já declarava `mask.icloud.com` pela categoria *Anti-Bypass DoH*, e a opção do perfil segue o mesmo caminho. Confira com `unbound-checkconf` depois de ligar a opção num pfSense 2.8: se ele recusar, o pacote cai para o bloqueio sem perfis e avisa na aba *Status*.
 
 **Como é gerado:** cada perfil vira uma *view* do Unbound (mesmo mecanismo do bypass), com as zonas de bloqueio do perfil:
 ```

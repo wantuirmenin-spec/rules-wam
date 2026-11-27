@@ -1,6 +1,6 @@
 # Rules WAM - Web Access Manager para pfSense 🛡️
 
-**Versão 1.6.1 (em testes)** — veja o [CHANGELOG](CHANGELOG.md). Licença [MIT](LICENSE).
+**Versão 1.6.3 (em testes)** — veja o [CHANGELOG](CHANGELOG.md). Licença [MIT](LICENSE).
 
 Pacote corporativo nativo para **pfSense 2.7.x / 2.8.x / Plus** projetado para controle corporativo de acesso à internet, **bloqueio de categorias de sites**, **página de bloqueio institucional (HTTP)**, **agendamento por horário comercial**, **isenção por dispositivo (Bypass IPs)** e **integração com Active Directory, NPS RADIUS e Netskope** via Unbound DNS.
 
@@ -126,7 +126,7 @@ O Rules WAM acompanha um **Widget exclusivo para a tela inicial do pfSense** (`S
 
 ## 🚀 Como Instalar em Qualquer pfSense
 
-O instalador `wam-install.sh` (~130 KB) é um auto-extraível que contém o pacote inteiro (28 arquivos de feed das 12 categorias, telas da WebGUI, lógica PHP, configuração do NGINX do banner e agendador Cron) e executa o mesmo `install.sh` do pacote.
+O instalador `wam-install.sh` (~130 KB) é um auto-extraível que contém o pacote inteiro (arquivos de feed das 13 categorias, telas da WebGUI, lógica PHP, configuração do NGINX do banner e agendador Cron) e executa o mesmo `install.sh` do pacote.
 
 ```text
 sh wam-install.sh [--move-gui] [--gui-port=50443] [--wan-gui-sources=IP1,IP2|none]

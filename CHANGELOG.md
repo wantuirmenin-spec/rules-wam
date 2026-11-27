@@ -2,6 +2,37 @@
 
 > **Versão em testes:** a primeira instalação em produção foi em 27/10/2026 (pfSense 2.7.2 CE). A 1.6.1 reúne as correções dela.
 
+## 1.6.3 — escapes do filtro por DNS
+
+Atualização por cima da 1.6.2. **Nada muda para quem não ligar as opções novas:** com a configuração da 1.6.2, o `wam_blocklist.conf` e as regras de firewall e NAT gerados são os mesmos (só o cabeçalho muda, com a versão e a data). Os campos novos ausentes no config.xml valem "não".
+
+Motivo: no CD Jundiaí (pfSense 2.7.2, 1.6.1), a rede OPER acessava redes sociais e anúncios com todas as categorias marcadas. O filtro funcionava; os aparelhos escapavam por fora do DNS do pfSense (validação de 27/11/2026).
+
+### Novidades
+- **Anti-Bypass DNS (porta 53) por perfil.** Nova opção no perfil de *Políticas por Rede*. O NAT para o Unbound, a exceção e a regra *pass* do AD passam a existir só nas interfaces desses perfis. A opção geral continua valendo para todas as redes, como antes. Nas interfaces dos perfis com a opção, o DNS IPv6 para fora do firewall é recusado (o NAT é só IPv4). A aba *Status* mostra em quais perfis está ativo e avisa se o DNS Resolver não escuta em `127.0.0.1`.
+- **DoH por IP.** Nova opção *Bloquear também o DoH por IP* na categoria *Anti-Bypass DoH* (desligada por padrão): alias `WAM_DoH_IPs` com os IPs dos DNS públicos (feed novo `doh-ips.txt` + campo de IPs extras) e regra *reject* TCP/UDP na porta 443, nas interfaces com a categoria. Os IPs do Cloudflare Gateway/Zero Trust ficam de fora com a proteção do Cloudflare ligada.
+- **iCloud Private Relay por perfil.** Nova opção *Bloquear o iCloud Private Relay* no perfil: `mask.icloud.com` e `mask-h2.icloud.com` respondem **NXDOMAIN** (como a Apple recomenda) só naquele perfil, mesmo com esses domínios liberados na categoria *Anti-Bypass DoH*. Antes, a única saída era pôr os domínios na lista *Bloqueados* do perfil, que responde com o IP do banner.
+- **Categoria Anúncios** (`block_ads`, feed `ads.txt`). Desligada por padrão e fora do bloqueio das redes sem perfil. Não bloqueia `accounts.doubleclick.net` (login do Google), Clarity, Google Analytics, Tag Manager nem as fontes do Google.
+
+### Migração (CDs com regra manual só na OPER, como Jundiaí)
+1. Atualize para a 1.6.3.
+2. No perfil da rede, marque *Anti-Bypass DNS (porta 53)* e *Bloquear o iCloud Private Relay*. Na categoria *Anti-Bypass DoH*, marque *Bloquear também o DoH por IP* (vale para todas as redes com a categoria). Se usar, marque *Anúncios* no perfil.
+3. Tire `mask.icloud.com` e `mask-h2.icloud.com` da lista *Bloqueados* do perfil, se estiverem lá (a opção do perfil passa a cuidar deles, com NXDOMAIN), e os domínios de anúncio que estiverem no feed novo.
+4. Apague o NAT, a regra e o alias criados à mão (ex.: `OPER - Anti-bypass DNS 53 -> Unbound (manual)` e `OPER_DoH_Publicos`) e rode `/etc/rc.filter_configure_sync`. Eles não conflitam com os do pacote (a primeira regra que casa vence), mas ficam redundantes.
+
+### Documentação
+- Manual do administrador: as opções novas, a categoria Anúncios e o que a desinstalação apaga (regras cuja descrição **contém** "Rules WAM" e aliases `WAM_*`), além do que o sync apaga (regras cuja descrição **começa** com `Rules WAM - `).
+
+## 1.6.2 — acesso à WebGUI por perfil de rede
+
+Atualização por cima da 1.6.1. Nada muda para quem não mexer na opção nova.
+
+### Novidades
+- **Acesso à WebGUI por perfil.** Nova opção *Acesso à WebGUI* em cada perfil de Políticas por Rede, **marcada por padrão** (e também nos perfis que já existem). Desmarcada, o pacote deixa de criar a regra "Rules WAM - Acesso WebGUI" nas interfaces desse perfil, por exemplo na rede de convidados. Ao salvar, a tela avisa se o IP de quem salvou está numa rede que ficou sem a regra.
+
+### Documentação
+- Manual do administrador: como o pacote convive com as regras do administrador (só recria as que começam com "Rules WAM - "), a ordem real das regras da WebGUI (no final, não no topo) e uma receita para isolar a rede de convidados do firewall e das redes internas sem perder o DNS e o banner.
+
 ## 1.6.1 — correções da primeira instalação em produção
 
 Atualização por cima da 1.6.0, sem mudança de padrão, de formato da configuração nem categoria nova. Perfis, integração corporativa, banner, aviso HTTPS, `gambling-auto.txt` e o estado do bloqueio automático são preservados.

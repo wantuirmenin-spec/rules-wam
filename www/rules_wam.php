@@ -53,6 +53,8 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
         'https_notice'         => isset($_POST['https_notice']) ? 'yes' : 'no',
         'https_notice_name'    => preg_replace('/\s+/', '-', strtolower(trim($_POST['https_notice_name'] ?? ''))),
         'block_wa_by_ip'       => isset($_POST['block_wa_by_ip']) ? 'yes' : 'no',
+        'block_doh_by_ip'      => isset($_POST['block_doh_by_ip']) ? 'yes' : 'no',
+        'doh_ips_extra'        => trim($_POST['doh_ips_extra'] ?? ''),
         'support_email'        => trim($_POST['support_email'] ?? ''),
         'gui_admin_sources'    => trim($_POST['gui_admin_sources'] ?? ''),
         'gui_wan_sources'      => trim($_POST['gui_wan_sources'] ?? ''),
@@ -72,10 +74,17 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
 
     // Listas em uma linha só (o config.xml do pfSense descarta quebras de linha)
     foreach (array('bypass_ips', 'custom_whitelist', 'custom_blacklist', 'corp_allowed_subnets',
-                   'corp_ad_domain', 'corp_ad_dns_ips', 'gui_admin_sources', 'gui_wan_sources') as $lk) {
+                   'corp_ad_domain', 'corp_ad_dns_ips', 'gui_admin_sources', 'gui_wan_sources', 'doh_ips_extra') as $lk) {
         $wam_cfg[$lk] = rules_wam_list_to_store($wam_cfg[$lk] ?? '');
     }
     $wam_cfg['custom_hosts'] = rules_wam_hosts_to_store($wam_cfg['custom_hosts'] ?? '');
+
+    // IPs extras do bloqueio de DoH por IP: só endereços IPv4/IPv6 (sem rede: o alias é do tipo host)
+    foreach (rules_wam_parse_list($wam_cfg['doh_ips_extra']) as $dip) {
+        if (!filter_var($dip, FILTER_VALIDATE_IP)) {
+            $input_errors[] = sprintf(gettext("IP de DNS público '%s' inválido: informe um endereço IPv4 ou IPv6 por linha."), htmlspecialchars($dip));
+        }
+    }
 
     // Marcas do bloqueio automático de apostas: só nomes distintivos (5+ caracteres)
     foreach (rules_wam_parse_list($wam_cfg['gambling_brands']) as $gb) {
@@ -112,6 +121,10 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
                 'networks'   => rules_wam_list_to_store($pp['networks'] ?? ''),
                 'allow'      => rules_wam_list_to_store($pp['allow'] ?? ''),
                 'block'      => rules_wam_list_to_store($pp['block'] ?? ''),
+                'gui_access' => isset($pp['gui_access']) ? 'yes' : 'no',
+                // 1.6.3: opções de proteção do perfil (veja rules_wam_profile_options)
+                'dns_bypass'          => isset($pp['dns_bypass']) ? 'yes' : 'no',
+                'block_private_relay' => isset($pp['block_private_relay']) ? 'yes' : 'no',
             );
             $pcats = (array)($pp['cats'] ?? array());
             foreach (array_keys(rules_wam_category_map()) as $ck) {
@@ -252,6 +265,17 @@ if ($_POST && isset($_POST['save_rules_wam'])) {
         if ($wam_cfg['enable'] === 'yes') {
             rules_wam_resync();
             $save_msg = "Configurações salvas e aplicadas.";
+            // Quem está salvando pode estar numa rede que acabou de perder a regra da WebGUI
+            $my_ip = $_SERVER['REMOTE_ADDR'] ?? '';
+            if (filter_var($my_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                foreach (rules_wam_interface_policies($wam_cfg) as $pk => $pol) {
+                    $pcidr = $iface_list[$pk]['cidr'] ?? '';
+                    if (empty($pol['gui']) && $pcidr !== '' && rules_wam_cidr_contains($pcidr, $my_ip . '/32')) {
+                        $save_msg .= " Atenção: o seu IP ({$my_ip}) está numa rede sem a regra de acesso à WebGUI do Rules WAM. Se nenhuma outra regra liberar o acesso, você perde a conexão com o firewall.";
+                        break;
+                    }
+                }
+            }
             if (rules_wam_banner_conflict() !== '' && $wam_cfg['block_action'] === 'block_page') {
                 $save_msg .= " Atenção: " . rules_wam_banner_conflict() . " O banner fica desligado e o bloqueio usa 0.0.0.0.";
             }
@@ -368,6 +392,36 @@ function wam_render_profile($idx, $p, $ifaces, $catmap) {
                 <div class="col-sm-5">
                     <textarea name="<?=$n?>[block]" rows="3" class="form-control" placeholder="Ex.: exemplo.com.br"><?=$h(rules_wam_list_to_text($p['block'] ?? ''))?></textarea>
                     <span class="help-block"><?=gettext("Bloqueados: só nesta rede, além das categorias marcadas.")?></span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="col-sm-3 control-label"><?=gettext("Acesso à WebGUI")?></label>
+                <div class="col-sm-9">
+                    <label class="checkbox-inline" style="padding-top: 0;">
+                        <input type="checkbox" name="<?=$n?>[gui_access]" value="yes" <?=rules_wam_is_checked($p['gui_access'] ?? 'yes') ? 'checked' : ''?> />
+                        <?=gettext("Criar regra de acesso à WebGUI nas interfaces deste perfil")?>
+                    </label>
+                    <span class="help-block"><?=gettext("Desmarque em redes de convidados. A regra só deixa de ser criada pelo Rules WAM: regras suas que liberam o firewall (destino * ou This Firewall) continuam valendo. Para bloquear de fato, crie na interface uma regra Block com destino This Firewall acima delas, liberando antes a porta 53 (DNS).")?></span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="col-sm-3 control-label"><?=gettext("Proteções contra escape do DNS")?></label>
+                <div class="col-sm-9">
+                    <div class="checkbox" style="margin-top: 0;">
+                        <label>
+                            <input type="checkbox" name="<?=$n?>[dns_bypass]" value="yes" <?=rules_wam_is_checked($p['dns_bypass'] ?? 'no') ? 'checked' : ''?> />
+                            <strong><?=gettext("Anti-Bypass DNS (porta 53)")?></strong>
+                            <span class="text-muted"><?=gettext("— o DNS enviado a servidores de fora (ex.: 8.8.8.8, 1.1.1.1) é redirecionado para o firewall e passa pelos bloqueios deste perfil. No IPv6 a consulta é recusada. Os DNS do AD continuam liberados.")?></span>
+                        </label>
+                    </div>
+                    <div class="checkbox">
+                        <label>
+                            <input type="checkbox" name="<?=$n?>[block_private_relay]" value="yes" <?=rules_wam_is_checked($p['block_private_relay'] ?? 'no') ? 'checked' : ''?> />
+                            <strong><?=gettext("Bloquear o iCloud Private Relay (Retransmissão Privada)")?></strong>
+                            <span class="text-muted"><?=gettext("— responde NXDOMAIN para mask.icloud.com e mask-h2.icloud.com só nesta rede, mesmo que esses sites estejam liberados na categoria Anti-Bypass DoH. O iPhone avisa que a rede bloqueia a Retransmissão Privada e passa a usar o DNS da rede.")?></span>
+                        </label>
+                    </div>
+                    <span class="help-block"><?=gettext("A opção geral Anti-Bypass DNS (porta 53), se marcada, vale para todas as redes, com ou sem esta opção.")?></span>
                 </div>
             </div>
         </div>
@@ -578,6 +632,18 @@ display_top_tabs($tab_array);
             </div>
 
             <div class="form-group">
+                <label class="col-sm-3 control-label"><?=gettext("Anúncios")?></label>
+                <div class="col-sm-9">
+                    <div class="checkbox">
+                        <label>
+                            <i class="fa fa-tag wam-cat-marker" data-cat="block_ads" style="color: #64748b; margin-right: 4px;"></i>
+                            <?=gettext("Bloqueia redes de anúncio (anúncios do Google, Criteo, Taboola...) e SDKs de anúncio de apps (Pangle, AppLovin, Unity Ads, ironSource...). Não bloqueia o login do Google (accounts.doubleclick.net), o Clarity, o Google Analytics nem o Tag Manager. Desligada por padrão e fora do bloqueio das redes sem perfil.")?>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
                 <label class="col-sm-3 control-label"><?=gettext("Anti-Bypass DoH (DNS sobre HTTPS)")?></label>
                 <div class="col-sm-9">
                     <div class="checkbox">
@@ -585,6 +651,18 @@ display_top_tabs($tab_array);
                             <i class="fa fa-tag wam-cat-marker" data-cat="block_doh" style="color: #64748b; margin-right: 4px;"></i>
                             <?=gettext("Impede que navegadores usem DNS sobre HTTPS (Cloudflare 1.1.1.1, Google 8.8.8.8, Quad9) para burlar os bloqueios.")?>
                         </label>
+                    </div>
+                    <div style="margin-top: 10px; padding: 12px 16px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px;">
+                        <div class="checkbox" style="margin-top: 0;">
+                            <label>
+                                <input type="checkbox" name="block_doh_by_ip" value="yes" <?=rules_wam_is_checked($wam_cfg['block_doh_by_ip'] ?? 'no') ? 'checked' : ''?> />
+                                <strong><?=gettext("Bloquear também o DoH por IP")?></strong>
+                                <span class="text-muted"><?=gettext("— recusa a porta 443 (TCP/UDP) para os IPs dos DNS públicos (ex.: https://8.8.8.8) nas redes com a categoria Anti-Bypass DoH. O bloqueio por nome não pega o acesso direto pelo IP.")?></span>
+                            </label>
+                        </div>
+                        <label class="small"><?=gettext("IPs extras (um por linha, além da lista do pacote)")?></label>
+                        <textarea name="doh_ips_extra" rows="3" class="form-control" style="font-family: monospace; font-size: 12px; max-width: 420px;" placeholder="Ex.: 101.101.101.101"><?=htmlspecialchars(rules_wam_list_to_text($wam_cfg['doh_ips_extra'] ?? ''))?></textarea>
+                        <span class="help-block small"><?=gettext("A lista do pacote (feeds/doh-ips.txt) tem Google, Cloudflare, Quad9, AdGuard, OpenDNS, CleanBrowsing, ControlD e NextDNS. Com a proteção do Cloudflare ligada, os IPs do Cloudflare Gateway/Zero Trust nunca entram.")?></span>
                     </div>
                 </div>
             </div>
@@ -596,7 +674,8 @@ display_top_tabs($tab_array);
                         <label>
                             <input type="checkbox" name="block_dns_bypass" value="yes" <?=rules_wam_is_checked($wam_cfg['block_dns_bypass'] ?? 'no') ? 'checked' : ''?> />
                             <strong><?=gettext("Interceptar e Redirecionar Consultas DNS Externas na Porta 53")?></strong> <span class="label label-primary"><?=gettext("Proteção contra 8.8.8.8 / 1.1.1.1 Manual")?></span><br />
-                            <span class="text-muted"><?=gettext("Cria automaticamente regra de redirecionamento NAT (Port Forward) capturando consultas enviadas a 8.8.8.8, 1.1.1.1 ou qualquer outro DNS externo na porta 53, forçando resolução pelo Unbound e aplicando os bloqueios do Rules WAM. Dispositivos na lista de Bypass IPs continuam com acesso livre.")?></span>
+                            <span class="text-muted"><?=gettext("Cria automaticamente regra de redirecionamento NAT (Port Forward) capturando consultas enviadas a 8.8.8.8, 1.1.1.1 ou qualquer outro DNS externo na porta 53, forçando resolução pelo Unbound e aplicando os bloqueios do Rules WAM. Dispositivos na lista de Bypass IPs continuam com acesso livre.")?></span><br />
+                            <span class="text-warning"><?=gettext("Vale para TODAS as redes internas. Para ligar só em algumas (ex.: rede operacional, sem mexer na rede corporativa), deixe desmarcado e marque a opção no perfil, em Políticas por Rede.")?></span>
                         </label>
                     </div>
                 </div>

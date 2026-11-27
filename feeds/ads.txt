@@ -1,0 +1,106 @@
+# ==========================================
+# WAM Feed - Anúncios (redes de anúncio e SDKs de anúncio de apps)
+# ==========================================
+# Lista enxuta de propósito: as views do Unbound repetem as zonas em cada perfil.
+# NUNCA incluir aqui (nem o domínio pai deles):
+#   doubleclick.net inteiro (accounts.doubleclick.net é usado no login do Google),
+#   clarity.ms, googletagmanager.com, google-analytics.com, app-measurement.com,
+#   fonts.googleapis.com, fonts.gstatic.com, gstatic.com.
+
+# Google (anúncios)
+googleads.g.doubleclick.net
+pubads.g.doubleclick.net
+securepubads.g.doubleclick.net
+static.doubleclick.net
+ad.doubleclick.net
+cm.g.doubleclick.net
+googlesyndication.com
+googleadservices.com
+googletagservices.com
+adservice.google.com
+adservice.google.com.br
+2mdn.net
+admob.com
+
+# SDKs de anúncio de apps (Android/iOS)
+pangle.io
+pangleglobal.com
+applovin.com
+applvn.com
+unityads.unity3d.com
+inmobi.com
+vungle.com
+liftoff.io
+supersonicads.com
+ironsrc.mobi
+adcolony.com
+chartboost.com
+mintegral.com
+mintegral.net
+rayjump.com
+fyber.com
+inner-active.mobi
+tapjoy.com
+tapjoyads.com
+startappservice.com
+bidmachine.io
+an.facebook.com
+
+# Redes de anúncio e trocas programáticas
+adnxs.com
+adsrvr.org
+amazon-adsystem.com
+criteo.com
+criteo.net
+taboola.com
+outbrain.com
+rubiconproject.com
+pubmatic.com
+openx.net
+casalemedia.com
+indexexchange.com
+smartadserver.com
+adform.net
+media.net
+bidswitch.net
+33across.com
+sharethrough.com
+teads.tv
+triplelift.com
+3lift.com
+yieldmo.com
+sovrn.com
+lijit.com
+contextweb.com
+gumgum.com
+spotxchange.com
+springserve.com
+revcontent.com
+mgid.com
+adskeeper.com
+zedo.com
+yandexadexchange.net
+adfox.ru
+ads-twitter.com
+ads.linkedin.com
+
+# Verificação e medição de anúncios
+moatads.com
+doubleverify.com
+adsafeprotected.com
+scorecardresearch.com
+quantserve.com
+
+# Pop-up, pop-under e anúncios agressivos
+propellerads.com
+popads.net
+popcash.net
+adsterra.com
+exoclick.com
+juicyads.com
+trafficjunky.net
+onclickads.net
+hilltopads.net
+
+# Domínios suspeitos vistos em coletores (CD Jundiaí, 27/11/2026)
+rewashcastledivylike.cfd
