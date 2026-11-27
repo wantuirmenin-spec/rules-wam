@@ -86,7 +86,7 @@ if ($is_enabled && file_exists($conf_file)) {
     }
 }
 
-// 2. Mapeamento das 12 Categorias
+// 2. Mapeamento das 13 Categorias
 $categories_def = array(
     'block_adult'     => array('name' => 'Adulto',         'full' => 'Conteúdo Adulto & Pornografia', 'icon' => 'fa-ban',           'color' => '#d9534f'),
     'block_gambling'  => array('name' => 'Apostas/Bets',   'full' => 'Apostas, Bets & Cassinos',     'icon' => 'fa-money',         'color' => '#f0ad4e'),
@@ -99,7 +99,8 @@ $categories_def = array(
     'block_p2p'       => array('name' => 'Torrents / P2P', 'full' => 'Torrents & Redes P2P',         'icon' => 'fa-download',      'color' => '#20c997'),
     'block_news'      => array('name' => 'Notícias',       'full' => 'Notícias & Portais de Mídia',  'icon' => 'fa-newspaper-o',   'color' => '#17a2b8'),
     'block_sports'    => array('name' => 'Esportes',       'full' => 'Esportes & Placares ao Vivo',  'icon' => 'fa-trophy',        'color' => '#28a745'),
-    'block_doh'       => array('name' => 'Anti-DoH',       'full' => 'Anti-Bypass DNS-over-HTTPS',   'icon' => 'fa-shield',        'color' => '#6c757d')
+    'block_doh'       => array('name' => 'Anti-DoH',       'full' => 'Anti-Bypass DNS-over-HTTPS',   'icon' => 'fa-shield',        'color' => '#6c757d'),
+    'block_ads'       => array('name' => 'Anúncios',       'full' => 'Redes e SDKs de Anúncio',      'icon' => 'fa-bullhorn',      'color' => '#a0522d')
 );
 
 // Categoria ativa = bloqueada em ao menos um perfil (ou nas redes sem perfil / na política geral antiga)
@@ -757,8 +758,9 @@ if ($is_ajax) {
             <i class="fa fa-lock text-muted"></i>
             <span class="text-muted"><?=gettext('Anti-Bypass DNS (Porta 53):')?></span>
             <strong>
-                <?=function_exists('rules_wam_is_checked') && rules_wam_is_checked($wam_cfg['block_dns_bypass'] ?? null) 
-                    ? '<span class="text-success"><i class="fa fa-check"></i> ' . gettext('Ativo') . '</span>' 
+                <?php $wam_w_dnsbp = function_exists('rules_wam_dns_bypass_summary') ? rules_wam_dns_bypass_summary($wam_cfg) : 'Desativado'; ?>
+                <?=($wam_w_dnsbp !== 'Desativado')
+                    ? '<span class="text-success"><i class="fa fa-check"></i> ' . htmlspecialchars(strpos($wam_w_dnsbp, 'perfis') !== false ? $wam_w_dnsbp : gettext('Ativo')) . '</span>'
                     : '<span class="text-muted">' . gettext('Desativado') . '</span>'?>
             </strong>
         </div>

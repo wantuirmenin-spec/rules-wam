@@ -1,7 +1,7 @@
 # 🚀 Guia Prático de Instalação do Rules WAM no pfSense
 ## Procedimento de Implantação a partir de um Notebook / Estação de Trabalho
 
-Este guia detalha o passo a passo para implantar o pacote **Rules WAM 1.6.2 (versão em testes)** em qualquer firewall **pfSense (versões 2.7.x, 2.8.x ou pfSense Plus)** utilizando apenas o seu notebook.
+Este guia detalha o passo a passo para implantar o pacote **Rules WAM 1.6.3 (versão em testes)** em qualquer firewall **pfSense (versões 2.7.x, 2.8.x ou pfSense Plus)** utilizando apenas o seu notebook.
 
 > [!WARNING]
 > **Versão em testes.** Até agora o Rules WAM só foi executado em ambiente de laboratório (um pfSense de testes). Não use em produção sem antes validar no seu próprio laboratório. Use por sua conta e risco.
@@ -24,7 +24,7 @@ Este guia detalha o passo a passo para implantar o pacote **Rules WAM 1.6.2 (ver
 Antes de iniciar, tenha em mãos o instalador **`wam-install.sh`** no seu notebook (ele também está dentro do `rules-wam-pacote.zip`).
 
 > [!NOTE]
-> O `wam-install.sh` (~130 KB) é um auto-extraível: contém o pacote inteiro (código PHP, formulários XML da WebGUI e os 28 arquivos de feed das 12 categorias) e executa o mesmo `install.sh` do pacote. Você só precisa enviar este arquivo para o pfSense.
+> O `wam-install.sh` (~130 KB) é um auto-extraível: contém o pacote inteiro (código PHP, formulários XML da WebGUI e os arquivos de feed das 13 categorias) e executa o mesmo `install.sh` do pacote. Você só precisa enviar este arquivo para o pfSense.
 
 > [!TIP]
 > Obtenha o arquivo por um canal confiável e confira o **SHA-256** antes de executar. No notebook: `sha256sum wam-install.sh` (Linux) ou `Get-FileHash wam-install.sh` (PowerShell). No pfSense: `sha256 /tmp/wam-install.sh`. Os dois valores devem ser iguais ao hash publicado junto ao arquivo.

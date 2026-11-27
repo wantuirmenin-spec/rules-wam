@@ -164,6 +164,7 @@ $categories_info = array(
     'block_doh'       => array('name' => 'Anti-Bypass DoH (DNS Seguro)', 'file' => 'doh-providers.txt'),
     'block_vpn'       => array('name' => 'VPN, ZTNA & Proxies',          'file' => 'vpn-ztna.txt'),
     'block_messaging' => array('name' => 'Mensageiros & Chat Instantâneo', 'file' => 'messaging.txt'),
+    'block_ads'       => array('name' => 'Anúncios',                     'file' => 'ads.txt'),
 );
 ?>
 
@@ -236,10 +237,39 @@ $categories_info = array(
 
             <dt><?=gettext("Anti-Bypass DNS")?></dt>
             <dd>
+                <?php $wam_dnsbp_profiles = rules_wam_profiles_with_option($wam_cfg, 'dns_bypass'); ?>
                 <?php if (rules_wam_is_checked($wam_cfg['block_dns_bypass'] ?? null)): ?>
-                    <span class="label label-success"><i class="fa fa-lock"></i> <?=gettext("Ativo (Interceptando 8.8.8.8 / 1.1.1.1 na Porta 53)")?></span>
+                    <span class="label label-success"><i class="fa fa-lock"></i> <?=gettext("Ativo em todas as redes (Interceptando 8.8.8.8 / 1.1.1.1 na Porta 53)")?></span>
+                <?php elseif (!empty($wam_dnsbp_profiles)): ?>
+                    <span class="label label-success"><i class="fa fa-lock"></i> <?=gettext("Ativo nos perfis")?></span>
+                    <?=htmlspecialchars(implode(', ', $wam_dnsbp_profiles))?>
                 <?php else: ?>
                     <span class="label label-default"><?=gettext("Desativado")?></span>
+                <?php endif; ?>
+                <?php if ((rules_wam_is_checked($wam_cfg['block_dns_bypass'] ?? null) || !empty($wam_dnsbp_profiles)) && !rules_wam_unbound_listens_localhost()): ?>
+                    <div style="margin-top: 4px;">
+                        <span class="label label-danger"><i class="fa fa-exclamation-triangle"></i> <?=gettext("O DNS Resolver não escuta em 127.0.0.1: o redirecionamento da porta 53 não vai funcionar. Em Services > DNS Resolver, inclua Localhost nas interfaces de rede.")?></span>
+                    </div>
+                <?php endif; ?>
+            </dd>
+
+            <dt><?=gettext("Anti-Bypass DoH por IP")?></dt>
+            <dd>
+                <?php if (rules_wam_is_checked($wam_cfg['block_doh_by_ip'] ?? null)): ?>
+                    <span class="label label-success"><i class="fa fa-lock"></i> <?=sprintf(gettext("Ativo (%d IPs de DNS públicos, porta 443) nas redes com Anti-Bypass DoH"), count(rules_wam_doh_ips($wam_cfg)))?></span>
+                <?php else: ?>
+                    <span class="label label-default"><?=gettext("Desativado")?></span>
+                <?php endif; ?>
+            </dd>
+
+            <dt><?=gettext("iCloud Private Relay")?></dt>
+            <dd>
+                <?php $wam_relay_profiles = rules_wam_profiles_with_option($wam_cfg, 'block_private_relay'); ?>
+                <?php if (!empty($wam_relay_profiles)): ?>
+                    <span class="label label-success"><i class="fa fa-apple"></i> <?=gettext("Bloqueado (NXDOMAIN) nos perfis")?></span>
+                    <?=htmlspecialchars(implode(', ', $wam_relay_profiles))?>
+                <?php else: ?>
+                    <span class="label label-default"><?=gettext("Segue a categoria Anti-Bypass DoH de cada perfil")?></span>
                 <?php endif; ?>
             </dd>
 
